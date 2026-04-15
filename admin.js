@@ -174,7 +174,7 @@ async function init() {
 init();
 
 // =========================================================
-// 💡 1. 학생 카드 클릭 시 '라이트 테마 4분할 상세페이지' (건수 통계 추가)
+// 💡 1. 학생 카드 클릭 시 '라이트 테마 4분할 상세페이지' (미래/일요일 제외 및 건수 통계 완벽 적용)
 // =========================================================
 window.__loadStudentDetail = async function(student) {
     if (!student || !student.studentId) return;
@@ -210,14 +210,32 @@ window.__loadStudentDetail = async function(student) {
         start7d.setDate(today.getDate() - 6);
         const todayIso = today.toISOString().split('T')[0];
         const start7dIso = start7d.toISOString().split('T')[0];
+        
+        // 현재 교시 확인 (미래 교시 제외용)
+        const currentP = parseInt(getCurrentPeriod(), 10) || 0;
 
-        // 💡 출결 데이터 처리 (출석, 지각, 결석 완벽 분리)
+        // 날짜 포맷 함수 (예: 4/15(수))
+        const formatShortDate = (dateStr) => {
+            const d = new Date(dateStr);
+            const days = ['일','월','화','수','목','금','토'];
+            return `${d.getMonth()+1}/${d.getDate()}(${days[d.getDay()]})`;
+        };
+
+        // 💡 출결 데이터 처리 (미래 및 일요일 필터링 적용)
         const attLogs = resAtt.data || [];
         let totalAtt = 0, totalLate = 0, totalAbs = 0;
         let att7d = 0, late7d = 0, abs7d = 0;
         const recentAbsences = [];
         
         attLogs.forEach(a => {
+            // 1. 미래 데이터 통계에서 제외 (미래 날짜이거나, 오늘인데 아직 안 온 교시)
+            if (a.attendance_date > todayIso) return;
+            if (a.attendance_date === todayIso && parseInt(a.period, 10) > currentP) return;
+
+            // 2. 일요일 통계에서 제외 (0 = 일요일)
+            const logDateObj = new Date(a.attendance_date);
+            if (logDateObj.getDay() === 0) return;
+
             const isLate = a.status_code === '2' || (a.memo && a.memo.includes('지각'));
             const isAtt = a.status_code === '1';
             const isAbs = a.status_code === '3' && (!a.memo || (!isLate && a.memo === '-'));
@@ -227,15 +245,15 @@ window.__loadStudentDetail = async function(student) {
             else if (isLate) finalType = 'late';
             else if (isAbs) finalType = 'abs';
 
-            // 전체 누적
+            // 전체 누적 계산
             if (finalType === 'att') totalAtt++;
             if (finalType === 'late') totalLate++;
             if (finalType === 'abs') {
                 totalAbs++;
-                if (recentAbsences.length < 3) recentAbsences.push(a);
+                if (recentAbsences.length < 3) recentAbsences.push(a); // 최근 3건만 담기
             }
             
-            // 최근 7일
+            // 최근 7일 계산
             if (a.attendance_date >= start7dIso && a.attendance_date <= todayIso) {
                 if (finalType === 'att') att7d++;
                 if (finalType === 'late') late7d++;
@@ -328,7 +346,7 @@ window.__loadStudentDetail = async function(student) {
 
                     <div style="font-size:12px; color:#95a5a6; margin-bottom:8px;">최근 결석:</div>
                     <ul style="margin:0; padding-left:15px; font-size:13px; color:#e74c3c; line-height:1.8;">
-                        ${recentAbsences.length > 0 ? recentAbsences.map(a => `<li>${a.attendance_date} ${a.period}교시</li>`).join('') : '<li style="color:#95a5a6; list-style:none; margin-left:-15px;">최근 결석이 없습니다.</li>'}
+                        ${recentAbsences.length > 0 ? recentAbsences.map(a => `<li>${formatShortDate(a.attendance_date)} ${a.period}교시</li>`).join('') : '<li style="color:#95a5a6; list-style:none; margin-left:-15px;">최근 결석이 없습니다.</li>'}
                     </ul>
                 </div>
 
@@ -371,7 +389,6 @@ window.__loadStudentDetail = async function(student) {
         detailSection.innerHTML = `<div style="color:#e74c3c; text-align:center; padding:30px;"><b>오류가 발생했습니다:</b><br>${err.message}</div>`;
     }
 };
-
 // =========================================================
 // 💡 2. '상세' 버튼 클릭 시 팝업을 띄워주는 함수 (일요일 포함 타임테이블)
 // =========================================================
