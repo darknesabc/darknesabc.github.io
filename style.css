@@ -1,0 +1,20 @@
+body { font-family: 'Pretendard', sans-serif; background: #f0f2f5; margin: 0; padding: 20px; }
+header { text-align: center; margin-bottom: 30px; }
+#dashboard { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 15px; }
+
+/* 학생 카드 기본 스타일 */
+.card { background: white; border-radius: 12px; padding: 15px; box-shadow: 0 4px 6px rgba(0,0,0,0.1); text-align: center; border-top: 5px solid #ccc; transition: 0.2s; }
+.card:hover { transform: translateY(-5px); }
+
+.seat { font-size: 12px; color: #888; margin-bottom: 5px; }
+.name { font-size: 18px; font-weight: bold; margin-bottom: 10px; }
+.status-badge { display: inline-block; padding: 4px 10px; border-radius: 20px; font-size: 12px; font-weight: bold; }
+
+/* 상태별 색상 (관리자님 시트의 숫자/글자 매칭) */
+.status-1 { border-color: #2ecc71; } /* 정상 입실 (초록) */
+.status-3 { border-color: #e74c3c; } /* 결석 (빨강) */
+.status-text { border-color: #3498db; } /* 영어과외, 병원 등 (파랑) */
+
+.badge-1 { background: #eafaf1; color: #2ecc71; }
+.badge-3 { background: #fdedec; color: #e74c3c; }
+.badge-text { background: #ebf5fb; color: #3498db; }
