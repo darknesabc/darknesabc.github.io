@@ -2,81 +2,85 @@ const SB_URL = "https://kqxhxrbpxwdmuvcyhcua.supabase.co";
 const SB_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImtxeGh4cmJweHdkbXV2Y3loY3VhIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzYxNDc4MzQsImV4cCI6MjA5MTcyMzgzNH0.Y_esLcGduxQteKUsbcwuqUKiGMMM8ItjyZFwpI2cu2A";
 const _supabase = supabase.createClient(SB_URL, SB_KEY);
 
-// 1. 관리자님이 주신 시간표 설정
-const SCHEDULE = [
-  { p: "1", start: "08:00", end: "08:30" },
-  { p: "2", start: "08:50", end: "10:10" },
-  { p: "3", start: "10:30", end: "12:00" },
-  { p: "4", start: "13:10", end: "14:30" },
-  { p: "5", start: "14:50", end: "15:50" },
-  { p: "6", start: "16:10", end: "17:30" },
-  { p: "7", start: "18:40", end: "20:10" },
-  { p: "8", start: "20:30", end: "22:00" }
-];
+// 로그인 세션 유지용
+let loggedInManager = localStorage.getItem('managerName');
 
-// 현재 시간에 맞는 교시를 찾는 함수
+// 현재 교시 확인 함수 (이전과 동일)
 function getCurrentPeriod() {
+    const SCHEDULE = [
+        { p: "1", start: "08:00", end: "08:30" }, { p: "2", start: "08:50", end: "10:10" },
+        { p: "3", start: "10:30", end: "12:00" }, { p: "4", start: "13:10", end: "14:30" },
+        { p: "5", start: "14:50", end: "15:50" }, { p: "6", start: "16:10", end: "17:30" },
+        { p: "7", start: "18:40", end: "20:10" }, { p: "8", start: "20:30", end: "22:00" }
+    ];
     const now = new Date();
-    const currentTime = now.getHours().toString().padStart(2, '0') + ":" + 
-                        now.getMinutes().toString().padStart(2, '0');
-    
-    // 현재 시간보다 시작 시간이 빠른 교시들 중 가장 마지막 교시를 반환
-    let currentP = SCHEDULE[0].p; 
-    for (const slot of SCHEDULE) {
-        if (currentTime >= slot.start) {
-            currentP = slot.p;
-        }
-    }
+    const currentTime = now.getHours().toString().padStart(2, '0') + ":" + now.getMinutes().toString().padStart(2, '0');
+    let currentP = SCHEDULE[0].p;
+    for (const slot of SCHEDULE) { if (currentTime >= slot.start) currentP = slot.p; }
     return currentP;
 }
 
+// 로그인 처리
+async function handleLogin() {
+    const id = document.getElementById('admin-id').value;
+    const pw = document.getElementById('admin-pw').value;
+    const { data, error } = await _supabase.from('managers').select('*').eq('manager_id', id).eq('password', pw).single();
+
+    if (data) {
+        localStorage.setItem('managerName', data.manager_name);
+        location.reload();
+    } else {
+        document.getElementById('login-msg').innerText = "로그인 정보가 올바르지 않습니다.";
+    }
+}
+
+// 로그아웃
+function handleLogout() {
+    localStorage.removeItem('managerName');
+    location.reload();
+}
+
 async function init() {
+    if (!loggedInManager) {
+        document.getElementById('login-section').style.display = 'flex';
+        return;
+    }
+
+    document.getElementById('login-section').style.display = 'none';
+    document.getElementById('admin-content').style.display = 'block';
+    document.getElementById('welcome-msg').innerText = `${loggedInManager} 선생님, 환영합니다`;
+
     const dashboard = document.getElementById('dashboard');
     const summary = document.getElementById('status-summary');
 
     try {
-        const now = new Date();
-        const targetDate = now.getFullYear() + '-' + String(now.getMonth() + 1).padStart(2, '0') + '-' + String(now.getDate()).padStart(2, '0');
-        
-        const currentP = getCurrentPeriod(); // 현재 시간 기준 교시 (예: "5")
-        summary.innerText = `현재 ${currentP}교시 현황판 (${targetDate})`;
+        const today = new Date().toISOString().split('T')[0];
+        const currentP = getCurrentPeriod();
+        summary.innerText = `현재 ${currentP}교시 현황판 (${today})`;
 
-        const { data: students } = await _supabase.from('student').select('*').order('seat_no');
-        const { data: attendance } = await _supabase.from('attendance').select('*').eq('attendance_date', targetDate);
+        // ⭐️ 핵심: 로그인한 선생님의 학생만 필터링해서 가져오기
+        const { data: students } = await _supabase.from('student').select('*').eq('teacher_name', loggedInManager).order('seat_no');
+        const { data: attendance } = await _supabase.from('attendance').select('*').eq('attendance_date', today).eq('period', currentP);
 
         dashboard.innerHTML = '';
-
         students.forEach(s => {
-            const logs = attendance.filter(a => a.student_id === s.student_id);
-            
-            // ⭐️ 핵심 로직: 오직 '현재 교시'와 일치하는 데이터만 찾습니다.
-            const currentLog = logs.find(l => l.period === currentP);
-            
-            // 데이터가 있으면 해당 값을, 없으면 무조건 "미입력" 표시
-            const status = currentLog ? currentLog.status_code : "미입력";
-            
-            // 테두리 색상 결정
-            let typeClass = "text"; 
-            if (status.includes("1")) typeClass = "1";
-            else if (status.includes("3")) typeClass = "3";
-            else if (status === "미입력") typeClass = "none"; // 데이터 없을 때 스타일
+            const log = attendance.find(a => a.student_id === s.student_id);
+            const status = log ? log.status_code : "미입력";
+            const memo = log ? log.memo : ""; // 아까 나눴던 메모 데이터 활용
 
-            // admin.js 렌더링 부분
-dashboard.innerHTML += `
-    <div class="card status-${status}"> <div class="seat">${s.seat_no}</div>
-        <div class="name">${s.name}</div>
-        <div class="status-badge badge-${status}">${status || '미입력'}</div>
-        
-        ${memo ? `<div class="memo-text">${memo}</div>` : ''}
-        
-        <div class="teacher-name">${s.teacher_name}</div>
-    </div>
-`;
+            let typeClass = status.includes("1") ? "1" : (status.includes("3") ? "3" : "none");
+
+            dashboard.innerHTML += `
+                <div class="card status-${typeClass}">
+                    <div class="seat">${s.seat_no}</div>
+                    <div class="name">${s.name}</div>
+                    <div class="status-badge badge-${typeClass}">${status}</div>
+                    ${memo ? `<div style="font-size:12px; color:#3498db; margin-top:5px;">${memo}</div>` : ''}
+                </div>
+            `;
         });
-
     } catch (err) {
-        console.error(err);
-        summary.innerText = "❌ 에러: " + err.message;
+        summary.innerText = "❌ 데이터 로드 에러: " + err.message;
     }
 }
 
