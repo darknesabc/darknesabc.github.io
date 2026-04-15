@@ -50,15 +50,16 @@ async function init() {
         dashboard.innerHTML = '';
 
         students.forEach(s => {
-            const logs = attendance.filter(a => a.student_id === s.student_id);
-            
-            // ⭐️ 로직 변경: 현재 교시 데이터가 있으면 그걸 보여주고, 없으면 가장 최근 데이터를 보여줌
-            const currentLog = logs.find(l => l.period === currentP);
-            const latestLog = logs.sort((a, b) => b.period - a.period)[0];
-            
-            const displayLog = currentLog || latestLog;
-            const status = displayLog ? displayLog.status_code : "미입력";
-            const periodLabel = displayLog ? `${displayLog.period}교시` : "";
+    const logs = attendance.filter(a => a.student_id === s.student_id);
+    
+    // ⭐️ 수정된 로직: 현재 교시(currentP)보다 작거나 같은 기록들만 모음
+    const validLogs = logs.filter(l => parseInt(l.period) <= parseInt(currentP));
+    
+    // 그중에서 가장 최신(번호가 큰 것)을 선택
+    const displayLog = validLogs.sort((a, b) => b.period - a.period)[0];
+    
+    const status = displayLog ? displayLog.status_code : "미입력";
+    const periodLabel = displayLog ? `${displayLog.period}교시` : "기록없음";
 
             let typeClass = "text"; 
             if (status.includes("1")) typeClass = "1";
