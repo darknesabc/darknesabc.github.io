@@ -458,27 +458,35 @@ window.__loadStudentDetail = async function(student) {
 };
 
 // =========================================================
-// 💡 성적 추이 (예상 표준점수 / 예상 백분위 / 예상 등급 적용)
+// 💡 성적 추이 (예상 표준점수 / 백분위 / 상위 30% 컷오프 적용)
 // =========================================================
 window.__loadGradeTrend = async function(studentId) {
     const trendContainer = document.getElementById('grade-trend-container');
     if (!trendContainer) return;
 
     try {
-        const { data: scores, error } = await _supabase
+        // 상위 30% 계산을 위해 전체 모의고사 데이터를 가져옵니다.
+        const { data: allScores, error } = await _supabase
             .from('mock_scores')
             .select('*')
-            .eq('student_id', studentId)
             .order('created_at', { ascending: true });
 
-        if (error || !scores || scores.length === 0) {
-            trendContainer.innerHTML = '<div style="text-align:center; padding:40px; color:#95a5a6; background:#fff; border-radius:12px; border:1px solid #dee2e6;">등록된 성적 데이터가 없습니다.</div>';
+        if (error || !allScores || allScores.length === 0) {
+            trendContainer.innerHTML = '<div style="text-align:center; padding:40px; color:#95a5a6;">등록된 성적 데이터가 없습니다.</div>';
             return;
         }
 
-        window.__currentStudentScores = scores; 
-        window.__currentGradeMode = 'pct'; // 기본값: 예상 백분위
-        window.__currentViewMode = 'graph'; // 기본값: 그래프
+        window.__allMockScores = allScores;
+        window.__currentStudentScores = allScores.filter(s => s.student_id === studentId);
+
+        if (window.__currentStudentScores.length === 0) {
+            trendContainer.innerHTML = '<div style="text-align:center; padding:40px; color:#95a5a6;">등록된 성적 데이터가 없습니다.</div>';
+            return;
+        }
+
+        window.__currentGradeMode = 'pct'; // 예상 백분위
+        window.__currentViewMode = 'graph'; 
+        window.__toggles = { topTotal: false, topChoice: false, topClass: false }; // 컷오프 스위치
 
         window.__renderGradeTrendUI();
     } catch (err) {
@@ -488,33 +496,52 @@ window.__loadGradeTrend = async function(studentId) {
 
 window.__renderGradeTrendUI = function() {
     const container = document.getElementById('grade-trend-container');
+    
+    const tglBtn = (key, label) => {
+        const isOn = window.__toggles[key];
+        return `<button onclick="window.__toggleCutoff('${key}')" style="border:1px solid #576574; padding:5px 12px; border-radius:20px; cursor:pointer; font-size:12px; font-weight:bold; background:${isOn ? '#3498db' : 'transparent'}; color:${isOn ? '#fff' : '#a4b0be'}; transition:0.2s;">${label} ${isOn ? 'ON' : 'OFF'}</button>`;
+    };
+
     container.innerHTML = `
-        <div style="background:#fff; padding:25px; border-radius:12px; border:1px solid #dee2e6; margin-top:20px;">
-            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:20px;">
-                <h4 style="margin:0; color:#2c3e50;">📈 성적 추이 <span style="font-size:12px; color:#7f8c8d; font-weight:normal; margin-left:10px;">(예상 등급 컷 기준)</span></h4>
-                <div style="display:flex; gap:10px;">
-                    <div style="background:#f1f2f6; padding:4px; border-radius:8px; display:flex;">
-                        <button onclick="window.__switchGView('graph')" style="border:none; padding:6px 12px; border-radius:6px; cursor:pointer; font-size:12px; font-weight:bold; background:${window.__currentViewMode === 'graph' ? '#2c3e50' : 'transparent'}; color:${window.__currentViewMode === 'graph' ? '#fff' : '#7f8c8d'};">그래프</button>
-                        <button onclick="window.__switchGView('table')" style="border:none; padding:6px 12px; border-radius:6px; cursor:pointer; font-size:12px; font-weight:bold; background:${window.__currentViewMode === 'table' ? '#2c3e50' : 'transparent'}; color:${window.__currentViewMode === 'table' ? '#fff' : '#7f8c8d'};">표</button>
+        <div style="background:#1e2128; padding:25px; border-radius:12px; box-shadow:0 10px 20px rgba(0,0,0,0.1); margin-top:20px;">
+            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:15px;">
+                <div style="display:flex; align-items:center; gap:15px;">
+                    <h4 style="margin:0; color:#fff; display:flex; align-items:center; gap:8px;">📈 성적 추이 <span style="font-size:12px; color:#7f8c8d; font-weight:normal;">(예상 컷 기준)</span></h4>
+                    <div style="display:flex; gap:5px; background:#2f3542; padding:3px; border-radius:6px;">
+                        <button onclick="window.__switchGView('graph')" style="border:none; padding:4px 12px; border-radius:4px; cursor:pointer; font-size:12px; font-weight:bold; background:${window.__currentViewMode==='graph'?'#f1c40f':'transparent'}; color:${window.__currentViewMode==='graph'?'#2c3e50':'#a4b0be'};">그래프</button>
+                        <button onclick="window.__switchGView('table')" style="border:none; padding:4px 12px; border-radius:4px; cursor:pointer; font-size:12px; font-weight:bold; background:${window.__currentViewMode==='table'?'#f1c40f':'transparent'}; color:${window.__currentViewMode==='table'?'#2c3e50':'#a4b0be'};">표</button>
                     </div>
-                    <div style="background:#f1f2f6; padding:4px; border-radius:8px; display:flex;">
-                        <button onclick="window.__switchGMode('pct')" style="border:none; padding:6px 12px; border-radius:6px; cursor:pointer; font-size:12px; font-weight:bold; background:${window.__currentGradeMode === 'pct' ? '#3498db' : 'transparent'}; color:${window.__currentGradeMode === 'pct' ? '#fff' : '#7f8c8d'};">예상 백분위</button>
-                        <button onclick="window.__switchGMode('std')" style="border:none; padding:6px 12px; border-radius:6px; cursor:pointer; font-size:12px; font-weight:bold; background:${window.__currentGradeMode === 'std' ? '#3498db' : 'transparent'}; color:${window.__currentGradeMode === 'std' ? '#fff' : '#7f8c8d'};">예상 표준점수</button>
-                        <button onclick="window.__switchGMode('raw')" style="border:none; padding:6px 12px; border-radius:6px; cursor:pointer; font-size:12px; font-weight:bold; background:${window.__currentGradeMode === 'raw' ? '#3498db' : 'transparent'}; color:${window.__currentGradeMode === 'raw' ? '#fff' : '#7f8c8d'};">원점수</button>
+                    <div style="display:flex; gap:5px; background:#2f3542; padding:3px; border-radius:6px; margin-left:10px;">
+                        <button onclick="window.__switchGMode('pct')" style="border:none; padding:4px 12px; border-radius:4px; cursor:pointer; font-size:12px; font-weight:bold; background:${window.__currentGradeMode==='pct'?'#3498db':'transparent'}; color:${window.__currentGradeMode==='pct'?'#fff':'#a4b0be'};">예상 백분위</button>
+                        <button onclick="window.__switchGMode('std')" style="border:none; padding:4px 12px; border-radius:4px; cursor:pointer; font-size:12px; font-weight:bold; background:${window.__currentGradeMode==='std'?'#3498db':'transparent'}; color:${window.__currentGradeMode==='std'?'#fff':'#a4b0be'};">예상 표점</button>
+                        <button onclick="window.__switchGMode('raw')" style="border:none; padding:4px 12px; border-radius:4px; cursor:pointer; font-size:12px; font-weight:bold; background:${window.__currentGradeMode==='raw'?'#3498db':'transparent'}; color:${window.__currentGradeMode==='raw'?'#fff':'#a4b0be'};">원점수</button>
                     </div>
                 </div>
             </div>
-            <div id="grade-display-area" style="min-height:300px; position:relative;"></div>
+            
+            <div style="display:flex; gap:8px; margin-bottom:20px; ${window.__currentViewMode==='table' ? 'display:none;' : ''}">
+                ${tglBtn('topTotal', '전체 상위 30%')}
+                ${tglBtn('topChoice', '선택 상위 30%')}
+                ${tglBtn('topClass', '반별 상위 30%')}
+            </div>
+            
+            <div id="grade-display-area" style="min-height:300px; padding:10px;"></div>
         </div>
     `;
-    window.__renderGradeContent();
+    window.__renderGradeDisplay();
 };
 
-window.__renderGradeContent = function() {
+window.__toggleCutoff = function(key) {
+    window.__toggles[key] = !window.__toggles[key];
+    window.__renderGradeTrendUI();
+};
+
+window.__renderGradeDisplay = function() {
     const area = document.getElementById('grade-display-area');
     const scores = window.__currentStudentScores;
-    const mode = window.__currentGradeMode;
-    const view = window.__currentViewMode;
+    const mode = window.__currentGradeMode; 
+    const view = window.__currentViewMode; 
+    const toggles = window.__toggles;
 
     const getVal = (s, subj) => {
         if (mode === 'pct') return s[`${subj}_exp_pct`] || 0;
@@ -522,27 +549,55 @@ window.__renderGradeContent = function() {
         return s[`${subj}_raw_total`] !== undefined ? (s[`${subj}_raw_total`] || 0) : (s[`${subj}_raw`] || 0);
     };
 
+    const getTop30 = (examLabel, subj, valKey, filterMode, myScore) => {
+        let pool = window.__allMockScores.filter(s => s.exam_label === examLabel);
+        if (filterMode === 'topChoice') {
+            const choiceKey = subj === 'kor' ? 'kor_choice' : (subj === 'math' ? 'math_choice' : (subj === 'tam1' ? 'tam1_name' : 'tam2_name'));
+            pool = pool.filter(s => s[choiceKey] === myScore[choiceKey]);
+        } else if (filterMode === 'topClass') {
+            pool = pool.filter(s => s.class_name === myScore.class_name);
+        }
+        let vals = pool.map(s => s[valKey] || 0).sort((a,b) => b-a);
+        if (vals.length === 0) return null;
+        let idx = Math.floor(vals.length * 0.3);
+        if (idx >= vals.length) idx = vals.length - 1;
+        return vals[idx];
+    };
+
     if (view === 'graph') {
         area.innerHTML = '<canvas id="gradeChart" style="max-height:350px;"></canvas>';
         const ctx = document.getElementById('gradeChart').getContext('2d');
+        
+        const labels = scores.map(s => s.exam_label);
+        const datasets = [];
+        const colors = { kor:'#3498db', math:'#e74c3c', tam1:'#2ecc71', tam2:'#f1c40f' };
+        const subjs = [{id:'kor', name:'국어'}, {id:'math', name:'수학'}, {id:'tam1', name:'탐구1'}, {id:'tam2', name:'탐구2'}];
+
+        subjs.forEach(sbj => {
+            const valKey = mode === 'pct' ? `${sbj.id}_exp_pct` : (mode === 'std' ? `${sbj.id}_exp_std` : (sbj.id.startsWith('tam') ? `${sbj.id}_raw` : `${sbj.id}_raw_total`));
+            
+            datasets.push({
+                label: sbj.name, data: scores.map(s => getVal(s, sbj.id)),
+                borderColor: colors[sbj.id], backgroundColor: colors[sbj.id], tension: 0.1, borderWidth: 2, pointRadius: 4
+            });
+
+            if (toggles.topTotal) datasets.push({ label: `${sbj.name} (전체상위30%)`, data: scores.map(s => getTop30(s.exam_label, sbj.id, valKey, 'topTotal', s)), borderColor: colors[sbj.id], borderDash: [5, 5], borderWidth: 1, pointRadius: 0, fill: false });
+            if (toggles.topChoice) datasets.push({ label: `${sbj.name} (선택상위30%)`, data: scores.map(s => getTop30(s.exam_label, sbj.id, valKey, 'topChoice', s)), borderColor: '#9b59b6', borderDash: [3, 3], borderWidth: 1, pointRadius: 0, fill: false });
+            if (toggles.topClass) datasets.push({ label: `${sbj.name} (반별상위30%)`, data: scores.map(s => getTop30(s.exam_label, sbj.id, valKey, 'topClass', s)), borderColor: '#1abc9c', borderDash: [2, 4], borderWidth: 1, pointRadius: 0, fill: false });
+        });
+
+        Chart.defaults.color = '#a4b0be';
         new Chart(ctx, {
-            type: 'line',
-            data: {
-                labels: scores.map(s => s.exam_label),
-                datasets: [
-                    { label: '국어', data: scores.map(s => getVal(s, 'kor')), borderColor: '#3498db', backgroundColor: '#3498db', tension: 0.2, fill: false },
-                    { label: '수학', data: scores.map(s => getVal(s, 'math')), borderColor: '#e74c3c', backgroundColor: '#e74c3c', tension: 0.2, fill: false },
-                    { label: '탐구1', data: scores.map(s => getVal(s, 'tam1')), borderColor: '#2ecc71', backgroundColor: '#2ecc71', tension: 0.2, fill: false },
-                    { label: '탐구2', data: scores.map(s => getVal(s, 'tam2')), borderColor: '#f1c40f', backgroundColor: '#f1c40f', tension: 0.2, fill: false }
-                ]
-            },
+            type: 'line', data: { labels, datasets },
             options: {
                 responsive: true, maintainAspectRatio: false,
-                scales: { y: { beginAtZero: mode === 'pct' ? true : false, max: mode === 'pct' ? 100 : null, grid: { color: '#f1f2f6' } }, x: { grid: { display: false } } },
-                plugins: { legend: { position: 'bottom', labels: { boxWidth: 12, font: { size: 11 } } } }
+                scales: { y: { beginAtZero: mode==='pct', max: mode==='pct'?100:null, grid: { color: '#2f3542' } }, x: { grid: { color: '#2f3542' } } },
+                plugins: { legend: { position: 'top', labels: { boxWidth: 10, font: { size: 11 } } } }
             }
         });
+
     } else {
+        const v = (val) => val === null || val === undefined ? '-' : val;
         const formatCell = (s, subj) => {
             const val = getVal(s, subj);
             const grade = s[`${subj}_exp_grade`] || '-';
@@ -550,20 +605,46 @@ window.__renderGradeContent = function() {
             return `<b>${val}${unit}</b><br><span style="color:#7f8c8d; font-size:11px;">(${grade}등급)</span>`;
         };
 
-        let tableHtml = `<div style="overflow-x:auto;"><table style="width:100%; border-collapse:collapse; font-size:13px; text-align:center;">
-            <thead><tr style="background:#f8f9fa; border-bottom:2px solid #dee2e6;"><th style="padding:12px;">시험명</th><th style="color:#3498db;">국어</th><th style="color:#e74c3c;">수학</th><th style="color:#2ecc71;">탐구1</th><th style="color:#f1c40f;">탐구2</th><th style="color:#9b59b6;">영어</th></tr></thead><tbody>`;
+        let h = `
+        <div style="overflow-x:auto;">
+            <style>
+                .dt-table { width:100%; border-collapse:collapse; font-size:12px; text-align:center; color:#dfe4ea; min-width:800px; }
+                .dt-table th, .dt-table td { border:1px solid #2f3542; padding:10px 5px; }
+                .dt-table th { background:#282c34; font-weight:bold; color:#f1f2f6; }
+                .dt-table td { background:#1e2128; }
+                .c-kor { color:#3498db; } .c-math { color:#e74c3c; } .c-eng { color:#9b59b6; } .c-tam { color:#2ecc71; } .c-tam2 { color:#f1c40f; }
+            </style>
+            <table class="dt-table">
+                <thead>
+                    <tr>
+                        <th rowspan="2">시험구분</th>
+                        <th colspan="4">국어</th>
+                        <th colspan="4">수학</th>
+                        <th colspan="3">영어</th>
+                        <th colspan="4">탐구1</th>
+                        <th colspan="4">탐구2</th>
+                    </tr>
+                    <tr style="font-size:11px; color:#a4b0be;">
+                        <th>원점</th><th>표점</th><th class="c-kor">백분위</th><th>등급</th>
+                        <th>원점</th><th>표점</th><th class="c-math">백분위</th><th>등급</th>
+                        <th>원점</th><th>백분위</th><th class="c-eng">등급</th>
+                        <th class="c-tam">과목</th><th>원점</th><th class="c-tam">백분위</th><th>등급</th>
+                        <th class="c-tam2">과목</th><th>원점</th><th class="c-tam2">백분위</th><th>등급</th>
+                    </tr>
+                </thead>
+                <tbody>
+        `;
         scores.forEach(s => {
-            tableHtml += `<tr style="border-bottom:1px solid #eee;">
-                <td style="padding:10px; font-weight:bold; background:#fcfcfc;">${s.exam_label}</td>
-                <td>${formatCell(s, 'kor')}</td>
-                <td>${formatCell(s, 'math')}</td>
-                <td>${formatCell(s, 'tam1')}</td>
-                <td>${formatCell(s, 'tam2')}</td>
-                <td style="font-weight:bold; color:#9b59b6;">${s.eng_grade || '-'}등급</td>
+            h += `<tr>
+                <td style="font-weight:bold; color:#fff;">${s.exam_label}</td>
+                <td>${v(s.kor_raw_total)}</td> <td>${v(s.kor_exp_std)}</td> <td class="c-kor" style="font-weight:bold;">${v(s.kor_exp_pct)}</td> <td>${v(s.kor_exp_grade)}</td>
+                <td>${v(s.math_raw_total)}</td> <td>${v(s.math_exp_std)}</td> <td class="c-math" style="font-weight:bold;">${v(s.math_exp_pct)}</td> <td>${v(s.math_exp_grade)}</td>
+                <td>${v(s.eng_raw)}</td> <td>-</td> <td class="c-eng" style="font-weight:bold;">${v(s.eng_grade)}</td>
+                <td class="c-tam">${v(s.tam1_name)}</td> <td>${v(s.tam1_raw)}</td> <td class="c-tam" style="font-weight:bold;">${v(s.tam1_exp_pct)}</td> <td>${v(s.tam1_exp_grade)}</td>
+                <td class="c-tam2">${v(s.tam2_name)}</td> <td>${v(s.tam2_raw)}</td> <td class="c-tam2" style="font-weight:bold;">${v(s.tam2_exp_pct)}</td> <td>${v(s.tam2_exp_grade)}</td>
             </tr>`;
         });
-        tableHtml += '</tbody></table></div>';
-        area.innerHTML = tableHtml;
+        area.innerHTML = h + '</tbody></table></div>';
     }
 };
 
