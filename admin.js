@@ -277,5 +277,35 @@ async function init() {
                 </div>
             `;
         });
+
+        // =========================================================
+// 💡 학생 카드 클릭 시 실행되는 상세페이지 호출 함수
+// =========================================================
+window.__loadStudentDetail = async function(student) {
+    if (!student || !student.studentId) {
+        alert("학생 식별 정보를 찾을 수 없습니다.");
+        return;
+    }
+
+    // 1. 클릭이 정상적으로 인식되는지 확인하는 알림창
+    // (테스트 후 작동이 잘 되면 이 alert 줄은 지우셔도 됩니다)
+    alert(`[${student.name}] 학생의 상세 페이지를 엽니다.\n학번: ${student.studentId}`);
+    
+    console.log("💡 클릭된 학생 전체 데이터:", student);
+
+    // =====================================================
+    // 2. 🚧 기존 상세페이지 로직 연결 구역 🚧
+    // 관리자님이 기존에 상세페이지를 어떻게 띄우셨는지에 따라 아래 주석을 풀고 사용하세요.
+    // =====================================================
+
+    // [방식 A] 학부모용/학생용 상세 조회 URL(예: index.html)을 새 창으로 띄우던 경우
+    // window.open(`index.html?studentId=${student.studentId}`, '_blank');
+
+    // [방식 B] 현황판 화면 위에 팝업창(모달) 형태로 바로 띄우던 경우
+    // (기존에 쓰시던 모달 여는 함수 이름이 showDetailModal 이었다면)
+    // if (typeof showDetailModal === "function") {
+    //     showDetailModal(student.studentId);
+    // }
+};
     } catch (err) { summary.innerText = "에러: " + err.message; }
 }
