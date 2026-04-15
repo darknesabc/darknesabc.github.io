@@ -397,7 +397,7 @@ window.__loadStudentDetail = async function(student) {
 };
 
 // =========================================================
-// 💡 2. '상세' 버튼 클릭 시 팝업을 띄워주는 함수 (스크롤 잠금 & 배경 클릭 닫기 적용)
+// 💡 2. '상세' 버튼 클릭 시 팝업 (미래 제외 및 설문/이동 스케줄 연동 완벽 적용)
 // =========================================================
 window.__openDetailModal = async function(type, studentId, studentName) {
     let modalOverlay = document.getElementById('custom-detail-modal');
@@ -414,20 +414,16 @@ window.__openDetailModal = async function(type, studentId, studentName) {
         modalOverlay.style.justifyContent = 'center';
         modalOverlay.style.alignItems = 'center';
         
-        // 💡 [추가] 모달 바깥(어두운 배경) 클릭 시 닫기 및 스크롤 복구 로직
         modalOverlay.addEventListener('click', function(e) {
-            // 클릭한 타겟이 모달 내부의 하얀 창이 아니라 '어두운 배경' 자체일 때만 작동
             if (e.target === modalOverlay) {
                 modalOverlay.style.display = 'none';
-                document.body.style.overflow = ''; // 메인 스크롤 원상복구
+                document.body.style.overflow = ''; 
             }
         });
-
         document.body.appendChild(modalOverlay);
     }
     
     modalOverlay.style.display = 'flex';
-    // 💡 [추가] 모달이 열릴 때 메인 페이지 스크롤 잠금!
     document.body.style.overflow = 'hidden';
 
     const titleMap = {
@@ -437,7 +433,6 @@ window.__openDetailModal = async function(type, studentId, studentName) {
         'eduscore': '🚨 교육점수 전체 내역'
     };
 
-    // 💡 [수정] X 버튼 클릭 시에도 스크롤 복구(document.body.style.overflow='')되도록 추가
     modalOverlay.innerHTML = `
         <div style="background:#fff; width:98%; max-width:1000px; max-height:85vh; border-radius:12px; padding:25px; box-shadow:0 10px 30px rgba(0,0,0,0.2); display:flex; flex-direction:column;">
             <div style="display:flex; justify-content:space-between; align-items:center; border-bottom:1px solid #eee; padding-bottom:15px; margin-bottom:15px;">
@@ -455,14 +450,71 @@ window.__openDetailModal = async function(type, studentId, studentName) {
     try {
         let contentHtml = '';
         
+        // 💡 [핵심] 출결 모달창 로직 업그레이드
         if (type === 'attendance') {
-            const { data } = await _supabase.from('attendance').select('*').eq('student_id', studentId).order('attendance_date', {ascending: false});
+            // 1. 출결, 이동, 설문 데이터를 몽땅 다 가져옵니다.
+            const [resAtt, resMove, resSurvey] = await Promise.all([
+                _supabase.from('attendance').select('*').eq('student_id', studentId).order('attendance_date', {ascending: false}),
+                _supabase.from('move_log').select('*').eq('student_id', studentId),
+                _supabase.from('survey_log').select('*').eq('student_id', studentId)
+            ]);
             
+            const data = resAtt.data || [];
+            const moveData = resMove.data || [];
+            const surveyData = resSurvey.data || [];
+
             if (!data || data.length === 0) {
                 contentArea.innerHTML = '<div style="text-align:center; padding:30px; color:#7f8c8d;">기록이 없습니다.</div>';
                 return;
             }
 
+            // 미래 필터링을 위한 오늘 날짜 및 교시 확보
+            const todayIso = new Date().toISOString().split('T')[0];
+            const currentP = parseInt(getCurrentPeriod(), 10) || 0;
+
+            // 2. 이동 및 설문 데이터를 '날짜별/교시별 스케줄 맵'으로 정리
+            const schedMap = {};
+            
+            surveyData.forEach(sv => {
+                const dStr = sv.survey_date;
+                let reason = sv.reason ? sv.reason.split('(')[0].trim() : '';
+                const timeType = sv.arrival_time_type || "";
+                let startP = 0, endP = 0;
+                if (timeType.includes("결석")) { startP = 1; endP = 8; }
+                else if (timeType.includes("오전")) { startP = 1; endP = 3; }
+                else if (timeType.includes("오후")) { startP = 4; endP = 6; }
+                else if (timeType.includes("야간") || timeType.includes("저녁")) { startP = 7; endP = 8; }
+                
+                if (startP > 0) {
+                    if (!schedMap[dStr]) schedMap[dStr] = {};
+                    for(let p=startP; p<=endP; p++) schedMap[dStr][p] = `[설문] ${reason}`;
+                }
+            });
+
+            const getPeriodFromTime = (timeStr) => {
+                if (!timeStr) return 0;
+                const [h, m] = timeStr.split(':').map(Number);
+                const t = h * 60 + m;
+                if (t < 8*60+30) return 1; if (t < 10*60+10) return 2; if (t < 12*60) return 3;
+                if (t < 14*60+30) return 4; if (t < 15*60+50) return 5; if (t < 17*60+30) return 6;
+                if (t < 20*60+10) return 7; return 8;
+            };
+
+            moveData.forEach(mv => {
+                if (mv.reason === "화장실/정수기") return;
+                const dStr = mv.move_date;
+                let rp = parseInt(mv.return_period, 10) || 0;
+                if (mv.return_period === "복귀안함") rp = 8;
+                const sp = getPeriodFromTime(mv.move_time);
+                
+                if (rp > 0) {
+                    if (!schedMap[dStr]) schedMap[dStr] = {};
+                    const start = sp > 0 ? sp : rp;
+                    for(let p=start; p<=rp; p++) schedMap[dStr][p] = mv.reason;
+                }
+            });
+
+            // 3. 주차별로 그룹화
             const weekMap = {};
             const getMonday = (dStr) => {
                 const d = new Date(dStr);
@@ -504,9 +556,10 @@ window.__openDetailModal = async function(type, studentId, studentName) {
                 .st-1 { background:#e8f8f5; color:#27ae60; font-weight:bold; border-radius:3px; }
                 .st-2 { background:#fef9e7; color:#f39c12; font-weight:bold; border-radius:3px; }
                 .st-3 { background:#fadedb; color:#e74c3c; font-weight:bold; border-radius:3px; }
-                .st-memo { font-size:11px; color:#7f8c8d; max-width:70px; word-break:keep-all; }
+                .st-memo { font-size:11px; color:#7f8c8d; max-width:80px; word-break:keep-all; font-weight:bold; }
             </style>`;
 
+            // 4. 테이블 렌더링
             weeks.forEach((mon, idx) => {
                 const displayStyle = idx === 0 ? 'block' : 'none';
                 contentHtml += `<div id="week-${mon}" class="week-table-container" style="display:${displayStyle}; overflow-x:auto;">
@@ -531,17 +584,33 @@ window.__openDetailModal = async function(type, studentId, studentName) {
                 for(let p=1; p<=8; p++) {
                     contentHtml += `<tr><th>${p}</th>`;
                     weekDates.forEach(dateStr => {
-                        const cellData = (weekMap[mon][dateStr] && weekMap[mon][dateStr][p]) ? weekMap[mon][dateStr][p] : null;
-                        const memo = cellData && cellData.memo ? cellData.memo : '-';
-                        let statusHtml = '-';
+                        // 💡 미래 판별: 오늘 날짜 이후이거나, 오늘인데 아직 안 온 교시
+                        const isFuture = dateStr > todayIso || (dateStr === todayIso && p > currentP);
                         
-                        if (cellData) {
-                            const isLate = cellData.status === '2' || (memo && memo.includes('지각'));
-                            if (cellData.status === '1') statusHtml = `<div class="st-1">출석</div>`;
-                            else if (isLate) statusHtml = `<div class="st-2">지각</div>`;
-                            else if (cellData.status === '3') statusHtml = `<div class="st-3">결석</div>`;
-                            else statusHtml = cellData.status;
+                        const cellData = (weekMap[mon][dateStr] && weekMap[mon][dateStr][p]) ? weekMap[mon][dateStr][p] : null;
+                        
+                        let memo = '-';
+                        let statusHtml = '-';
+
+                        if (isFuture) {
+                            // 미래는 무조건 빈칸 처리
+                            memo = '-';
+                            statusHtml = '-';
+                        } else {
+                            // 현재/과거는 스케줄 맵핑 및 출결 반영
+                            const baseMemo = cellData && cellData.memo ? cellData.memo : '';
+                            const extraMemo = schedMap[dateStr]?.[p] || '';
+                            memo = extraMemo || baseMemo || '-'; // 이동/설문이 1순위, 그 다음이 시트 직접입력 메모
+
+                            if (cellData) {
+                                const isLate = cellData.status === '2' || memo.includes('지각');
+                                if (cellData.status === '1') statusHtml = `<div class="st-1">출석</div>`;
+                                else if (isLate) statusHtml = `<div class="st-2">지각</div>`;
+                                else if (cellData.status === '3') statusHtml = `<div class="st-3">결석</div>`;
+                                else statusHtml = cellData.status;
+                            }
                         }
+
                         contentHtml += `<td class="st-memo">${memo}</td><td>${statusHtml}</td>`;
                     });
                     contentHtml += `</tr>`;
@@ -550,6 +619,8 @@ window.__openDetailModal = async function(type, studentId, studentName) {
             });
             contentArea.innerHTML = contentHtml;
         } 
+        
+        // 이동, 취침, 교육점수 모달 렌더링은 기존 유지 (기간 필터 테이블 뷰)
         else {
             window.__modalData = { type: type, items: [] };
             let tableQuery = null;
