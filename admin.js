@@ -391,10 +391,11 @@ window.__loadStudentDetail = async function(student) {
 };
 
 // =========================================================
-// 💡 2. '상세' 버튼 클릭 시 팝업을 띄워주는 함수 (기간 필터 및 테이블 뷰 적용)
+// 💡 2. '상세' 버튼 클릭 시 팝업을 띄워주는 함수 (스크롤 잠금 & 배경 클릭 닫기 적용)
 // =========================================================
 window.__openDetailModal = async function(type, studentId, studentName) {
     let modalOverlay = document.getElementById('custom-detail-modal');
+    
     if (!modalOverlay) {
         modalOverlay = document.createElement('div');
         modalOverlay.id = 'custom-detail-modal';
@@ -406,9 +407,22 @@ window.__openDetailModal = async function(type, studentId, studentName) {
         modalOverlay.style.display = 'flex';
         modalOverlay.style.justifyContent = 'center';
         modalOverlay.style.alignItems = 'center';
+        
+        // 💡 [추가] 모달 바깥(어두운 배경) 클릭 시 닫기 및 스크롤 복구 로직
+        modalOverlay.addEventListener('click', function(e) {
+            // 클릭한 타겟이 모달 내부의 하얀 창이 아니라 '어두운 배경' 자체일 때만 작동
+            if (e.target === modalOverlay) {
+                modalOverlay.style.display = 'none';
+                document.body.style.overflow = ''; // 메인 스크롤 원상복구
+            }
+        });
+
         document.body.appendChild(modalOverlay);
     }
+    
     modalOverlay.style.display = 'flex';
+    // 💡 [추가] 모달이 열릴 때 메인 페이지 스크롤 잠금!
+    document.body.style.overflow = 'hidden';
 
     const titleMap = {
         'attendance': '📅 출결 주차별 상세 내역',
@@ -417,11 +431,12 @@ window.__openDetailModal = async function(type, studentId, studentName) {
         'eduscore': '🚨 교육점수 전체 내역'
     };
 
+    // 💡 [수정] X 버튼 클릭 시에도 스크롤 복구(document.body.style.overflow='')되도록 추가
     modalOverlay.innerHTML = `
         <div style="background:#fff; width:98%; max-width:1000px; max-height:85vh; border-radius:12px; padding:25px; box-shadow:0 10px 30px rgba(0,0,0,0.2); display:flex; flex-direction:column;">
             <div style="display:flex; justify-content:space-between; align-items:center; border-bottom:1px solid #eee; padding-bottom:15px; margin-bottom:15px;">
                 <h3 style="margin:0; color:#2c3e50;">${titleMap[type]} - ${studentName}</h3>
-                <button onclick="document.getElementById('custom-detail-modal').style.display='none'" style="background:none; border:none; font-size:20px; cursor:pointer; color:#7f8c8d; padding:0;">✖</button>
+                <button onclick="document.getElementById('custom-detail-modal').style.display='none'; document.body.style.overflow='';" style="background:none; border:none; font-size:20px; cursor:pointer; color:#7f8c8d; padding:0;">✖</button>
             </div>
             <div id="modal-content-area" style="flex:1; overflow-y:auto; padding-right:10px;">
                 <div style="text-align:center; padding:50px; color:#7f8c8d;">⏳ 데이터를 불러오는 중입니다...</div>
@@ -434,7 +449,6 @@ window.__openDetailModal = async function(type, studentId, studentName) {
     try {
         let contentHtml = '';
         
-        // 💡 1. 출결: 주차별 타임테이블 (기존 유지)
         if (type === 'attendance') {
             const { data } = await _supabase.from('attendance').select('*').eq('student_id', studentId).order('attendance_date', {ascending: false});
             
@@ -530,8 +544,6 @@ window.__openDetailModal = async function(type, studentId, studentName) {
             });
             contentArea.innerHTML = contentHtml;
         } 
-        
-        // 💡 2. 이동, 취침, 교육점수: 기간 필터 + 테이블 뷰
         else {
             window.__modalData = { type: type, items: [] };
             let tableQuery = null;
@@ -566,9 +578,7 @@ window.__openDetailModal = async function(type, studentId, studentName) {
                 <div id="modal-table-area"></div>
             `;
 
-            // 기간별 렌더링 함수 (글로벌 함수로 선언하여 버튼 onClick에서 호출 가능하게 함)
             window.__renderModalTable = function(days) {
-                // 버튼 스타일 업데이트
                 [7, 15, 30].forEach(d => {
                     const btn = document.getElementById('btn-period-' + d);
                     if (btn) {
@@ -577,7 +587,6 @@ window.__openDetailModal = async function(type, studentId, studentName) {
                     }
                 });
 
-                // 필터 기준 날짜 계산
                 const targetDate = new Date();
                 targetDate.setDate(new Date().getDate() - (days - 1));
                 const targetIso = targetDate.toISOString().split('T')[0];
@@ -635,7 +644,6 @@ window.__openDetailModal = async function(type, studentId, studentName) {
                 document.getElementById('modal-table-area').innerHTML = tableHtml;
             };
 
-            // 처음 모달이 열리면 기본값으로 '7일' 렌더링
             window.__renderModalTable(7);
         }
 
