@@ -625,7 +625,9 @@ window.__openDetailModal = async function(type, studentId, studentName) {
                 return;
             }
 
-            const todayIso = new Date().toISOString().split('T')[0];
+            // 👇 한국 시간에 맞춘 오늘 날짜로 교체
+            const now = new Date();
+            const todayIso = new Date(now.getTime() - (now.getTimezoneOffset() * 60000)).toISOString().split('T')[0];
             const currentP = parseInt(getCurrentPeriod(), 10) || 0;
 
             const schedMap = {};
@@ -822,9 +824,11 @@ window.__openDetailModal = async function(type, studentId, studentName) {
                     }
                 });
 
-                const targetDate = new Date();
-                targetDate.setDate(new Date().getDate() - (days - 1));
-                const targetIso = targetDate.toISOString().split('T')[0];
+                // 👇 한국 시간에 맞춰 n일 전 날짜를 정확히 구하도록 교체
+                const now = new Date();
+                const targetDate = new Date(now);
+                targetDate.setDate(now.getDate() - (days - 1));
+                const targetIso = new Date(targetDate.getTime() - (targetDate.getTimezoneOffset() * 60000)).toISOString().split('T')[0];
 
                 const filtered = window.__modalData.items.filter(item => {
                     const dStr = item.move_date || item.sleep_date || item.score_date;
