@@ -35,39 +35,35 @@ async function init() {
     const summary = document.getElementById('status-summary');
 
     try {
-        // 오늘 날짜 계산 (한국 시간 기준)
         const now = new Date();
         const targetDate = now.getFullYear() + '-' + String(now.getMonth() + 1).padStart(2, '0') + '-' + String(now.getDate()).padStart(2, '0');
         
-        // 현재 교시 확인
-        const currentP = getCurrentPeriod();
-        summary.innerText = `현재 ${currentP}교시 진행 중 (${targetDate})`;
+        const currentP = getCurrentPeriod(); // 현재 시간 기준 교시 (예: "5")
+        summary.innerText = `현재 ${currentP}교시 현황판 (${targetDate})`;
 
-        // 2. 데이터 호출
         const { data: students } = await _supabase.from('student').select('*').order('seat_no');
         const { data: attendance } = await _supabase.from('attendance').select('*').eq('attendance_date', targetDate);
 
         dashboard.innerHTML = '';
 
         students.forEach(s => {
-    const logs = attendance.filter(a => a.student_id === s.student_id);
-    
-    // ⭐️ 수정된 로직: 현재 교시(currentP)보다 작거나 같은 기록들만 모음
-    const validLogs = logs.filter(l => parseInt(l.period) <= parseInt(currentP));
-    
-    // 그중에서 가장 최신(번호가 큰 것)을 선택
-    const displayLog = validLogs.sort((a, b) => b.period - a.period)[0];
-    
-    const status = displayLog ? displayLog.status_code : "미입력";
-    const periodLabel = displayLog ? `${displayLog.period}교시` : "기록없음";
-
+            const logs = attendance.filter(a => a.student_id === s.student_id);
+            
+            // ⭐️ 핵심 로직: 오직 '현재 교시'와 일치하는 데이터만 찾습니다.
+            const currentLog = logs.find(l => l.period === currentP);
+            
+            // 데이터가 있으면 해당 값을, 없으면 무조건 "미입력" 표시
+            const status = currentLog ? currentLog.status_code : "미입력";
+            
+            // 테두리 색상 결정
             let typeClass = "text"; 
             if (status.includes("1")) typeClass = "1";
             else if (status.includes("3")) typeClass = "3";
+            else if (status === "미입력") typeClass = "none"; // 데이터 없을 때 스타일
 
             dashboard.innerHTML += `
                 <div class="card status-${typeClass}">
-                    <div class="seat">${s.seat_no} <span style="font-size:10px; color:#aaa;">${periodLabel}</span></div>
+                    <div class="seat">${s.seat_no}</div>
                     <div class="name">${s.name || '빈자리'}</div>
                     <div class="status-badge badge-${typeClass}">${status}</div>
                     <div style="font-size:11px; color:#aaa; margin-top:10px;">${s.teacher_name}</div>
