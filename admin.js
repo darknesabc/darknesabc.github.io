@@ -278,34 +278,97 @@ async function init() {
             `;
         });
 
-        // =========================================================
-// 💡 학생 카드 클릭 시 실행되는 상세페이지 호출 함수
+// =========================================================
+// 💡 학생 카드 클릭 시 화면 하단에 상세페이지를 펼쳐주는 함수
 // =========================================================
 window.__loadStudentDetail = async function(student) {
-    if (!student || !student.studentId) {
-        alert("학생 식별 정보를 찾을 수 없습니다.");
-        return;
+    if (!student || !student.studentId) return;
+
+    // 1. 상세 내역을 보여줄 투명한 박스 찾기 (없으면 대시보드 아래에 새로 생성)
+    let detailSection = document.getElementById('student-detail-section');
+    if (!detailSection) {
+        detailSection = document.createElement('div');
+        detailSection.id = 'student-detail-section';
+        detailSection.style.marginTop = '40px';
+        detailSection.style.marginBottom = '60px';
+        detailSection.style.padding = '25px';
+        detailSection.style.backgroundColor = '#ffffff';
+        detailSection.style.borderRadius = '12px';
+        detailSection.style.boxShadow = '0 4px 15px rgba(0,0,0,0.1)';
+        // admin-content(현황판)의 제일 아래쪽에 추가
+        document.getElementById('admin-content').appendChild(detailSection);
     }
 
-    // 1. 클릭이 정상적으로 인식되는지 확인하는 알림창
-    // (테스트 후 작동이 잘 되면 이 alert 줄은 지우셔도 됩니다)
-    alert(`[${student.name}] 학생의 상세 페이지를 엽니다.\n학번: ${student.studentId}`);
-    
-    console.log("💡 클릭된 학생 전체 데이터:", student);
+    // 2. 박스를 보이게 하고, "불러오는 중" 텍스트 띄운 후 화면 아래로 스크롤
+    detailSection.style.display = 'block';
+    detailSection.innerHTML = `<div style="text-align:center; padding:40px; font-size:18px; color:#34495e;">⏳ <b>${student.name}</b> 학생의 상세 데이터를 빛의 속도로 불러오는 중입니다...</div>`;
+    detailSection.scrollIntoView({ behavior: 'smooth', block: 'start' });
 
-    // =====================================================
-    // 2. 🚧 기존 상세페이지 로직 연결 구역 🚧
-    // 관리자님이 기존에 상세페이지를 어떻게 띄우셨는지에 따라 아래 주석을 풀고 사용하세요.
-    // =====================================================
+    try {
+        // 3. 수퍼베이스에서 해당 학생의 '이동/교육점수/취침' 데이터를 동시에 싹 끌어옵니다! (매우 빠름)
+        const [resMove, resEdu, resSleep] = await Promise.all([
+            _supabase.from('move_log').select('*').eq('student_id', student.studentId).order('move_date', {ascending: false}).order('move_time', {ascending: false}).limit(5),
+            _supabase.from('edu_score_log').select('*').eq('student_id', student.studentId).order('score_date', {ascending: false}),
+            _supabase.from('sleep_log').select('*').eq('student_id', student.studentId).order('sleep_date', {ascending: false}).limit(5)
+        ]);
 
-    // [방식 A] 학부모용/학생용 상세 조회 URL(예: index.html)을 새 창으로 띄우던 경우
-    // window.open(`index.html?studentId=${student.studentId}`, '_blank');
+        const moveLogs = resMove.data || [];
+        const eduLogs = resEdu.data || [];
+        const sleepLogs = resSleep.data || [];
 
-    // [방식 B] 현황판 화면 위에 팝업창(모달) 형태로 바로 띄우던 경우
-    // (기존에 쓰시던 모달 여는 함수 이름이 showDetailModal 이었다면)
-    // if (typeof showDetailModal === "function") {
-    //     showDetailModal(student.studentId);
-    // }
+        // 총 벌점 자동 계산
+        const totalScore = eduLogs.reduce((sum, log) => sum + (EDU_SCORE_MAP[log.reason] || 0), 0);
+
+        // 4. 가져온 데이터를 보기 좋은 HTML 화면으로 조립합니다.
+        let html = `
+            <div style="display: flex; justify-content: space-between; align-items: center; border-bottom: 2px solid #f1f2f6; padding-bottom: 15px; margin-bottom: 25px;">
+                <h2 style="margin: 0; color: #2c3e50;">🧑‍🎓 ${student.name} <span style="font-size:15px; color:#7f8c8d; font-weight:normal; margin-left:10px;">(학번: ${student.studentId} | 좌석: ${student.seat} | 담임: ${student.teacher})</span></h2>
+                <button onclick="document.getElementById('student-detail-section').style.display='none'" style="padding: 8px 20px; border:none; background:#e74c3c; color:white; border-radius:6px; font-weight:bold; cursor:pointer;">닫기 ✖</button>
+            </div>
+            
+            <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap: 25px;">
+                
+                <div style="background: #f8f9fa; padding: 20px; border-radius: 10px; border: 1px solid #e2e6ea;">
+                    <h4 style="margin-top: 0; margin-bottom:15px; color: #2980b9; font-size:16px;">🚶 최근 이동 기록 (최대 5건)</h4>
+                    <ul style="list-style:none; padding:0; margin:0; font-size:14px; line-height:1.8;">
+                        ${moveLogs.length > 0 ? moveLogs.map(m => `
+                            <li style="margin-bottom:12px; border-bottom:1px dashed #dfe6e9; padding-bottom:8px;">
+                                <span style="display:inline-block; width:130px; color:#7f8c8d;">${m.move_date} ${m.move_time}</span> 
+                                <b style="color:#2c3e50;">${m.reason}</b> 
+                                <span style="font-size:12px; color:#95a5a6; margin-left:5px;">(복귀예정: ${m.return_period || '-'})</span>
+                            </li>
+                        `).join('') : '<li style="color:#95a5a6;">최근 이동 기록이 없습니다.</li>'}
+                    </ul>
+                </div>
+
+                <div style="background: #f8f9fa; padding: 20px; border-radius: 10px; border: 1px solid #e2e6ea;">
+                    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:15px;">
+                        <h4 style="margin: 0; color: #e67e22; font-size:16px;">⭐ 누적 교육점수(벌점)</h4>
+                        <span style="background:#ffeaa7; color:#d35400; padding:4px 10px; border-radius:20px; font-weight:bold;">총 ${totalScore}점</span>
+                    </div>
+                    <ul style="list-style:none; padding:0; margin:0; font-size:14px; line-height:1.8; max-height:150px; overflow-y:auto; border-bottom:2px solid #ecf0f1; margin-bottom:15px; padding-bottom:15px;">
+                        ${eduLogs.length > 0 ? eduLogs.map(e => `
+                            <li style="margin-bottom:6px;">
+                                <span style="color:#7f8c8d; margin-right:10px;">${e.score_date}</span> 
+                                <b>${e.reason}</b> 
+                                <span style="color:#e74c3c; font-size:12px; margin-left:5px;">(+${EDU_SCORE_MAP[e.reason]||0})</span>
+                            </li>
+                        `).join('') : '<li style="color:#95a5a6;">벌점 기록이 없습니다.</li>'}
+                    </ul>
+                    
+                    <h4 style="margin-top: 0; margin-bottom:10px; color: #8e44ad; font-size:16px;">💤 최근 취침 기록 (최대 5건)</h4>
+                    <ul style="list-style:none; padding:0; margin:0; font-size:14px; line-height:1.8;">
+                        ${sleepLogs.length > 0 ? sleepLogs.map(s => `
+                            <li><span style="color:#7f8c8d; margin-right:10px;">${s.sleep_date}</span> ${s.period}교시 <b style="color:#8e44ad;">(${s.count}회 적발)</b></li>
+                        `).join('') : '<li style="color:#95a5a6;">최근 취침 기록이 없습니다.</li>'}
+                    </ul>
+                </div>
+            </div>
+        `;
+        
+        detailSection.innerHTML = html;
+
+    } catch (err) {
+        detailSection.innerHTML = `<div style="color:#e74c3c; text-align:center; padding:30px;"><b>오류가 발생했습니다:</b><br>${err.message}</div>`;
+    }
 };
-    } catch (err) { summary.innerText = "에러: " + err.message; }
-}
