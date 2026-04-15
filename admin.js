@@ -63,22 +63,30 @@ async function init() {
         const { data: attendance } = await _supabase.from('attendance').select('*').eq('attendance_date', today).eq('period', currentP);
 
         dashboard.innerHTML = '';
-        students.forEach(s => {
-            const log = attendance.find(a => a.student_id === s.student_id);
-            const status = log ? log.status_code : "미입력";
-            const memo = log ? log.memo : ""; // 아까 나눴던 메모 데이터 활용
+        // 기존 코드: students.forEach(s => { ... })
+// ⭐️ 아래 코드로 변경하세요:
 
-            let typeClass = status.includes("1") ? "1" : (status.includes("3") ? "3" : "none");
+// 1. 이름이 제대로 있고, '배정금지'가 아닌 진짜 학생만 필터링
+const realStudents = students.filter(s => s.name && s.name !== '배정금지');
 
-            dashboard.innerHTML += `
-                <div class="card status-${typeClass}">
-                    <div class="seat">${s.seat_no}</div>
-                    <div class="name">${s.name}</div>
-                    <div class="status-badge badge-${typeClass}">${status}</div>
-                    ${memo ? `<div style="font-size:12px; color:#3498db; margin-top:5px;">${memo}</div>` : ''}
-                </div>
-            `;
-        });
+dashboard.innerHTML = '';
+realStudents.forEach(s => {
+    const log = attendance.find(a => a.student_id === s.student_id);
+    const status = log ? log.status_code : "미입력";
+    const memo = log ? log.memo : "";
+
+    let typeClass = status.includes("1") ? "1" : (status.includes("3") ? "3" : "none");
+
+    // 이름이 없을 경우를 대비해 '빈자리' 텍스트 추가
+    dashboard.innerHTML += `
+        <div class="card status-${typeClass}">
+            <div class="seat">${s.seat_no}</div>
+            <div class="name">${s.name || '빈자리'}</div>
+            <div class="status-badge badge-${typeClass}">${status}</div>
+            ${memo ? `<div style="font-size:12px; color:#3498db; margin-top:5px;">${memo}</div>` : ''}
+        </div>
+    `;
+});
     } catch (err) {
         summary.innerText = "❌ 데이터 로드 에러: " + err.message;
     }
