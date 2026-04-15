@@ -4,26 +4,38 @@
     <meta charset="UTF-8">
     <title>실시간 관리자 페이지 v2</title>
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
-    <link rel="stylesheet" href="style.css">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script> <link rel="stylesheet" href="style.css">
 </head>
 <body>
+    <div class="topbar">
+        <div class="topbar-inner">
+            <div class="top-title">실시간 학생 현황 v2</div>
+            <div id="sync-status" class="top-sub">수퍼베이스 연결됨</div>
+        </div>
+    </div>
+
     <div class="wrap">
-        <div class="topbar">
-            <div class="topbar-inner">
-                <div>
-                    <div class="top-title">실시간 학생 현황</div>
-                    <div class="top-sub" id="sync-status">수퍼베이스 연결됨</div>
-                </div>
+        <div class="card" style="margin-bottom:20px;">
+            <div class="form">
+                <input type="text" id="searchInput" class="input" placeholder="이름 또는 좌석번호 검색...">
+                <button onclick="handleSearch()" class="btn">검색</button>
             </div>
         </div>
 
-        <div id="riskNoticePanel" style="margin-top:20px; display:none;"></div>
+        <div id="riskNoticePanel" style="margin-bottom:20px; display:none;"></div>
 
-        <h1 class="title" style="margin-top:20px;">학생 명단 그리드</h1>
-        
-        <div id="student-list">
-            <div style="padding:20px; text-align:center; opacity:0.5;">데이터를 불러오는 중...</div>
+        <div id="student-list"></div>
+    </div>
+
+    <div id="modal" class="modal" style="display:none;">
+        <div class="modal-backdrop" onclick="closeModal()"></div>
+        <div class="modal-panel">
+            <div class="modal-header">
+                <h2 id="modalTitle" style="margin:0; font-size:18px;">학생 상세 정보</h2>
+                <button onclick="closeModal()" class="btn-mini btn-ghost">닫기</button>
+            </div>
+            <div id="modalBody" class="modal-body">
+                </div>
         </div>
     </div>
 
