@@ -180,7 +180,7 @@ async function init() {
 init();
 
 // =========================================================
-// 💡 1. 학생 카드 클릭 시 '라이트 테마 4분할 상세페이지' (미래/일요일 제외 및 건수 통계 완벽 적용)
+// 💡 1. 학생 카드 클릭 시 '라이트 테마 4분할 상세페이지' (스케줄 연동 및 카운트 완벽 동기화)
 // =========================================================
 window.__loadStudentDetail = async function(student) {
     if (!student || !student.studentId) return;
@@ -204,11 +204,13 @@ window.__loadStudentDetail = async function(student) {
     detailSection.scrollIntoView({ behavior: 'smooth', block: 'start' });
 
     try {
-        const [resMove, resEdu, resSleep, resAtt] = await Promise.all([
+        // 💡 [핵심] 요약 카드에서도 survey_log(설문) 데이터를 몽땅 불러오도록 추가!
+        const [resMove, resEdu, resSleep, resAtt, resSurvey] = await Promise.all([
             _supabase.from('move_log').select('*').eq('student_id', student.studentId).order('move_date', {ascending: false}).order('move_time', {ascending: false}),
             _supabase.from('edu_score_log').select('*').eq('student_id', student.studentId).order('score_date', {ascending: false}),
             _supabase.from('sleep_log').select('*').eq('student_id', student.studentId).order('sleep_date', {ascending: false}),
-            _supabase.from('attendance').select('*').eq('student_id', student.studentId).order('attendance_date', {ascending: false})
+            _supabase.from('attendance').select('*').eq('student_id', student.studentId).order('attendance_date', {ascending: false}),
+            _supabase.from('survey_log').select('*').eq('student_id', student.studentId)
         ]);
 
         const today = new Date();
@@ -217,49 +219,98 @@ window.__loadStudentDetail = async function(student) {
         const todayIso = today.toISOString().split('T')[0];
         const start7dIso = start7d.toISOString().split('T')[0];
         
-        // 현재 교시 확인 (미래 교시 제외용)
         const currentP = parseInt(getCurrentPeriod(), 10) || 0;
 
-        // 날짜 포맷 함수 (예: 4/15(수))
         const formatShortDate = (dateStr) => {
             const d = new Date(dateStr);
             const days = ['일','월','화','수','목','금','토'];
             return `${d.getMonth()+1}/${d.getDate()}(${days[d.getDay()]})`;
         };
 
-        // 💡 출결 데이터 처리 (미래 및 일요일 필터링 적용)
+        // 💡 1. 요약 카드용 스케줄 맵 만들기 (상세 모달과 동일한 기준 적용)
+        const schedMap = {};
+        const surveyData = resSurvey.data || [];
+        surveyData.forEach(sv => {
+            const dStr = sv.survey_date;
+            let reason = sv.reason ? sv.reason.split('(')[0].trim() : '';
+            const timeType = sv.arrival_time_type || "";
+            let startP = 0, endP = 0;
+            if (timeType.includes("결석")) { startP = 1; endP = 8; }
+            else if (timeType.includes("오전")) { startP = 1; endP = 3; }
+            else if (timeType.includes("오후")) { startP = 4; endP = 6; }
+            else if (timeType.includes("야간") || timeType.includes("저녁")) { startP = 7; endP = 8; }
+            
+            if (startP > 0) {
+                if (!schedMap[dStr]) schedMap[dStr] = {};
+                for(let p=startP; p<=endP; p++) schedMap[dStr][p] = `[설문] ${reason}`;
+            }
+        });
+
+        const moveData = resMove.data || [];
+        const getPeriodFromTime = (timeStr) => {
+            if (!timeStr) return 0;
+            const [h, m] = timeStr.split(':').map(Number);
+            const t = h * 60 + m;
+            if (t < 8*60+30) return 1; if (t < 10*60+10) return 2; if (t < 12*60) return 3;
+            if (t < 14*60+30) return 4; if (t < 15*60+50) return 5; if (t < 17*60+30) return 6;
+            if (t < 20*60+10) return 7; return 8;
+        };
+
+        moveData.forEach(mv => {
+            if (mv.reason === "화장실/정수기") return;
+            const dStr = mv.move_date;
+            let rp = parseInt(mv.return_period, 10) || 0;
+            if (mv.return_period === "복귀안함") rp = 8;
+            const sp = getPeriodFromTime(mv.move_time);
+            
+            if (rp > 0) {
+                if (!schedMap[dStr]) schedMap[dStr] = {};
+                const start = sp > 0 ? sp : rp;
+                for(let p=start; p<=rp; p++) schedMap[dStr][p] = mv.reason;
+            }
+        });
+
+        // 💡 2. 출결 데이터 계산 (스케줄을 반영하여 진짜 결석/지각만 골라내기)
         const attLogs = resAtt.data || [];
         let totalAtt = 0, totalLate = 0, totalAbs = 0;
         let att7d = 0, late7d = 0, abs7d = 0;
         const recentAbsences = [];
         
         attLogs.forEach(a => {
-            // 1. 미래 데이터 통계에서 제외 (미래 날짜이거나, 오늘인데 아직 안 온 교시)
+            // 미래 데이터 제외
             if (a.attendance_date > todayIso) return;
             if (a.attendance_date === todayIso && parseInt(a.period, 10) > currentP) return;
 
-            // 2. 일요일 통계에서 제외 (0 = 일요일)
+            // 일요일 통계에서 제외
             const logDateObj = new Date(a.attendance_date);
             if (logDateObj.getDay() === 0) return;
 
-            const isLate = a.status_code === '2' || (a.memo && a.memo.includes('지각'));
+            const p = parseInt(a.period, 10);
+            const extraMemo = schedMap[a.attendance_date]?.[p] || '';
+            const baseMemo = a.memo ? a.memo.trim() : '';
+            const finalSched = extraMemo || baseMemo || '';
+
+            // 지각 판별 (코드 2번이거나, 스케줄/메모에 '지각'이 포함된 경우)
+            const isLate = a.status_code === '2' || finalSched.includes('지각');
             const isAtt = a.status_code === '1';
-            const isAbs = a.status_code === '3' && (!a.memo || (!isLate && a.memo === '-'));
+            
+            // 💡 [핵심] 진짜 결석 판별: 지각도 아니고, 스케줄(학원/보충 등)도 아예 비어있을 때만 무단 결석(Abs)으로 잡음
+            const isAbs = a.status_code === '3' && !isLate && finalSched === '';
 
             let finalType = '';
             if (isAtt) finalType = 'att';
             else if (isLate) finalType = 'late';
             else if (isAbs) finalType = 'abs';
 
-            // 전체 누적 계산
+            // 전체 누적
             if (finalType === 'att') totalAtt++;
             if (finalType === 'late') totalLate++;
             if (finalType === 'abs') {
                 totalAbs++;
-                if (recentAbsences.length < 3) recentAbsences.push(a); // 최근 3건만 담기
+                if (recentAbsences.length < 3) recentAbsences.push(a); // 무단 결석만 최근 결석 리스트에 추가
             }
             
-            // 최근 7일 계산
+            // 최근 7일
             if (a.attendance_date >= start7dIso && a.attendance_date <= todayIso) {
                 if (finalType === 'att') att7d++;
                 if (finalType === 'late') late7d++;
@@ -274,15 +325,14 @@ window.__loadStudentDetail = async function(student) {
         const attRate7d = count7d > 0 ? Math.round((att7d / count7d) * 100) : 0;
         const attRate7dColor = attRate7d >= 90 ? '#2ecc71' : (attRate7d >= 70 ? '#f39c12' : '#e74c3c');
 
-        const moveLogs = resMove.data || [];
         let restroom7d = 0, noReturn7d = 0;
-        moveLogs.forEach(m => {
+        moveData.forEach(m => {
             if (m.move_date >= start7dIso && m.move_date <= todayIso) {
                 if (m.reason === "화장실/정수기") restroom7d++;
                 if (m.return_period === "복귀안함") noReturn7d++;
             }
         });
-        const recentMoves = moveLogs.slice(0, 3);
+        const recentMoves = moveData.slice(0, 3);
 
         const sleepLogs = resSleep.data || [];
         let sleepCount7d = 0;
@@ -350,7 +400,7 @@ window.__loadStudentDetail = async function(student) {
                         </div>
                     </div>
 
-                    <div style="font-size:12px; color:#95a5a6; margin-bottom:8px;">최근 결석:</div>
+                    <div style="font-size:12px; color:#95a5a6; margin-bottom:8px;">최근 무단 결석:</div>
                     <ul style="margin:0; padding-left:15px; font-size:13px; color:#e74c3c; line-height:1.8;">
                         ${recentAbsences.length > 0 ? recentAbsences.map(a => `<li>${formatShortDate(a.attendance_date)} ${a.period}교시</li>`).join('') : '<li style="color:#95a5a6; list-style:none; margin-left:-15px;">최근 결석이 없습니다.</li>'}
                     </ul>
