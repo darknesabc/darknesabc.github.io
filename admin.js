@@ -174,7 +174,7 @@ async function init() {
 init();
 
 // =========================================================
-// 💡 1. 학생 카드 클릭 시 하단에 '라이트 테마 4분할 상세페이지'를 펼쳐주는 함수
+// 💡 1. 학생 카드 클릭 시 '라이트 테마 4분할 상세페이지' (막대그래프 복구)
 // =========================================================
 window.__loadStudentDetail = async function(student) {
     if (!student || !student.studentId) return;
@@ -186,15 +186,15 @@ window.__loadStudentDetail = async function(student) {
         detailSection.style.marginTop = '40px';
         detailSection.style.marginBottom = '60px';
         detailSection.style.padding = '25px';
-        detailSection.style.backgroundColor = '#f8f9fa'; // 화이트-그레이 라이트 배경
+        detailSection.style.backgroundColor = '#f8f9fa'; 
         detailSection.style.borderRadius = '12px';
-        detailSection.style.border = '1px solid #dee2e6'; // 부드러운 테두리
-        detailSection.style.boxShadow = '0 8px 24px rgba(0,0,0,0.05)'; // 가벼운 그림자
+        detailSection.style.border = '1px solid #dee2e6';
+        detailSection.style.boxShadow = '0 8px 24px rgba(0,0,0,0.05)';
         document.getElementById('admin-content').appendChild(detailSection);
     }
 
     detailSection.style.display = 'block';
-    detailSection.innerHTML = `<div style="text-align:center; padding:50px; font-size:18px; color:#7f8c8d;">⏳ <b>${student.name}</b> 학생의 상세 데이터를 불러오는 중입니다...</div>`;
+    detailSection.innerHTML = `<div style="text-align:center; padding:50px; font-size:18px; color:#7f8c8d;">⏳ <b>${student.name}</b> 학생의 데이터를 불러오는 중입니다...</div>`;
     detailSection.scrollIntoView({ behavior: 'smooth', block: 'start' });
 
     try {
@@ -211,18 +211,29 @@ window.__loadStudentDetail = async function(student) {
         const todayIso = today.toISOString().split('T')[0];
         const start7dIso = start7d.toISOString().split('T')[0];
 
+        // 💡 출결 데이터 처리 (최근 7일 및 전체 누적 분리)
         const attLogs = resAtt.data || [];
         let totalAtt = 0, totalAbs = 0;
+        let att7d = 0, abs7d = 0;
         const recentAbsences = [];
+        
         attLogs.forEach(a => {
+            // 전체 누적
             if (a.status_code === '1') totalAtt++;
-            if (a.status_code === '3') {
+            if (a.status_code === '3' && !a.memo) {
                 totalAbs++;
-                if (!a.memo && recentAbsences.length < 3) recentAbsences.push(a);
+                if (recentAbsences.length < 3) recentAbsences.push(a);
+            }
+            // 최근 7일
+            if (a.attendance_date >= start7dIso && a.attendance_date <= todayIso) {
+                if (a.status_code === '1') att7d++;
+                if (a.status_code === '3' && !a.memo) abs7d++;
             }
         });
+        
         const attRate = (totalAtt + totalAbs) > 0 ? Math.round((totalAtt / (totalAtt + totalAbs)) * 100) : 0;
-        const attRateColor = attRate >= 90 ? '#2ecc71' : (attRate >= 70 ? '#f39c12' : '#e74c3c');
+        const attRate7d = (att7d + abs7d) > 0 ? Math.round((att7d / (att7d + abs7d)) * 100) : 0;
+        const attRate7dColor = attRate7d >= 90 ? '#2ecc71' : (attRate7d >= 70 ? '#f39c12' : '#e74c3c');
 
         const moveLogs = resMove.data || [];
         let restroom7d = 0, noReturn7d = 0;
@@ -249,7 +260,6 @@ window.__loadStudentDetail = async function(student) {
         const totalScore = eduLogs.reduce((sum, log) => sum + (EDU_SCORE_MAP[log.reason] || 0), 0);
         const recentEdus = eduLogs.slice(0, 3);
 
-        // 💡 라이트 테마 공통 카드 스타일
         const cardStyle = "background:#ffffff; padding:20px; border-radius:10px; border:1px solid #e2e6ea; position:relative; color:#2c3e50; box-shadow:0 2px 8px rgba(0,0,0,0.02);";
         const btnStyle = "position:absolute; right:20px; top:20px; background:#f1f2f6; color:#57606f; border:1px solid #dfe4ea; padding:5px 12px; border-radius:5px; font-size:12px; cursor:pointer; font-weight:bold;";
 
@@ -259,13 +269,10 @@ window.__loadStudentDetail = async function(student) {
                     <div>
                         <h2 style="margin: 0 0 10px 0; color: #2c3e50; font-size:24px;">${student.name} <span style="font-size:14px; color:#e74c3c; background:rgba(231,76,60,0.1); padding:3px 8px; border-radius:4px; margin-left:10px;">🚨 출결위험 (${attRate}%)</span></h2>
                         <div style="color:#7f8c8d; font-size:14px; line-height:1.6;">
-                            좌석: <b style="color:#34495e;">${student.seat}</b><br>
-                            학번: <b style="color:#34495e;">${student.studentId}</b><br>
-                            담임: <b style="color:#34495e;">${student.teacher}</b>
+                            좌석: <b style="color:#34495e;">${student.seat}</b> | 학번: <b style="color:#34495e;">${student.studentId}</b> | 담임: <b style="color:#34495e;">${student.teacher}</b>
                         </div>
                     </div>
                     <div>
-                        <button onclick="alert('비밀번호 초기화 기능은 준비 중입니다.')" style="background:#e74c3c; color:white; border:none; padding:8px 15px; border-radius:6px; font-weight:bold; cursor:pointer; margin-right:10px;">🔒 비밀번호 초기화</button>
                         <button onclick="document.getElementById('student-detail-section').style.display='none'" style="background:#7f8c8d; color:white; border:none; padding:8px 15px; border-radius:6px; font-weight:bold; cursor:pointer;">닫기 ✖</button>
                     </div>
                 </div>
@@ -276,7 +283,22 @@ window.__loadStudentDetail = async function(student) {
                 <div style="${cardStyle}">
                     <button style="${btnStyle}" onclick="window.__openDetailModal('attendance', '${student.studentId}', '${student.name}')">상세</button>
                     <h4 style="margin: 0 0 15px 0; color: #2980b9; font-size:16px;">📅 출결 요약</h4>
-                    <div style="margin-bottom:15px; color:#34495e; font-weight:bold;">전체 누적 출석률 <span style="float:right; font-size:18px; color:${attRateColor};">${attRate}%</span></div>
+                    
+                    <div style="margin-bottom:15px;">
+                        <div style="display:flex; justify-content:space-between; font-weight:bold; color:#34495e;">
+                            <span>최근 7일 출석률</span>
+                            <span style="color:${attRate7dColor}; font-size:18px;">${attRate7d}%</span>
+                        </div>
+                        <div style="width:100%; height:8px; background:#ecf0f1; border-radius:4px; margin-top:8px; overflow:hidden;">
+                            <div style="width:${attRate7d}%; height:100%; background:${attRate7dColor}; border-radius:4px;"></div>
+                        </div>
+                    </div>
+                    
+                    <div style="display:flex; justify-content:space-between; margin-bottom:15px; font-size:13px; color:#7f8c8d; padding-bottom:15px; border-bottom:1px dashed #ecf0f1;">
+                        <span>전체 누적 출석률</span>
+                        <b style="color:#34495e;">${attRate}%</b>
+                    </div>
+
                     <div style="font-size:12px; color:#95a5a6; margin-bottom:8px;">최근 결석:</div>
                     <ul style="margin:0; padding-left:15px; font-size:13px; color:#e74c3c; line-height:1.8;">
                         ${recentAbsences.length > 0 ? recentAbsences.map(a => `<li>${a.attendance_date} ${a.period}교시</li>`).join('') : '<li style="color:#95a5a6; list-style:none; margin-left:-15px;">최근 결석이 없습니다.</li>'}
@@ -287,7 +309,7 @@ window.__loadStudentDetail = async function(student) {
                     <button style="${btnStyle}" onclick="window.__openDetailModal('move', '${student.studentId}', '${student.name}')">상세</button>
                     <h4 style="margin: 0 0 15px 0; color: #27ae60; font-size:16px;">🚶 이동 요약 <span style="font-size:12px; color:#95a5a6; font-weight:normal;">(최근 7일)</span></h4>
                     <div style="margin-bottom:8px;">화장실 : <b>${restroom7d}회</b></div>
-                    <div style="margin-bottom:15px;">복귀 안함 : <b>${noReturn7d}회</b></div>
+                    <div style="margin-bottom:15px; padding-bottom:15px; border-bottom:1px dashed #ecf0f1;">복귀 안함 : <b>${noReturn7d}회</b></div>
                     <div style="font-size:12px; color:#95a5a6; margin-bottom:8px;">최근 항목:</div>
                     <ul style="margin:0; padding:0; list-style:none; font-size:13px; line-height:1.8;">
                         ${recentMoves.length > 0 ? recentMoves.map(m => `<li><span style="color:#95a5a6; margin-right:8px;">${m.move_date}</span> <b>${m.reason}</b></li>`).join('') : '<li style="color:#95a5a6;">기록이 없습니다.</li>'}
@@ -298,7 +320,7 @@ window.__loadStudentDetail = async function(student) {
                     <button style="${btnStyle}" onclick="window.__openDetailModal('sleep', '${student.studentId}', '${student.name}')">상세</button>
                     <h4 style="margin: 0 0 15px 0; color: #8e44ad; font-size:16px;">💤 취침 요약</h4>
                     <div style="margin-bottom:8px;">최근 7일 취침일수: <b>${sleepDaysSet.size}일</b></div>
-                    <div style="margin-bottom:15px;">최근 7일 취침횟수: <b>${sleepCount7d}회</b></div>
+                    <div style="margin-bottom:15px; padding-bottom:15px; border-bottom:1px dashed #ecf0f1;">최근 7일 취침횟수: <b>${sleepCount7d}회</b></div>
                     <div style="font-size:12px; color:#95a5a6; margin-bottom:8px;">최근 항목:</div>
                     <ul style="margin:0; padding:0; list-style:none; font-size:13px; line-height:1.8;">
                         ${recentSleeps.length > 0 ? recentSleeps.map(s => `<li><span style="color:#95a5a6; margin-right:8px;">${s.sleep_date}</span> ${s.period}교시 <span style="color:#8e44ad; font-weight:bold;">(${s.count}회)</span></li>`).join('') : '<li style="color:#95a5a6;">기록이 없습니다.</li>'}
@@ -308,7 +330,7 @@ window.__loadStudentDetail = async function(student) {
                 <div style="${cardStyle}">
                     <button style="${btnStyle}" onclick="window.__openDetailModal('eduscore', '${student.studentId}', '${student.name}')">상세</button>
                     <h4 style="margin: 0 0 15px 0; color: #e67e22; font-size:16px;">🚨 교육점수 요약</h4>
-                    <div style="margin-bottom:15px;">전체 누적점수: <b style="color:#d35400; font-size:18px;">${totalScore}점</b></div>
+                    <div style="margin-bottom:15px; padding-bottom:15px; border-bottom:1px dashed #ecf0f1;">전체 누적점수: <b style="color:#d35400; font-size:18px;">${totalScore}점</b></div>
                     <div style="font-size:12px; color:#95a5a6; margin-bottom:8px;">최근 항목:</div>
                     <ul style="margin:0; padding:0; list-style:none; font-size:13px; line-height:1.8;">
                         ${recentEdus.length > 0 ? recentEdus.map(e => `<li><span style="color:#95a5a6; margin-right:8px;">${e.score_date}</span> <b>${e.reason}</b> <span style="color:#e74c3c; font-weight:bold;">(+${EDU_SCORE_MAP[e.reason]||0})</span></li>`).join('') : '<li style="color:#95a5a6;">기록이 없습니다.</li>'}
@@ -324,10 +346,9 @@ window.__loadStudentDetail = async function(student) {
 };
 
 // =========================================================
-// 💡 2. '상세' 버튼 클릭 시 전체 내역을 팝업으로 보여주는 함수
+// 💡 2. '상세' 버튼 클릭 시 팝업을 띄워주는 함수 (타임테이블 완벽 복원)
 // =========================================================
 window.__openDetailModal = async function(type, studentId, studentName) {
-    // 1. 팝업(모달) 배경과 컨테이너 생성
     let modalOverlay = document.getElementById('custom-detail-modal');
     if (!modalOverlay) {
         modalOverlay = document.createElement('div');
@@ -344,88 +365,152 @@ window.__openDetailModal = async function(type, studentId, studentName) {
     }
     modalOverlay.style.display = 'flex';
 
-    // 타이틀 맵핑
     const titleMap = {
-        'attendance': '📅 출결 전체 내역',
+        'attendance': '📅 출결 주차별 상세 내역',
         'move': '🚶 이동 전체 내역',
         'sleep': '💤 취침 전체 내역',
-        'eduscore': '🚨 교육점수(벌점) 전체 내역'
+        'eduscore': '🚨 교육점수 전체 내역'
     };
 
-    // 로딩 화면 표시
     modalOverlay.innerHTML = `
-        <div style="background:#fff; width:90%; max-width:500px; max-height:80vh; border-radius:12px; padding:25px; box-shadow:0 10px 30px rgba(0,0,0,0.2); display:flex; flex-direction:column;">
+        <div style="background:#fff; width:95%; max-width:900px; max-height:85vh; border-radius:12px; padding:25px; box-shadow:0 10px 30px rgba(0,0,0,0.2); display:flex; flex-direction:column;">
             <div style="display:flex; justify-content:space-between; align-items:center; border-bottom:1px solid #eee; padding-bottom:15px; margin-bottom:15px;">
                 <h3 style="margin:0; color:#2c3e50;">${titleMap[type]} - ${studentName}</h3>
-                <button onclick="document.getElementById('custom-detail-modal').style.display='none'" style="background:none; border:none; font-size:20px; cursor:pointer; color:#7f8c8d;">✖</button>
+                <button onclick="document.getElementById('custom-detail-modal').style.display='none'" style="background:none; border:none; font-size:20px; cursor:pointer; color:#7f8c8d; padding:0;">✖</button>
             </div>
-            <div style="flex:1; overflow-y:auto; text-align:center; padding:30px; color:#7f8c8d;">⏳ 데이터를 불러오는 중입니다...</div>
+            <div id="modal-content-area" style="flex:1; overflow-y:auto; padding-right:10px;">
+                <div style="text-align:center; padding:50px; color:#7f8c8d;">⏳ 데이터를 불러오는 중입니다...</div>
+            </div>
         </div>
     `;
 
-    try {
-        let contentHtml = '<ul style="list-style:none; padding:0; margin:0; line-height:2.0; font-size:14px; color:#34495e;">';
-        
-        // 2. 항목별 수퍼베이스 데이터 조회 및 HTML 생성
-        if (type === 'attendance') {
-            const { data } = await _supabase.from('attendance').select('*').eq('student_id', studentId).order('attendance_date', {ascending: false}).order('period', {ascending: true});
-            if (!data || data.length === 0) contentHtml += '<li>기록이 없습니다.</li>';
-            else {
-                data.forEach(d => {
-                    let statusStr = d.status_code === '1' ? '<b style="color:#27ae60;">출석</b>' : (d.status_code === '3' ? '<b style="color:#e74c3c;">결석</b>' : d.status_code);
-                    let memoStr = d.memo ? ` <span style="color:#7f8c8d; font-size:12px;">(${d.memo})</span>` : '';
-                    contentHtml += `<li style="border-bottom:1px solid #f1f2f6; padding:8px 0;"><span style="display:inline-block; width:100px; color:#7f8c8d;">${d.attendance_date}</span> <span style="display:inline-block; width:50px;">${d.period}교시</span> ${statusStr}${memoStr}</li>`;
-                });
-            }
-        } 
-        else if (type === 'move') {
-            const { data } = await _supabase.from('move_log').select('*').eq('student_id', studentId).order('move_date', {ascending: false}).order('move_time', {ascending: false});
-            if (!data || data.length === 0) contentHtml += '<li>기록이 없습니다.</li>';
-            else {
-                data.forEach(d => {
-                    contentHtml += `<li style="border-bottom:1px solid #f1f2f6; padding:8px 0;"><span style="display:inline-block; width:130px; color:#7f8c8d;">${d.move_date} ${d.move_time}</span> <b>${d.reason}</b> <span style="color:#95a5a6; font-size:12px; margin-left:5px;">(복귀: ${d.return_period || '-'})</span></li>`;
-                });
-            }
-        }
-        else if (type === 'sleep') {
-            const { data } = await _supabase.from('sleep_log').select('*').eq('student_id', studentId).order('sleep_date', {ascending: false});
-            if (!data || data.length === 0) contentHtml += '<li>기록이 없습니다.</li>';
-            else {
-                data.forEach(d => {
-                    contentHtml += `<li style="border-bottom:1px solid #f1f2f6; padding:8px 0;"><span style="display:inline-block; width:100px; color:#7f8c8d;">${d.sleep_date}</span> <span style="display:inline-block; width:50px;">${d.period}교시</span> <b style="color:#8e44ad;">${d.count}회 적발</b></li>`;
-                });
-            }
-        }
-        else if (type === 'eduscore') {
-            const { data } = await _supabase.from('edu_score_log').select('*').eq('student_id', studentId).order('score_date', {ascending: false});
-            if (!data || data.length === 0) contentHtml += '<li>기록이 없습니다.</li>';
-            else {
-                data.forEach(d => {
-                    let score = EDU_SCORE_MAP[d.reason] || 0;
-                    contentHtml += `<li style="border-bottom:1px solid #f1f2f6; padding:8px 0;"><span style="display:inline-block; width:100px; color:#7f8c8d;">${d.score_date}</span> <b>${d.reason}</b> <span style="color:#e74c3c; font-weight:bold; margin-left:10px;">+${score}점</span></li>`;
-                });
-            }
-        }
-        contentHtml += '</ul>';
+    const contentArea = document.getElementById('modal-content-area');
 
-        // 3. 만들어진 목록을 팝업창에 삽입
-        modalOverlay.innerHTML = `
-            <div style="background:#fff; width:90%; max-width:500px; max-height:80vh; border-radius:12px; padding:25px; box-shadow:0 10px 30px rgba(0,0,0,0.2); display:flex; flex-direction:column;">
-                <div style="display:flex; justify-content:space-between; align-items:center; border-bottom:1px solid #eee; padding-bottom:15px; margin-bottom:15px;">
-                    <h3 style="margin:0; color:#2c3e50;">${titleMap[type]} - ${studentName}</h3>
-                    <button onclick="document.getElementById('custom-detail-modal').style.display='none'" style="background:none; border:none; font-size:20px; cursor:pointer; color:#7f8c8d; padding:0;">✖</button>
-                </div>
-                <div style="flex:1; overflow-y:auto; padding-right:10px;">
-                    ${contentHtml}
-                </div>
-            </div>
-        `;
+    try {
+        let contentHtml = '';
+        
+        // 💡 [핵심] 출결일 경우: 주차별 타임테이블 테이블 생성 로직
+        if (type === 'attendance') {
+            const { data } = await _supabase.from('attendance').select('*').eq('student_id', studentId).order('attendance_date', {ascending: false});
+            
+            if (!data || data.length === 0) {
+                contentArea.innerHTML = '<div style="text-align:center; padding:30px; color:#7f8c8d;">기록이 없습니다.</div>';
+                return;
+            }
+
+            // 데이터를 주차(월요일 기준)별로 그룹화
+            const weekMap = {};
+            const getMonday = (dStr) => {
+                const d = new Date(dStr);
+                const day = d.getDay() || 7; 
+                d.setDate(d.getDate() - day + 1);
+                return d.toISOString().split('T')[0];
+            };
+
+            data.forEach(row => {
+                const mon = getMonday(row.attendance_date);
+                if (!weekMap[mon]) weekMap[mon] = {};
+                if (!weekMap[mon][row.attendance_date]) weekMap[mon][row.attendance_date] = {};
+                weekMap[mon][row.attendance_date][row.period] = { status: row.status_code, memo: row.memo };
+            });
+
+            const weeks = Object.keys(weekMap).sort().reverse();
+            
+            // 1. 주차 선택 드롭다운
+            contentHtml += `<div style="margin-bottom:15px;">
+                <select id="week-selector" onchange="document.querySelectorAll('.week-table-container').forEach(el => el.style.display='none'); document.getElementById('week-'+this.value).style.display='block';" style="padding:8px 12px; border-radius:6px; border:1px solid #bdc3c7; background:#f8f9fa; font-size:14px; cursor:pointer; color:#2c3e50; font-weight:bold;">
+            `;
+            
+            const formatDateShort = (dStr) => {
+                const d = new Date(dStr);
+                const days = ['일','월','화','수','목','금','토'];
+                return `${d.getMonth()+1}/${d.getDate()}(${days[d.getDay()]})`;
+            };
+
+            weeks.forEach((mon, idx) => {
+                const endDay = new Date(mon); endDay.setDate(endDay.getDate() + 6);
+                const label = idx === 0 ? `최신 주차 (${formatDateShort(mon)} ~ ${formatDateShort(endDay.toISOString().split('T')[0])})` : `${formatDateShort(mon)} 주차`;
+                contentHtml += `<option value="${mon}">${label}</option>`;
+            });
+            contentHtml += `</select></div>`;
+
+            // 2. 주차별 테이블 생성
+            contentHtml += `<style>
+                .att-table { width:100%; border-collapse:collapse; text-align:center; font-size:13px; color:#2c3e50; }
+                .att-table th, .att-table td { border:1px solid #dfe6e9; padding:8px 2px; }
+                .att-table th { background:#f1f2f6; font-weight:bold; }
+                .st-1 { background:#e8f8f5; color:#27ae60; font-weight:bold; } /* 출석 */
+                .st-3 { background:#fadedb; color:#e74c3c; font-weight:bold; } /* 결석 */
+                .st-memo { font-size:11px; color:#7f8c8d; }
+            </style>`;
+
+            weeks.forEach((mon, idx) => {
+                const displayStyle = idx === 0 ? 'block' : 'none';
+                contentHtml += `<div id="week-${mon}" class="week-table-container" style="display:${displayStyle}; overflow-x:auto;">
+                    <table class="att-table">
+                        <thead>
+                            <tr>
+                                <th rowspan="2" style="width:50px;">교시</th>
+                `;
+                
+                // 상단 날짜 헤더 (월~토 6일 기준)
+                const weekDates = [];
+                for(let i=0; i<6; i++) {
+                    const d = new Date(mon); d.setDate(d.getDate() + i);
+                    const dStr = d.toISOString().split('T')[0];
+                    weekDates.push(dStr);
+                    contentHtml += `<th colspan="2">${formatDateShort(dStr)}</th>`;
+                }
+                contentHtml += `</tr><tr>`;
+                for(let i=0; i<6; i++) { contentHtml += `<th>스케줄</th><th>출/결</th>`; }
+                contentHtml += `</tr></thead><tbody>`;
+
+                // 1~8교시 데이터 채우기
+                for(let p=1; p<=8; p++) {
+                    contentHtml += `<tr><th>${p}</th>`;
+                    weekDates.forEach(dateStr => {
+                        const cellData = (weekMap[mon][dateStr] && weekMap[mon][dateStr][p]) ? weekMap[mon][dateStr][p] : null;
+                        const memo = cellData && cellData.memo ? cellData.memo : '-';
+                        let statusHtml = '-';
+                        if (cellData && cellData.status === '1') statusHtml = `<div class="st-1">출석</div>`;
+                        else if (cellData && cellData.status === '3') statusHtml = `<div class="st-3">결석</div>`;
+                        else if (cellData && cellData.status) statusHtml = cellData.status;
+
+                        contentHtml += `<td class="st-memo">${memo}</td><td>${statusHtml}</td>`;
+                    });
+                    contentHtml += `</tr>`;
+                }
+                contentHtml += `</tbody></table></div>`;
+            });
+        } 
+        // 다른 항목들 (이동, 취침, 교육점수)은 깔끔한 리스트로 유지
+        else {
+            contentHtml += '<ul style="list-style:none; padding:0; margin:0; line-height:2.0; font-size:14px; color:#34495e;">';
+            if (type === 'move') {
+                const { data } = await _supabase.from('move_log').select('*').eq('student_id', studentId).order('move_date', {ascending: false}).order('move_time', {ascending: false});
+                if (!data || data.length === 0) contentHtml += '<li>기록이 없습니다.</li>';
+                else data.forEach(d => contentHtml += `<li style="border-bottom:1px solid #f1f2f6; padding:10px 0;"><span style="display:inline-block; width:130px; color:#7f8c8d;">${d.move_date} ${d.move_time}</span> <b>${d.reason}</b> <span style="color:#95a5a6; font-size:12px; margin-left:5px;">(복귀: ${d.return_period || '-'})</span></li>`);
+            }
+            else if (type === 'sleep') {
+                const { data } = await _supabase.from('sleep_log').select('*').eq('student_id', studentId).order('sleep_date', {ascending: false});
+                if (!data || data.length === 0) contentHtml += '<li>기록이 없습니다.</li>';
+                else data.forEach(d => contentHtml += `<li style="border-bottom:1px solid #f1f2f6; padding:10px 0;"><span style="display:inline-block; width:100px; color:#7f8c8d;">${d.sleep_date}</span> <span style="display:inline-block; width:50px;">${d.period}교시</span> <b style="color:#8e44ad;">${d.count}회 적발</b></li>`);
+            }
+            else if (type === 'eduscore') {
+                const { data } = await _supabase.from('edu_score_log').select('*').eq('student_id', studentId).order('score_date', {ascending: false});
+                if (!data || data.length === 0) contentHtml += '<li>기록이 없습니다.</li>';
+                else data.forEach(d => contentHtml += `<li style="border-bottom:1px solid #f1f2f6; padding:10px 0;"><span style="display:inline-block; width:100px; color:#7f8c8d;">${d.score_date}</span> <b>${d.reason}</b> <span style="color:#e74c3c; font-weight:bold; margin-left:10px;">+${EDU_SCORE_MAP[d.reason] || 0}점</span></li>`);
+            }
+            contentHtml += '</ul>';
+        }
+
+        contentArea.innerHTML = contentHtml;
+
     } catch (err) {
-        modalOverlay.innerHTML = `
-            <div style="background:#fff; width:90%; max-width:500px; border-radius:12px; padding:25px; text-align:center;">
+        contentArea.innerHTML = `
+            <div style="text-align:center;">
                 <h3 style="color:#e74c3c;">오류 발생</h3>
                 <p>${err.message}</p>
-                <button onclick="document.getElementById('custom-detail-modal').style.display='none'" style="margin-top:15px; padding:8px 20px; border:none; background:#7f8c8d; color:#fff; border-radius:5px; cursor:pointer;">닫기</button>
             </div>
         `;
     }
