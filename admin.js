@@ -442,159 +442,134 @@ window.__loadStudentDetail = async function(student) {
                     </ul>
                 </div>
 
-            </div>
-        <div id="grade-trend-container" style="margin-top:20px;"></div>
-            
-        `;
-        
-        detailSection.innerHTML = html;
-        
-        // ✅ [추가 2] 화면에 도화지가 세팅되었으니, 이제 그래프를 그리라고 명령합니다!
+            </div>
+
+            <div id="grade-trend-container" style="margin-top:20px;"></div>
+
+        `;
+        detailSection.innerHTML = html;
+
+        // 👇 추가된 부분 2: HTML이 세팅된 후 그래프를 그리라고 명령!
         window.__loadGradeTrend(student.studentId);
 
-    } catch (err) {
+    } catch (err) {
         detailSection.innerHTML = `<div style="color:#e74c3c; text-align:center; padding:30px;"><b>오류가 발생했습니다:</b><br>${err.message}</div>`;
     }
 };
 
 // =========================================================
-// 💡 성적 추이 데이터를 가져오고 화면을 그려주는 핵심 함수
+// 💡 성적 추이 (예상 표준점수 / 예상 백분위 / 예상 등급 적용)
 // =========================================================
 window.__loadGradeTrend = async function(studentId) {
     const trendContainer = document.getElementById('grade-trend-container');
     if (!trendContainer) return;
 
     try {
-        // 1. 수퍼베이스에서 해당 학생의 모든 성적 데이터 가져오기
         const { data: scores, error } = await _supabase
             .from('mock_scores')
             .select('*')
             .eq('student_id', studentId)
-            .order('created_at', { ascending: true }); // 시험 순서대로 정렬
+            .order('created_at', { ascending: true });
 
         if (error || !scores || scores.length === 0) {
-            trendContainer.innerHTML = '<div style="text-align:center; padding:40px; color:#95a5a6;">등록된 성적 데이터가 없습니다.</div>';
+            trendContainer.innerHTML = '<div style="text-align:center; padding:40px; color:#95a5a6; background:#fff; border-radius:12px; border:1px solid #dee2e6;">등록된 성적 데이터가 없습니다.</div>';
             return;
         }
 
-        window.__currentStudentScores = scores; // 전역 저장 (스위치 클릭 시 사용)
-        window.__currentGradeMode = 'pct'; // 기본값: 백분위
+        window.__currentStudentScores = scores; 
+        window.__currentGradeMode = 'pct'; // 기본값: 예상 백분위
         window.__currentViewMode = 'graph'; // 기본값: 그래프
 
-        // 2. 기본 UI 프레임 생성 (스위치 버튼들)
-        trendContainer.innerHTML = `
-            <div style="background:#fff; padding:25px; border-radius:12px; border:1px solid #dee2e6; margin-top:20px;">
-                <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:20px;">
-                    <h4 style="margin:0; color:#2c3e50;">📈 성적 추이</h4>
-                    <div style="display:flex; gap:10px;">
-                        <div style="background:#f1f2f6; padding:4px; border-radius:8px; display:flex;">
-                            <button id="btn-view-graph" onclick="window.__switchView('graph')" style="border:none; padding:6px 15px; border-radius:6px; cursor:pointer; font-size:12px; font-weight:bold; background:#2c3e50; color:#fff;">그래프</button>
-                            <button id="btn-view-table" onclick="window.__switchView('table')" style="border:none; padding:6px 15px; border-radius:6px; cursor:pointer; font-size:12px; font-weight:bold; background:transparent; color:#7f8c8d;">표</button>
-                        </div>
-                        <div style="background:#f1f2f6; padding:4px; border-radius:8px; display:flex;">
-                            <button id="btn-mode-pct" onclick="window.__switchMode('pct')" style="border:none; padding:6px 15px; border-radius:6px; cursor:pointer; font-size:12px; font-weight:bold; background:#3498db; color:#fff;">백분위</button>
-                            <button id="btn-mode-raw" onclick="window.__switchMode('raw')" style="border:none; padding:6px 15px; border-radius:6px; cursor:pointer; font-size:12px; font-weight:bold; background:transparent; color:#7f8c8d;">원점수</button>
-                        </div>
-                    </div>
-                </div>
-                
-                <div id="grade-display-area" style="min-height:300px;">
-                    <canvas id="gradeChart"></canvas>
-                </div>
-            </div>
-        `;
-
-        window.__renderGradeContent(); // 초기 렌더링 (그래프)
-
+        window.__renderGradeTrendUI();
     } catch (err) {
         console.error("성적 로드 에러:", err);
     }
 };
 
-// 💡 렌더링 함수 (그래프 또는 표를 실제로 그림)
+window.__renderGradeTrendUI = function() {
+    const container = document.getElementById('grade-trend-container');
+    container.innerHTML = `
+        <div style="background:#fff; padding:25px; border-radius:12px; border:1px solid #dee2e6; margin-top:20px;">
+            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:20px;">
+                <h4 style="margin:0; color:#2c3e50;">📈 성적 추이 <span style="font-size:12px; color:#7f8c8d; font-weight:normal; margin-left:10px;">(예상 등급 컷 기준)</span></h4>
+                <div style="display:flex; gap:10px;">
+                    <div style="background:#f1f2f6; padding:4px; border-radius:8px; display:flex;">
+                        <button onclick="window.__switchGView('graph')" style="border:none; padding:6px 12px; border-radius:6px; cursor:pointer; font-size:12px; font-weight:bold; background:${window.__currentViewMode === 'graph' ? '#2c3e50' : 'transparent'}; color:${window.__currentViewMode === 'graph' ? '#fff' : '#7f8c8d'};">그래프</button>
+                        <button onclick="window.__switchGView('table')" style="border:none; padding:6px 12px; border-radius:6px; cursor:pointer; font-size:12px; font-weight:bold; background:${window.__currentViewMode === 'table' ? '#2c3e50' : 'transparent'}; color:${window.__currentViewMode === 'table' ? '#fff' : '#7f8c8d'};">표</button>
+                    </div>
+                    <div style="background:#f1f2f6; padding:4px; border-radius:8px; display:flex;">
+                        <button onclick="window.__switchGMode('pct')" style="border:none; padding:6px 12px; border-radius:6px; cursor:pointer; font-size:12px; font-weight:bold; background:${window.__currentGradeMode === 'pct' ? '#3498db' : 'transparent'}; color:${window.__currentGradeMode === 'pct' ? '#fff' : '#7f8c8d'};">예상 백분위</button>
+                        <button onclick="window.__switchGMode('std')" style="border:none; padding:6px 12px; border-radius:6px; cursor:pointer; font-size:12px; font-weight:bold; background:${window.__currentGradeMode === 'std' ? '#3498db' : 'transparent'}; color:${window.__currentGradeMode === 'std' ? '#fff' : '#7f8c8d'};">예상 표준점수</button>
+                        <button onclick="window.__switchGMode('raw')" style="border:none; padding:6px 12px; border-radius:6px; cursor:pointer; font-size:12px; font-weight:bold; background:${window.__currentGradeMode === 'raw' ? '#3498db' : 'transparent'}; color:${window.__currentGradeMode === 'raw' ? '#fff' : '#7f8c8d'};">원점수</button>
+                    </div>
+                </div>
+            </div>
+            <div id="grade-display-area" style="min-height:300px; position:relative;"></div>
+        </div>
+    `;
+    window.__renderGradeContent();
+};
+
 window.__renderGradeContent = function() {
     const area = document.getElementById('grade-display-area');
     const scores = window.__currentStudentScores;
-    const mode = window.__currentGradeMode; // pct or raw
-    const view = window.__currentViewMode; // graph or table
+    const mode = window.__currentGradeMode;
+    const view = window.__currentViewMode;
+
+    const getVal = (s, subj) => {
+        if (mode === 'pct') return s[`${subj}_exp_pct`] || 0;
+        if (mode === 'std') return s[`${subj}_exp_std`] || 0;
+        return s[`${subj}_raw_total`] !== undefined ? (s[`${subj}_raw_total`] || 0) : (s[`${subj}_raw`] || 0);
+    };
 
     if (view === 'graph') {
         area.innerHTML = '<canvas id="gradeChart" style="max-height:350px;"></canvas>';
         const ctx = document.getElementById('gradeChart').getContext('2d');
-        
-        const labels = scores.map(s => s.exam_label);
-        const datasets = [
-            { label: '국어', data: scores.map(s => mode === 'pct' ? s.kor_pct : s.kor_raw_total), borderColor: '#3498db', backgroundColor: '#3498db', tension: 0.2, fill: false },
-            { label: '수학', data: scores.map(s => mode === 'pct' ? s.math_pct : s.math_raw_total), borderColor: '#e74c3c', backgroundColor: '#e74c3c', tension: 0.2, fill: false },
-            { label: '탐구1', data: scores.map(s => mode === 'pct' ? s.tam1_pct : s.tam1_raw), borderColor: '#2ecc71', backgroundColor: '#2ecc71', tension: 0.2, fill: false },
-            { label: '탐구2', data: scores.map(s => mode === 'pct' ? s.tam2_pct : s.tam2_raw), borderColor: '#f1c40f', backgroundColor: '#f1c40f', tension: 0.2, fill: false }
-        ];
-
         new Chart(ctx, {
             type: 'line',
-            data: { labels, datasets },
+            data: {
+                labels: scores.map(s => s.exam_label),
+                datasets: [
+                    { label: '국어', data: scores.map(s => getVal(s, 'kor')), borderColor: '#3498db', backgroundColor: '#3498db', tension: 0.2, fill: false },
+                    { label: '수학', data: scores.map(s => getVal(s, 'math')), borderColor: '#e74c3c', backgroundColor: '#e74c3c', tension: 0.2, fill: false },
+                    { label: '탐구1', data: scores.map(s => getVal(s, 'tam1')), borderColor: '#2ecc71', backgroundColor: '#2ecc71', tension: 0.2, fill: false },
+                    { label: '탐구2', data: scores.map(s => getVal(s, 'tam2')), borderColor: '#f1c40f', backgroundColor: '#f1c40f', tension: 0.2, fill: false }
+                ]
+            },
             options: {
-                responsive: true,
-                maintainAspectRatio: false,
-                scales: {
-                    y: { beginAtZero: true, max: mode === 'pct' ? 100 : 100, grid: { color: '#f1f2f6' } },
-                    x: { grid: { display: false } }
-                },
+                responsive: true, maintainAspectRatio: false,
+                scales: { y: { beginAtZero: mode === 'pct' ? true : false, max: mode === 'pct' ? 100 : null, grid: { color: '#f1f2f6' } }, x: { grid: { display: false } } },
                 plugins: { legend: { position: 'bottom', labels: { boxWidth: 12, font: { size: 11 } } } }
             }
         });
     } else {
-        // 표(Table) 형식 렌더링
-        let tableHtml = `
-            <div style="overflow-x:auto;">
-                <table style="width:100%; border-collapse:collapse; font-size:13px; text-align:center;">
-                    <thead>
-                        <tr style="background:#f8f9fa; border-bottom:2px solid #dee2e6;">
-                            <th style="padding:12px;">시험구분</th>
-                            <th style="color:#3498db;">국어</th>
-                            <th style="color:#e74c3c;">수학</th>
-                            <th style="color:#2ecc71;">탐구1</th>
-                            <th style="color:#f1c40f;">탐구2</th>
-                            <th style="color:#9b59b6;">영어</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-        `;
+        const formatCell = (s, subj) => {
+            const val = getVal(s, subj);
+            const grade = s[`${subj}_exp_grade`] || '-';
+            const unit = mode === 'pct' ? '%' : '점';
+            return `<b>${val}${unit}</b><br><span style="color:#7f8c8d; font-size:11px;">(${grade}등급)</span>`;
+        };
+
+        let tableHtml = `<div style="overflow-x:auto;"><table style="width:100%; border-collapse:collapse; font-size:13px; text-align:center;">
+            <thead><tr style="background:#f8f9fa; border-bottom:2px solid #dee2e6;"><th style="padding:12px;">시험명</th><th style="color:#3498db;">국어</th><th style="color:#e74c3c;">수학</th><th style="color:#2ecc71;">탐구1</th><th style="color:#f1c40f;">탐구2</th><th style="color:#9b59b6;">영어</th></tr></thead><tbody>`;
         scores.forEach(s => {
-            tableHtml += `
-                <tr style="border-bottom:1px solid #eee;">
-                    <td style="padding:10px; font-weight:bold; background:#fcfcfc;">${s.exam_label}</td>
-                    <td>${mode === 'pct' ? s.kor_pct+'%' : s.kor_raw_total+'점'}</td>
-                    <td>${mode === 'pct' ? s.math_pct+'%' : s.math_raw_total+'점'}</td>
-                    <td>${mode === 'pct' ? s.tam1_pct+'%' : s.tam1_raw+'점'}</td>
-                    <td>${mode === 'pct' ? s.tam2_pct+'%' : s.tam2_raw+'점'}</td>
-                    <td>${s.eng_grade}등급</td>
-                </tr>
-            `;
+            tableHtml += `<tr style="border-bottom:1px solid #eee;">
+                <td style="padding:10px; font-weight:bold; background:#fcfcfc;">${s.exam_label}</td>
+                <td>${formatCell(s, 'kor')}</td>
+                <td>${formatCell(s, 'math')}</td>
+                <td>${formatCell(s, 'tam1')}</td>
+                <td>${formatCell(s, 'tam2')}</td>
+                <td style="font-weight:bold; color:#9b59b6;">${s.eng_grade || '-'}등급</td>
+            </tr>`;
         });
         tableHtml += '</tbody></table></div>';
         area.innerHTML = tableHtml;
     }
 };
 
-// 💡 스위치 클릭 이벤트들
-window.__switchView = function(view) {
-    window.__currentViewMode = view;
-    document.getElementById('btn-view-graph').style.background = view === 'graph' ? '#2c3e50' : 'transparent';
-    document.getElementById('btn-view-graph').style.color = view === 'graph' ? '#fff' : '#7f8c8d';
-    document.getElementById('btn-view-table').style.background = view === 'table' ? '#2c3e50' : 'transparent';
-    document.getElementById('btn-view-table').style.color = view === 'table' ? '#fff' : '#7f8c8d';
-    window.__renderGradeContent();
-};
+window.__switchGView = function(view) { window.__currentViewMode = view; window.__renderGradeTrendUI(); };
+window.__switchGMode = function(mode) { window.__currentGradeMode = mode; window.__renderGradeTrendUI(); };
 
-window.__switchMode = function(mode) {
-    window.__currentGradeMode = mode;
-    document.getElementById('btn-mode-pct').style.background = mode === 'pct' ? '#3498db' : 'transparent';
-    document.getElementById('btn-mode-pct').style.color = mode === 'pct' ? '#fff' : '#7f8c8d';
-    document.getElementById('btn-mode-raw').style.background = mode === 'raw' ? '#3498db' : 'transparent';
-    document.getElementById('btn-mode-raw').style.color = mode === 'raw' ? '#fff' : '#7f8c8d';
-    window.__renderGradeContent();
-};
 
 // =========================================================
 // 💡 2. '상세' 모달창 (지각 우선순위 및 복귀교시 없는 스케줄 반영)
