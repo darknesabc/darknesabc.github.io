@@ -87,22 +87,33 @@ async function init() {
             const totalEduScore = eduLogs.filter(el => el.student_id === s.student_id)
                                          .reduce((acc, cur) => acc + (EDU_SCORE_MAP[cur.reason] || 0), 0);
 
-            // ⭐️ 핵심 로직: 상태 텍스트 결정 (우선순위 적용)
-            // 1. 기본 텍스트 변환 (1 -> 출석, 3 -> 결석)
-            let displayStatus = attStatus === "1" ? "출석" : (attStatus === "3" ? "결석" : attStatus);
-            let statusColor = attStatus === "1" ? "1" : (attStatus === "3" ? "3" : "none");
-
-            // 2. 이동 중 사유 노출 (단, 화장실/정수기는 제외)
+            // ⭐️ 화장실/정수기를 제외한 유효한 이동 사유 확인
             const validMove = (isOut && moveReason !== "화장실/정수기") ? moveReason : "";
-            
-            if (validMove) {
-                displayStatus = validMove;
-                statusColor = "move"; // 이동 중 전용 색상
-            } 
-            // 3. 시트 메모(스케줄) 노출
-            else if (attMemo) {
-                displayStatus = attMemo;
-                statusColor = "schedule"; // 스케줄 전용 색상
+
+            let displayStatus = "";
+            let subStatus = ""; // 💡 출석(1) 하단에 표시할 보조 텍스트 변수
+            let statusColor = "";
+
+            // 🏆 수정된 우선순위 로직
+            if (attStatus === "1") {
+                // 출결이 '1'이면 무조건 메인은 "출석"
+                displayStatus = "출석";
+                statusColor = "1";
+                // 하지만 이동이나 스케줄이 있다면 하단 보조 텍스트로 준비
+                if (validMove) subStatus = validMove;
+                else if (attMemo) subStatus = attMemo;
+            } else {
+                // 출결이 '1'이 아닌 경우(결석 등)는 기존처럼 사유를 배지에 직접 노출
+                if (validMove) {
+                    displayStatus = validMove;
+                    statusColor = "move";
+                } else if (attMemo) {
+                    displayStatus = attMemo;
+                    statusColor = "schedule";
+                } else {
+                    displayStatus = attStatus === "3" ? "결석" : attStatus;
+                    statusColor = attStatus === "3" ? "3" : "none";
+                }
             }
 
             dashboard.innerHTML += `
@@ -114,12 +125,14 @@ async function init() {
                         ${displayStatus}
                     </div>
                     
+                    ${subStatus ? `<div style="font-size:11px; color:#2c3e50; font-weight:bold; margin-top:4px; background:rgba(0,0,0,0.05); padding:2px 6px; border-radius:4px;">${subStatus}</div>` : ''}
+                    
                     <div style="display:flex; gap:3px; margin-top:5px; justify-content:center;">
                         ${todaySleep > 0 ? `<span style="background:#ffeaa7; padding:1px 4px; border-radius:3px; font-size:10px;">💤${todaySleep}</span>` : ''}
                         ${totalEduScore > 0 ? `<span style="background:#fab1a0; padding:1px 4px; border-radius:3px; font-size:10px;">⭐${totalEduScore}</span>` : ''}
                     </div>
 
-                    ${moveReason === "화장실/정수기" && isOut ? `<div style="font-size:11px; color:#3498db; font-weight:bold; margin-top:3px;">🚰 화장실 중</div>` : ''}
+                    ${moveReason === "화장실/정수기" && isOut ? `<div style="font-size:10px; color:#3498db; margin-top:3px;">🚰 화장실</div>` : ''}
                 </div>
             `;
         });
