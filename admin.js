@@ -371,4 +371,4 @@ window.__loadStudentDetail = async function(student) {
     } catch (err) {
         detailSection.innerHTML = `<div style="color:#e74c3c; text-align:center; padding:30px;"><b>오류가 발생했습니다:</b><br>${err.message}</div>`;
     }
-};
+}; // 🚨 3. 가장 마지막 줄! 이 닫는 괄호와 세미콜론이 반드시 있어야 합니다!
