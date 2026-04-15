@@ -2,9 +2,10 @@ const SB_URL = "https://kqxhxrbpxwdmuvcyhcua.supabase.co";
 const SB_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImtxeGh4cmJweHdkbXV2Y3loY3VhIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzYxNDc4MzQsImV4cCI6MjA5MTcyMzgzNH0.Y_esLcGduxQteKUsbcwuqUKiGMMM8ItjyZFwpI2cu2A";
 const _supabase = supabase.createClient(SB_URL, SB_KEY);
 
+// 로그인 세션 유지용
 let loggedInManager = localStorage.getItem('managerName');
 
-// 교육점수 가중치 맵 (점수 계산용)
+// 교육점수 가중치 (점수 계산용)
 const EDU_SCORE_MAP = {
     "전자기기 부정사용": 10, "핸드폰 무단사용": 7, "해드폰 미제출": 7, "무단결석": 7, "무단이탈": 7,
     "타층/타관 무단출입": 5, "원내대화": 5, "무단지각": 5, "모의고사 무단 1회 미응시": 5,
@@ -12,6 +13,38 @@ const EDU_SCORE_MAP = {
     "지각": 1, "자습 중 이동 태블릿 미입력": 1, "취침": 1
 };
 
+// 1. 로그인 처리 함수 (오류 해결 핵심!)
+async function handleLogin() {
+    const id = document.getElementById('admin-id').value;
+    const pw = document.getElementById('admin-pw').value;
+    const loginMsg = document.getElementById('login-msg');
+
+    try {
+        const { data, error } = await _supabase
+            .from('managers')
+            .select('*')
+            .eq('manager_id', id)
+            .eq('password', pw)
+            .single();
+
+        if (data) {
+            localStorage.setItem('managerName', data.manager_name);
+            location.reload(); // 성공 시 새로고침하여 init 실행
+        } else {
+            loginMsg.innerText = "로그인 정보가 올바르지 않습니다.";
+        }
+    } catch (err) {
+        loginMsg.innerText = "로그인 중 오류 발생: " + err.message;
+    }
+}
+
+// 2. 로그아웃 함수
+function handleLogout() {
+    localStorage.removeItem('managerName');
+    location.reload();
+}
+
+// 3. 현재 교시 확인 함수
 function getCurrentPeriod() {
     const SCHEDULE = [
         { p: "1", start: "08:00", end: "08:30" }, { p: "2", start: "08:50", end: "10:10" },
@@ -26,9 +59,11 @@ function getCurrentPeriod() {
     return currentP;
 }
 
+// 4. 메인 화면 초기화 및 데이터 로드 (5개 테이블 통합)
 async function init() {
     if (!loggedInManager) {
         document.getElementById('login-section').style.display = 'flex';
+        document.getElementById('admin-content').style.display = 'none';
         return;
     }
 
@@ -44,16 +79,16 @@ async function init() {
         const currentP = getCurrentPeriod();
         summary.innerText = `현재 ${currentP}교시 현황판 (${today})`;
 
-        // 1. 모든 데이터 병렬로 가져오기 (속도 최적화)
+        // 모든 데이터를 병렬로 한 번에 로드 (속도 최적화)
         const [resStudents, resAttendance, resSleep, resMove, resEdu] = await Promise.all([
             _supabase.from('student').select('*').eq('teacher_name', loggedInManager).order('seat_no'),
             _supabase.from('attendance').select('*').eq('attendance_date', today).eq('period', currentP),
             _supabase.from('sleep_log').select('*').eq('sleep_date', today),
             _supabase.from('move_log').select('*').eq('move_date', today).order('move_time', { ascending: false }),
-            _supabase.from('edu_score_log').select('*') // 전체 누적 점수용
+            _supabase.from('edu_score_log').select('*')
         ]);
 
-        const students = resStudents.data.filter(s => s.name && s.name !== '배정금지');
+        const students = (resStudents.data || []).filter(s => s.name && s.name !== '배정금지');
         const attendance = resAttendance.data || [];
         const sleepLogs = resSleep.data || [];
         const moveLogs = resMove.data || [];
@@ -62,48 +97,47 @@ async function init() {
         dashboard.innerHTML = '';
 
         students.forEach(s => {
-            // [출결] 현재 교시 상태
+            // [출결 상태]
             const att = attendance.find(a => a.student_id === s.student_id);
             const attStatus = att ? att.status_code : "미입력";
             const attMemo = att ? att.memo : "";
 
-            // [취침] 오늘 총 횟수 합산
+            // [취침 횟수 합산]
             const todaySleep = sleepLogs.filter(sl => sl.student_id === s.student_id)
                                         .reduce((acc, cur) => acc + (cur.count || 1), 0);
 
-            // [이동] 현재 '외출 중'인지 확인 (가장 최근 기록 기준)
+            // [이동 상태] 현재 교시 기준 외출 중인지 확인
             const lastMove = moveLogs.find(ml => ml.student_id === s.student_id);
             const isOut = lastMove && (lastMove.return_period === "복귀안함" || parseInt(lastMove.return_period) >= parseInt(currentP));
             const moveReason = isOut ? lastMove.reason : "";
 
-            // [교육점수] 전체 누적 점수 계산
+            // [누적 교육점수]
             const totalEduScore = eduLogs.filter(el => el.student_id === s.student_id)
                                          .reduce((acc, cur) => acc + (EDU_SCORE_MAP[cur.reason] || 0), 0);
 
-            // 카드 색상 결정
-            let cardClass = attStatus === "1" ? "status-1" : (attStatus === "3" ? "status-3" : "status-none");
-            if (isOut) cardClass = "status-move"; // 이동 중이면 별도 색상(파란색 등) 표시 권장
-
+            // 카드 스타일 설정
+            let typeClass = attStatus.includes("1") ? "1" : (attStatus.includes("3") ? "3" : "none");
+            
             dashboard.innerHTML += `
-                <div class="card ${cardClass}" style="position:relative; padding: 15px; border-radius: 12px; border: 1px solid #ddd; background: #fff; display: flex; flex-direction: column; align-items: center; gap: 5px;">
-                    <div style="font-size: 11px; color: #7f8c8d;">${s.seat_no}</div>
-                    <div style="font-size: 18px; font-weight: bold;">${s.name}</div>
+                <div class="card status-${typeClass}" style="position:relative; cursor:pointer;">
+                    <div class="seat" style="font-size:11px; opacity:0.7;">${s.seat_no}</div>
+                    <div class="name" style="font-size:18px; margin: 5px 0;">${s.name}</div>
+                    <div class="status-badge badge-${typeClass}">${isOut ? '이동중' : attStatus}</div>
                     
-                    <div class="status-badge" style="padding: 4px 12px; border-radius: 20px; background: #f1f2f6; font-weight: bold;">
-                        ${attStatus}
+                    <div style="display:flex; gap:3px; margin-top:5px; justify-content:center;">
+                        ${todaySleep > 0 ? `<span style="background:#ffeaa7; padding:1px 4px; border-radius:3px; font-size:10px;">💤${todaySleep}</span>` : ''}
+                        ${totalEduScore > 0 ? `<span style="background:#fab1a0; padding:1px 4px; border-radius:3px; font-size:10px;">⭐${totalEduScore}</span>` : ''}
                     </div>
 
-                    <div style="display: flex; gap: 5px; margin-top: 5px;">
-                        ${todaySleep > 0 ? `<span title="오늘 취침 횟수" style="font-size:11px; background:#ffeaa7; padding:2px 5px; border-radius:4px;">💤 ${todaySleep}</span>` : ''}
-                        ${totalEduScore > 0 ? `<span title="누적 교육점수" style="font-size:11px; background:#fab1a0; padding:2px 5px; border-radius:4px;">⭐ ${totalEduScore}</span>` : ''}
-                    </div>
-
-                    ${isOut ? `<div style="font-size:11px; color:#3498db; font-weight:bold;">🚶 ${moveReason}</div>` : ''}
-                    ${attMemo ? `<div style="font-size:11px; color:#95a5a6; font-style:italic;">"${attMemo}"</div>` : ''}
+                    ${isOut ? `<div style="font-size:11px; color:#3498db; font-weight:bold; margin-top:3px;">🚶 ${moveReason}</div>` : ''}
+                    ${attMemo ? `<div style="font-size:10px; color:#95a5a6; margin-top:3px;">${attMemo}</div>` : ''}
                 </div>
             `;
         });
     } catch (err) {
-        summary.innerText = "❌ 데이터 로드 에러: " + err.message;
+        summary.innerText = "❌ 데이터 로드 중 치명적 오류: " + err.message;
     }
 }
+
+// 앱 실행
+init();
