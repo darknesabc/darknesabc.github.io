@@ -60,7 +60,7 @@ function getCurrentPeriod() {
     return currentP;
 }
 
-// 4. 메인 화면 초기화 및 데이터 로드
+// 4. 메인 화면 초기화 및 데이터 로드 (이동 + 설문 + 출결 통합 연동)
 async function init() {
     if (!loggedInManager) {
         document.getElementById('login-section').style.display = 'flex';
@@ -87,28 +87,26 @@ async function init() {
             studentQuery = studentQuery.eq('teacher_name', loggedInManager);
         }
 
-        const [resStudents, resAttendance, resSleep, resMove, resEdu] = await Promise.all([
+        // 💡 설문 로그(survey_log) 추가 호출
+        const [resStudents, resAttendance, resSleep, resMove, resEdu, resSurvey] = await Promise.all([
             studentQuery.order('seat_no'),
             _supabase.from('attendance').select('*').eq('attendance_date', today).eq('period', currentP),
             _supabase.from('sleep_log').select('*').eq('sleep_date', today),
             _supabase.from('move_log').select('*').eq('move_date', today).order('move_time', { ascending: false }),
-            _supabase.from('edu_score_log').select('*')
+            _supabase.from('edu_score_log').select('*'),
+            _supabase.from('survey_log').select('*').eq('survey_date', today) // 오늘자 설문
         ]);
 
         const students = (resStudents.data || []).filter(s => s.name && s.name !== '배정금지');
-
-        // 상세페이지 연동을 위해 변환하여 주머니에 저장
-        window.__dashboardItems = students.map(s => ({
-            seat: s.seat_no,
-            studentId: s.student_id,
-            name: s.name,
-            teacher: s.teacher_name
-        }));
-
         const attendance = resAttendance.data || [];
         const sleepLogs = resSleep.data || [];
         const moveLogs = resMove.data || [];
         const eduLogs = resEdu.data || [];
+        const surveyLogs = resSurvey.data || [];
+
+        window.__dashboardItems = students.map(s => ({
+            seat: s.seat_no, studentId: s.student_id, name: s.name, teacher: s.teacher_name
+        }));
 
         dashboard.innerHTML = '';
 
@@ -117,43 +115,51 @@ async function init() {
             const attStatus = att ? att.status_code : "미입력";
             const attMemo = att ? att.memo : "";
 
-            const todaySleep = sleepLogs.filter(sl => sl.student_id === s.student_id)
-                                        .reduce((acc, cur) => acc + (cur.count || 1), 0);
-
+            // 1. 이동 사유 확인
             const lastMove = moveLogs.find(ml => ml.student_id === s.student_id);
             const isOut = lastMove && (lastMove.return_period === "복귀안함" || parseInt(lastMove.return_period) >= parseInt(currentP));
-            const moveReason = isOut ? lastMove.reason : "";
+            const validMove = (isOut && lastMove.reason !== "화장실/정수기") ? lastMove.reason : "";
 
-            const totalEduScore = eduLogs.filter(el => el.student_id === s.student_id)
-                                         .reduce((acc, cur) => acc + (EDU_SCORE_MAP[cur.reason] || 0), 0);
+            // 2. 설문 사유 확인 (앞부분만 추출)
+            const mySurvey = surveyLogs.find(sv => sv.student_id === s.student_id);
+            const surveyReason = mySurvey ? `[설문] ${mySurvey.reason.split('(')[0].trim()}` : "";
 
-            const validMove = (isOut && moveReason !== "화장실/정수기") ? moveReason : "";
+            // 3. 벌점/취침 합산
+            const todaySleep = sleepLogs.filter(sl => sl.student_id === s.student_id).reduce((acc, cur) => acc + (cur.count || 1), 0);
+            const totalEduScore = eduLogs.filter(el => el.student_id === s.student_id).reduce((acc, cur) => acc + (EDU_SCORE_MAP[cur.reason] || 0), 0);
 
             let displayStatus = "";
             let subStatus = ""; 
             let statusColor = "";
 
+            // 🏆 통합 우선순위 판단 로직
             if (attStatus === "1") {
                 displayStatus = "출석";
                 statusColor = "1";
+                // 출석일 때는 사유를 아래에 보조로 표시
                 if (validMove) subStatus = validMove;
+                else if (surveyReason) subStatus = surveyReason;
                 else if (attMemo) subStatus = attMemo;
             } else {
+                // 출석이 아닐 때는 사유를 배지에 직접 표시
                 if (validMove) {
                     displayStatus = validMove;
                     statusColor = "move";
+                } else if (surveyReason) {
+                    displayStatus = surveyReason;
+                    statusColor = "schedule"; // 설문은 스케줄 색상과 동일하게
                 } else if (attMemo) {
                     displayStatus = attMemo;
                     statusColor = "schedule";
                 } else {
-                    displayStatus = attStatus === "3" ? "결석" : attStatus;
-                    statusColor = attStatus === "3" ? "3" : "none";
+                    displayStatus = attStatus === "3" ? "결석" : (attStatus === "2" ? "지각" : attStatus);
+                    statusColor = attStatus === "3" ? "3" : (attStatus === "2" ? "2" : "none");
                 }
             }
 
             dashboard.innerHTML += `
                 <div class="card status-${statusColor}" style="position:relative; cursor:pointer;"
-                     onclick="if(window.__loadStudentDetail) window.__loadStudentDetail(window.__dashboardItems.find(x => x.studentId === '${s.student_id}'))">
+                     onclick="window.__loadStudentDetail(window.__dashboardItems.find(x => x.studentId === '${s.student_id}'))">
                     <div class="seat" style="font-size:11px; opacity:0.7;">${s.seat_no}</div>
                     <div class="name" style="font-size:18px; margin: 5px 0;">${s.name}</div>
                     <div class="status-badge badge-${statusColor}" style="font-size:13px; font-weight:900;">
@@ -164,7 +170,7 @@ async function init() {
                         ${todaySleep > 0 ? `<span style="background:#ffeaa7; padding:1px 4px; border-radius:3px; font-size:10px;">💤${todaySleep}</span>` : ''}
                         ${totalEduScore > 0 ? `<span style="background:#fab1a0; padding:1px 4px; border-radius:3px; font-size:10px;">⭐${totalEduScore}</span>` : ''}
                     </div>
-                    ${moveReason === "화장실/정수기" && isOut ? `<div style="font-size:10px; color:#3498db; margin-top:3px;">🚰 화장실</div>` : ''}
+                    ${lastMove && lastMove.reason === "화장실/정수기" && isOut ? `<div style="font-size:10px; color:#3498db; margin-top:3px;">🚰 화장실</div>` : ''}
                 </div>
             `;
         });
