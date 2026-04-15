@@ -1,38 +1,64 @@
-// 수퍼베이스에서 출결 데이터 가져오기 및 렌더링 함수
-async function renderAttendanceDashboard() {
-  const today = new Date().toISOString().split('T')[0]; // 2026-04-15 형식
+// 1. 수퍼베이스 설정 (여기를 꼭 관리자님 정보로 바꿔주세요!)
+const SB_URL = "https://kqxhxrbpxwdmuvcyhcua.supabase.co"; 
+const SB_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImtxeGh4cmJweHdkbXV2Y3loY3VhIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzYxNDc4MzQsImV4cCI6MjA5MTcyMzgzNH0.Y_esLcGduxQteKUsbcwuqUKiGMMM8ItjyZFwpI2cu2A"; 
 
-  // 1. 학생 명렬과 오늘 출결 동시에 가져오기
-  const [students, attendance] = await Promise.all([
-    supabase.from('student').select('*').order('seat_no'),
-    supabase.from('attendance').select('*').eq('attendance_date', today)
-  ]);
+// 수퍼베이스 클라이언트 생성
+const _supabase = supabase.createClient(SB_URL, SB_KEY);
 
-  const dashboard = document.getElementById('dashboard');
-  dashboard.innerHTML = '';
+async function init() {
+    const dashboard = document.getElementById('dashboard');
+    const summary = document.getElementById('status-summary');
 
-  // 2. 학생별로 출결 매칭하기
-  students.data.forEach(student => {
-    // 해당 학생의 오늘 모든 교시 기록 필터링
-    const studentLogs = attendance.data.filter(log => log.student_id === student.student_id);
-    
-    // 가장 최신 교시의 상태 가져오기 (예: 8교시가 있으면 8교시 상태)
-    const lastLog = studentLogs.sort((a, b) => b.period - a.period)[0];
-    const statusText = lastLog ? lastLog.status_code : '미입력';
+    try {
+        // 테스트용 날짜 (오늘 날짜 데이터가 없으면 아무것도 안 뜰 수 있으니 시트에 있는 날짜로 고정)
+        const targetDate = "2026-04-15"; 
+        summary.innerText = `${targetDate} 데이터를 가져오는 중...`;
 
-    // 3. 상태에 따른 카드 색상 결정
-    let statusClass = 'status-normal';
-    if (statusText === '3') statusClass = 'status-absent'; // 결석
-    if (['영어과외', '병원', '학교'].includes(statusText)) statusClass = 'status-out'; // 외출
+        // 2. 데이터 가져오기 (학생 명렬 + 출결 기록)
+        const { data: students, error: sError } = await _supabase.from('student').select('*').order('seat_no');
+        const { data: attendance, error: aError } = await _supabase.from('attendance').select('*').eq('attendance_date', targetDate);
 
-    // 4. 화면에 카드 그리기
-    dashboard.innerHTML += `
-      <div class="student-card ${statusClass}">
-        <div class="seat-no">${student.seat_no}</div>
-        <div class="student-name">${student.name || '빈자리'}</div>
-        <div class="status-badge">${statusText}</div>
-        <div class="info-row">${student.class_name} | ${student.teacher_name}</div>
-      </div>
-    `;
-  });
+        if (sError || aError) throw (sError || aError);
+
+        // 3. 화면 그리기
+        dashboard.innerHTML = '';
+        
+        if (!students || students.length === 0) {
+            summary.innerText = "학생 데이터가 없습니다. student 테이블을 확인하세요.";
+            return;
+        }
+
+        students.forEach(s => {
+            // 이 학생의 오늘 기록들 찾기
+            const logs = attendance.filter(a => a.student_id === s.student_id);
+            // 가장 늦은 교시 기록 선택
+            const lastLog = logs.sort((a, b) => b.period - a.period)[0];
+            
+            const status = lastLog ? lastLog.status_code : "미입력";
+            
+            // 상태별 색상 구분 로직
+            let typeClass = "text"; 
+            if (status.includes("1")) typeClass = "1";
+            else if (status.includes("3")) typeClass = "3";
+
+            dashboard.innerHTML += `
+                <div class="card status-${typeClass}">
+                    <div class="seat">${s.seat_no || '좌석미정'}</div>
+                    <div class="name">${s.name || '빈자리'}</div>
+                    <div class="status-badge badge-${typeClass}">${status}</div>
+                    <div style="font-size:11px; color:#aaa; margin-top:10px;">${s.teacher_name || ''}</div>
+                </div>
+            `;
+        });
+
+        summary.innerText = `${targetDate} 출결 현황판 (총 ${students.length}명)`;
+
+    } catch (err) {
+        console.error(err);
+        summary.innerText = "❌ 에러 발생: " + err.message;
+        summary.style.color = "red";
+    }
 }
+
+// 실행!
+init();
