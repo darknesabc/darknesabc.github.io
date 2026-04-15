@@ -1,6 +1,6 @@
 // 1. Supabase 설정 (아까 복사해둔 주소와 키를 넣으세요)
-const SUPABASE_URL = "여기에_주소_붙여넣기";
-const SUPABASE_KEY = "여기에_anon_public_키_붙여넣기";
+const SUPABASE_URL = "https://kqxhxrbpxwdmuvcyhcua.supabase.co";
+const SUPABASE_KEY = "sb_publishable_T9CnSuoTX52psrp5vZbYuA_6ZTCTlZM";
 const _supabase = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 
 // 2. 화면에 명단 그리기 함수
