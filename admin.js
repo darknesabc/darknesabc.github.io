@@ -1,6 +1,6 @@
 // 1. Supabase 설정 (아까 복사해둔 주소와 키를 넣으세요)
 const SUPABASE_URL = "https://kqxhxrbpxwdmuvcyhcua.supabase.co";
-const SUPABASE_KEY = "sb_publishable_T9CnSuoTX52psrp5vZbYuA_6ZTCTlZM";
+const SUPABASE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImtxeGh4cmJweHdkbXV2Y3loY3VhIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzYxNDc4MzQsImV4cCI6MjA5MTcyMzgzNH0.Y_esLcGduxQteKUsbcwuqUKiGMMM8ItjyZFwpI2cu2A";
 const _supabase = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 
 // 2. 화면에 명단 그리기 함수
