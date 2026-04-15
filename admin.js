@@ -389,8 +389,9 @@ window.__loadStudentDetail = async function(student) {
         detailSection.innerHTML = `<div style="color:#e74c3c; text-align:center; padding:30px;"><b>오류가 발생했습니다:</b><br>${err.message}</div>`;
     }
 };
+
 // =========================================================
-// 💡 2. '상세' 버튼 클릭 시 팝업을 띄워주는 함수 (일요일 포함 타임테이블)
+// 💡 2. '상세' 버튼 클릭 시 팝업을 띄워주는 함수 (기간 필터 및 테이블 뷰 적용)
 // =========================================================
 window.__openDetailModal = async function(type, studentId, studentName) {
     let modalOverlay = document.getElementById('custom-detail-modal');
@@ -417,7 +418,7 @@ window.__openDetailModal = async function(type, studentId, studentName) {
     };
 
     modalOverlay.innerHTML = `
-        <div style="background:#fff; width:98%; max-width:1200px; max-height:85vh; border-radius:12px; padding:25px; box-shadow:0 10px 30px rgba(0,0,0,0.2); display:flex; flex-direction:column;">
+        <div style="background:#fff; width:98%; max-width:1000px; max-height:85vh; border-radius:12px; padding:25px; box-shadow:0 10px 30px rgba(0,0,0,0.2); display:flex; flex-direction:column;">
             <div style="display:flex; justify-content:space-between; align-items:center; border-bottom:1px solid #eee; padding-bottom:15px; margin-bottom:15px;">
                 <h3 style="margin:0; color:#2c3e50;">${titleMap[type]} - ${studentName}</h3>
                 <button onclick="document.getElementById('custom-detail-modal').style.display='none'" style="background:none; border:none; font-size:20px; cursor:pointer; color:#7f8c8d; padding:0;">✖</button>
@@ -433,6 +434,7 @@ window.__openDetailModal = async function(type, studentId, studentName) {
     try {
         let contentHtml = '';
         
+        // 💡 1. 출결: 주차별 타임테이블 (기존 유지)
         if (type === 'attendance') {
             const { data } = await _supabase.from('attendance').select('*').eq('student_id', studentId).order('attendance_date', {ascending: false});
             
@@ -469,7 +471,7 @@ window.__openDetailModal = async function(type, studentId, studentName) {
             };
 
             weeks.forEach((mon, idx) => {
-                const endDay = new Date(mon); endDay.setDate(endDay.getDate() + 6); // 일요일까지 커버
+                const endDay = new Date(mon); endDay.setDate(endDay.getDate() + 6);
                 const label = idx === 0 ? `최신 주차 (${formatDateShort(mon)} ~ ${formatDateShort(endDay.toISOString().split('T')[0])})` : `${formatDateShort(mon)} 주차`;
                 contentHtml += `<option value="${mon}">${label}</option>`;
             });
@@ -495,12 +497,10 @@ window.__openDetailModal = async function(type, studentId, studentName) {
                 `;
                 
                 const weekDates = [];
-                // 💡 [핵심] 월요일부터 일요일까지 총 7일 반복
                 for(let i=0; i<7; i++) {
                     const d = new Date(mon); d.setDate(d.getDate() + i);
                     const dStr = d.toISOString().split('T')[0];
                     weekDates.push(dStr);
-                    // 일요일은 글씨를 빨간색으로 표시
                     const dateColor = i === 6 ? '#e74c3c' : '#2c3e50';
                     contentHtml += `<th colspan="2" style="color:${dateColor}">${formatDateShort(dStr)}</th>`;
                 }
@@ -522,35 +522,122 @@ window.__openDetailModal = async function(type, studentId, studentName) {
                             else if (cellData.status === '3') statusHtml = `<div class="st-3">결석</div>`;
                             else statusHtml = cellData.status;
                         }
-
                         contentHtml += `<td class="st-memo">${memo}</td><td>${statusHtml}</td>`;
                     });
                     contentHtml += `</tr>`;
                 }
                 contentHtml += `</tbody></table></div>`;
             });
+            contentArea.innerHTML = contentHtml;
         } 
+        
+        // 💡 2. 이동, 취침, 교육점수: 기간 필터 + 테이블 뷰
         else {
-            contentHtml += '<ul style="list-style:none; padding:0; margin:0; line-height:2.0; font-size:14px; color:#34495e;">';
+            window.__modalData = { type: type, items: [] };
+            let tableQuery = null;
+            
             if (type === 'move') {
-                const { data } = await _supabase.from('move_log').select('*').eq('student_id', studentId).order('move_date', {ascending: false}).order('move_time', {ascending: false});
-                if (!data || data.length === 0) contentHtml += '<li>기록이 없습니다.</li>';
-                else data.forEach(d => contentHtml += `<li style="border-bottom:1px solid #f1f2f6; padding:10px 0;"><span style="display:inline-block; width:130px; color:#7f8c8d;">${d.move_date} ${d.move_time}</span> <b>${d.reason}</b> <span style="color:#95a5a6; font-size:12px; margin-left:5px;">(복귀: ${d.return_period || '-'})</span></li>`);
+                tableQuery = _supabase.from('move_log').select('*').eq('student_id', studentId).order('move_date', {ascending: false}).order('move_time', {ascending: false});
+            } else if (type === 'sleep') {
+                tableQuery = _supabase.from('sleep_log').select('*').eq('student_id', studentId).order('sleep_date', {ascending: false});
+            } else if (type === 'eduscore') {
+                tableQuery = _supabase.from('edu_score_log').select('*').eq('student_id', studentId).order('score_date', {ascending: false});
             }
-            else if (type === 'sleep') {
-                const { data } = await _supabase.from('sleep_log').select('*').eq('student_id', studentId).order('sleep_date', {ascending: false});
-                if (!data || data.length === 0) contentHtml += '<li>기록이 없습니다.</li>';
-                else data.forEach(d => contentHtml += `<li style="border-bottom:1px solid #f1f2f6; padding:10px 0;"><span style="display:inline-block; width:100px; color:#7f8c8d;">${d.sleep_date}</span> <span style="display:inline-block; width:50px;">${d.period}교시</span> <b style="color:#8e44ad;">${d.count}회 적발</b></li>`);
-            }
-            else if (type === 'eduscore') {
-                const { data } = await _supabase.from('edu_score_log').select('*').eq('student_id', studentId).order('score_date', {ascending: false});
-                if (!data || data.length === 0) contentHtml += '<li>기록이 없습니다.</li>';
-                else data.forEach(d => contentHtml += `<li style="border-bottom:1px solid #f1f2f6; padding:10px 0;"><span style="display:inline-block; width:100px; color:#7f8c8d;">${d.score_date}</span> <b>${d.reason}</b> <span style="color:#e74c3c; font-weight:bold; margin-left:10px;">+${EDU_SCORE_MAP[d.reason] || 0}점</span></li>`);
-            }
-            contentHtml += '</ul>';
-        }
 
-        contentArea.innerHTML = contentHtml;
+            const { data } = await tableQuery;
+            window.__modalData.items = data || [];
+
+            contentArea.innerHTML = `
+                <style>
+                    .period-btn { background:#f1f2f6; border:1px solid #dfe6e9; padding:6px 16px; margin-left:6px; border-radius:6px; cursor:pointer; color:#7f8c8d; font-size:13px; font-weight:bold; transition:all 0.2s; }
+                    .period-btn.active { background:#2c3e50; color:#ffffff; border-color:#2c3e50; }
+                    .period-btn:hover:not(.active) { background:#e2e6ea; }
+                    .data-table { width:100%; border-collapse:collapse; text-align:left; font-size:14px; color:#2c3e50; margin-top:10px; }
+                    .data-table th { padding:12px 10px; border-bottom:2px solid #ecf0f1; color:#7f8c8d; font-weight:normal; font-size:13px; }
+                    .data-table td { padding:12px 10px; border-bottom:1px solid #f1f2f6; }
+                    .data-table tbody tr:hover { background-color:#f8f9fa; }
+                </style>
+                <div style="display:flex; justify-content:flex-end; align-items:center; margin-bottom:20px;">
+                    <span style="font-size:13px; color:#7f8c8d;">조회 기간:</span>
+                    <button class="period-btn" id="btn-period-7" onclick="window.__renderModalTable(7)">7일</button>
+                    <button class="period-btn" id="btn-period-15" onclick="window.__renderModalTable(15)">15일</button>
+                    <button class="period-btn" id="btn-period-30" onclick="window.__renderModalTable(30)">30일</button>
+                </div>
+                <div id="modal-table-area"></div>
+            `;
+
+            // 기간별 렌더링 함수 (글로벌 함수로 선언하여 버튼 onClick에서 호출 가능하게 함)
+            window.__renderModalTable = function(days) {
+                // 버튼 스타일 업데이트
+                [7, 15, 30].forEach(d => {
+                    const btn = document.getElementById('btn-period-' + d);
+                    if (btn) {
+                        if (d === days) btn.classList.add('active');
+                        else btn.classList.remove('active');
+                    }
+                });
+
+                // 필터 기준 날짜 계산
+                const targetDate = new Date();
+                targetDate.setDate(new Date().getDate() - (days - 1));
+                const targetIso = targetDate.toISOString().split('T')[0];
+
+                const filtered = window.__modalData.items.filter(item => {
+                    const dStr = item.move_date || item.sleep_date || item.score_date;
+                    return dStr >= targetIso;
+                });
+
+                let tableHtml = '<table class="data-table"><thead><tr>';
+                
+                if (window.__modalData.type === 'move') {
+                    tableHtml += '<th>날짜</th><th>시간</th><th>사유</th><th>복귀교시</th></tr></thead><tbody>';
+                    if (filtered.length === 0) tableHtml += '<tr><td colspan="4" style="text-align:center; padding:40px; color:#95a5a6;">해당 기간에 기록이 없습니다.</td></tr>';
+                    else {
+                        filtered.forEach(d => {
+                            tableHtml += `<tr>
+                                <td style="color:#7f8c8d;">${d.move_date}</td>
+                                <td>${d.move_time || '-'}</td>
+                                <td><b style="color:#2c3e50;">${d.reason}</b></td>
+                                <td style="color:#95a5a6;">${d.return_period || '-'}</td>
+                            </tr>`;
+                        });
+                    }
+                } 
+                else if (window.__modalData.type === 'sleep') {
+                    tableHtml += '<th>날짜</th><th>교시</th><th>기록</th><th>횟수</th></tr></thead><tbody>';
+                    if (filtered.length === 0) tableHtml += '<tr><td colspan="4" style="text-align:center; padding:40px; color:#95a5a6;">해당 기간에 기록이 없습니다.</td></tr>';
+                    else {
+                        filtered.forEach(d => {
+                            tableHtml += `<tr>
+                                <td style="color:#7f8c8d;">${d.sleep_date}</td>
+                                <td>${d.period}교시</td>
+                                <td><b style="color:#2c3e50;">취침</b></td>
+                                <td><b style="color:#8e44ad; background:#f4ebf7; padding:4px 8px; border-radius:4px; font-size:12px;">${d.count}회 적발</b></td>
+                            </tr>`;
+                        });
+                    }
+                }
+                else if (window.__modalData.type === 'eduscore') {
+                    tableHtml += '<th>날짜</th><th>사유</th><th>점수</th></tr></thead><tbody>';
+                    if (filtered.length === 0) tableHtml += '<tr><td colspan="3" style="text-align:center; padding:40px; color:#95a5a6;">해당 기간에 기록이 없습니다.</td></tr>';
+                    else {
+                        filtered.forEach(d => {
+                            const score = EDU_SCORE_MAP[d.reason] || 0;
+                            tableHtml += `<tr>
+                                <td style="color:#7f8c8d;">${d.score_date}</td>
+                                <td><b style="color:#2c3e50;">${d.reason}</b></td>
+                                <td><b style="color:#e74c3c; background:#fdedec; padding:4px 8px; border-radius:4px; font-size:12px;">+${score}점</b></td>
+                            </tr>`;
+                        });
+                    }
+                }
+                tableHtml += '</tbody></table>';
+                document.getElementById('modal-table-area').innerHTML = tableHtml;
+            };
+
+            // 처음 모달이 열리면 기본값으로 '7일' 렌더링
+            window.__renderModalTable(7);
+        }
 
     } catch (err) {
         contentArea.innerHTML = `
