@@ -66,7 +66,10 @@ async function init() {
     const summary = document.getElementById('status-summary');
 
     try {
-        const today = new Date().toISOString().split('T')[0];
+        // 한국 시간대(로컬 시간)에 맞춰 오늘 날짜 계산
+        const now = new Date();
+        const today = new Date(now.getTime() - (now.getTimezoneOffset() * 60000)).toISOString().split('T')[0];
+        
         const currentP = getCurrentPeriod();
         summary.innerText = `현재 ${currentP}교시 현황판 (${today})`;
 
@@ -150,8 +153,14 @@ window.__loadStudentDetail = async function(student) {
             _supabase.from('survey_log').select('*').eq('student_id', student.studentId)
         ]);
 
-        const todayIso = new Date().toISOString().split('T')[0];
-        const start7dIso = new Date(new Date().setDate(new Date().getDate() - 6)).toISOString().split('T')[0];
+        // 한국 시간대(로컬 시간)에 맞춰 상세 페이지 날짜 계산
+        const now = new Date();
+        const todayIso = new Date(now.getTime() - (now.getTimezoneOffset() * 60000)).toISOString().split('T')[0];
+        
+        const start7d = new Date(now);
+        start7d.setDate(start7d.getDate() - 6);
+        const start7dIso = new Date(start7d.getTime() - (start7d.getTimezoneOffset() * 60000)).toISOString().split('T')[0];
+        
         const currentP = parseInt(getCurrentPeriod(), 10) || 0;
 
         const formatShortDate = (dateStr) => {
