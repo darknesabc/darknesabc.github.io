@@ -2,7 +2,6 @@ const SB_URL = "https://kqxhxrbpxwdmuvcyhcua.supabase.co";
 const SB_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImtxeGh4cmJweHdkbXV2Y3loY3VhIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzYxNDc4MzQsImV4cCI6MjA5MTcyMzgzNH0.Y_esLcGduxQteKUsbcwuqUKiGMMM8ItjyZFwpI2cu2A";
 const _supabase = supabase.createClient(SB_URL, SB_KEY);
 
-// 로그인 세션 및 역할(Role) 유지용
 let loggedInManager = localStorage.getItem('managerName');
 let loggedInRole = localStorage.getItem('managerRole'); 
 
@@ -16,43 +15,22 @@ const EDU_SCORE_MAP = {
 // =========================================================
 // 1. 공통 유틸리티 (로그인, 로그아웃, 시간)
 // =========================================================
-// 1. 로그인 처리 함수
 async function handleLogin() {
-    // 앞뒤 공백을 제거하여 가져오기
     const id = document.getElementById('admin-id').value.trim();
     const pw = document.getElementById('admin-pw').value.trim();
     const loginMsg = document.getElementById('login-msg');
-
-    // 💡 [추가] 빈칸 입력 방지
-    if (!id || !pw) {
-        loginMsg.innerText = "아이디와 비밀번호를 모두 입력해주세요.";
-        return; // 빈칸이면 수퍼베이스에 요청조차 하지 않음
-    }
+    
+    if (!id || !pw) { loginMsg.innerText = "아이디와 비밀번호를 모두 입력해주세요."; return; }
 
     try {
-        // 💡 [수정] .single() 대신 .maybeSingle() 사용 (데이터가 없어도 에러 안 뿜음)
-        const { data, error } = await _supabase
-            .from('managers')
-            .select('*')
-            .eq('manager_id', id)
-            .eq('password', pw)
-            .maybeSingle();
-
-        if (error) throw error; // 진짜 시스템 에러가 났을 때만 잡기
-
+        const { data, error } = await _supabase.from('managers').select('*').eq('manager_id', id).eq('password', pw).maybeSingle();
+        if (error) throw error;
         if (data) {
-            // 로그인 성공
             localStorage.setItem('managerName', data.manager_name);
             localStorage.setItem('managerRole', data.role); 
             location.reload(); 
-        } else {
-            // 정보가 틀려서 data가 null로 돌아왔을 때
-            loginMsg.innerText = "로그인 정보가 올바르지 않습니다.";
-        }
-    } catch (err) {
-        loginMsg.innerText = "에러: " + err.message;
-        console.error("로그인 에러 상세:", err);
-    }
+        } else { loginMsg.innerText = "로그인 정보가 올바르지 않습니다."; }
+    } catch (err) { loginMsg.innerText = "에러: " + err.message; }
 }
 
 function handleLogout() { localStorage.clear(); location.reload(); }
@@ -72,7 +50,7 @@ function getCurrentPeriod() {
 }
 
 // =========================================================
-// 2. 메인 화면 초기화 및 데이터 로드 (바둑판 카드)
+// 2. 메인 화면 초기화 (바둑판 카드)
 // =========================================================
 async function init() {
     if (!loggedInManager) {
@@ -105,7 +83,7 @@ async function init() {
         ]);
 
         const students = resStudents.data.filter(s => s.name && s.name !== '배정금지');
-        window.__dashboardItems = students.map(s => ({ seat: s.seat_no, studentId: s.student_id, name: s.name, teacher: s.teacher_name }));
+        window.__dashboardItems = students.map(s => ({ seat: s.seat_no, studentId: s.student_id, name: s.name, teacher: s.teacher_name, className: s.class_name }));
 
         dashboard.innerHTML = '';
         students.forEach(s => {
@@ -147,7 +125,7 @@ async function init() {
 }
 
 // =========================================================
-// 3. 학생 상세 페이지 로드 (요약 카드 + 성적 추이 통합)
+// 3. 학생 상세 페이지 로드 (요약 카드 + 상세 내역 리스트)
 // =========================================================
 window.__loadStudentDetail = async function(student) {
     if (!student || !student.studentId) return;
@@ -160,7 +138,7 @@ window.__loadStudentDetail = async function(student) {
         document.getElementById('admin-content').appendChild(detailSection);
     }
     detailSection.style.display = 'block';
-    detailSection.innerHTML = `<div style="text-align:center; padding:50px; font-size:18px; color:#7f8c8d;">⏳ <b>${student.name}</b> 학생의 데이터를 불러오는 중입니다...</div>`;
+    detailSection.innerHTML = `<div style="text-align:center; padding:50px; font-size:18px; color:#7f8c8d;">⏳ <b>${student.name}</b> 학생의 통합 데이터를 불러오는 중입니다...</div>`;
     detailSection.scrollIntoView({ behavior: 'smooth', block: 'start' });
 
     try {
@@ -172,32 +150,26 @@ window.__loadStudentDetail = async function(student) {
             _supabase.from('survey_log').select('*').eq('student_id', student.studentId)
         ]);
 
-        const today = new Date();
-        const start7d = new Date(); start7d.setDate(today.getDate() - 6);
-        const todayIso = today.toISOString().split('T')[0];
-        const start7dIso = start7d.toISOString().split('T')[0];
+        const todayIso = new Date().toISOString().split('T')[0];
+        const start7dIso = new Date(new Date().setDate(new Date().getDate() - 6)).toISOString().split('T')[0];
         const currentP = parseInt(getCurrentPeriod(), 10) || 0;
 
         const formatShortDate = (dateStr) => {
-            const d = new Date(dateStr);
-            const days = ['일','월','화','수','목','금','토'];
+            const d = new Date(dateStr); const days = ['일','월','화','수','목','금','토'];
             return `${d.getMonth()+1}/${d.getDate()}(${days[d.getDay()]})`;
         };
         const getPeriodFromTime = (timeStr) => {
             if (!timeStr) return 0;
-            const [h, m] = timeStr.split(':').map(Number);
-            const t = h * 60 + m;
+            const [h, m] = timeStr.split(':').map(Number); const t = h * 60 + m;
             if (t < 8*60+30) return 1; if (t < 10*60+10) return 2; if (t < 12*60) return 3;
             if (t < 14*60+30) return 4; if (t < 15*60+50) return 5; if (t < 17*60+30) return 6;
             if (t < 20*60+10) return 7; return 8;
         };
 
         const schedMap = {};
-        (resSurvey.data || []).forEach(sv => {
-            const dStr = sv.survey_date;
-            let reason = sv.reason ? sv.reason.split('(')[0].trim() : '';
-            const timeType = sv.arrival_time_type || "";
-            let startP = 0, endP = 0;
+        resSurvey.data.forEach(sv => {
+            const dStr = sv.survey_date; let reason = sv.reason ? sv.reason.split('(')[0].trim() : '';
+            const timeType = sv.arrival_time_type || ""; let startP = 0, endP = 0;
             if (timeType.includes("결석")) { startP = 1; endP = 8; }
             else if (timeType.includes("오전")) { startP = 1; endP = 3; }
             else if (timeType.includes("오후")) { startP = 4; endP = 6; }
@@ -208,62 +180,43 @@ window.__loadStudentDetail = async function(student) {
             }
         });
 
-        const moveData = resMove.data || [];
-        moveData.forEach(mv => {
+        resMove.data.forEach(mv => {
             if (mv.reason === "화장실/정수기") return;
-            const dStr = mv.move_date;
-            let rp = parseInt(mv.return_period, 10) || 0;
+            const dStr = mv.move_date; let rp = parseInt(mv.return_period, 10) || 0;
             if (mv.return_period === "복귀안함") rp = 8;
             const sp = getPeriodFromTime(mv.move_time);
             if (!schedMap[dStr]) schedMap[dStr] = {};
-            if (rp > 0) {
-                const start = sp > 0 ? sp : rp;
-                for(let p=start; p<=rp; p++) schedMap[dStr][p] = mv.reason;
-            } else {
-                const targetP = sp > 0 ? sp : 1;
-                schedMap[dStr][targetP] = schedMap[dStr][targetP] ? schedMap[dStr][targetP] + ` / ${mv.reason}` : mv.reason;
-            }
+            if (rp > 0) { const start = sp > 0 ? sp : rp; for(let p=start; p<=rp; p++) schedMap[dStr][p] = mv.reason; } 
+            else { const targetP = sp > 0 ? sp : 1; schedMap[dStr][targetP] = schedMap[dStr][targetP] ? schedMap[dStr][targetP] + ` / ${mv.reason}` : mv.reason; }
         });
 
-        const eduData = resEdu.data || [];
-        eduData.forEach(ed => {
+        resEdu.data.forEach(ed => {
             if (ed.reason.includes('지각')) {
-                const dStr = ed.score_date;
-                const sp = getPeriodFromTime(ed.score_time) || 1;
+                const dStr = ed.score_date; const sp = getPeriodFromTime(ed.score_time) || 1;
                 if (!schedMap[dStr]) schedMap[dStr] = {};
                 schedMap[dStr][sp] = schedMap[dStr][sp] ? schedMap[dStr][sp] + ` / ${ed.reason}` : ed.reason;
             }
         });
 
-        const attLogs = resAtt.data || [];
         let totalAtt = 0, totalLate = 0, totalAbs = 0;
         let att7d = 0, late7d = 0, abs7d = 0;
         const recentAbsences = [];
         
-        attLogs.forEach(a => {
+        resAtt.data.forEach(a => {
             if (a.attendance_date > todayIso || (a.attendance_date === todayIso && parseInt(a.period, 10) > currentP)) return;
             if (new Date(a.attendance_date).getDay() === 0) return;
 
             const p = parseInt(a.period, 10);
-            const extraMemo = schedMap[a.attendance_date]?.[p] || '';
-            const baseMemo = a.memo ? a.memo.trim() : '';
-            const finalSched = extraMemo || baseMemo || '';
-
+            const finalSched = (schedMap[a.attendance_date]?.[p] || '') + (a.memo ? a.memo.trim() : '');
             const isLate = a.status_code === '2' || finalSched.includes('지각');
             const isAtt = a.status_code === '1';
-            const isAbs = a.status_code === '3' && !isLate && finalSched === '';
+            const isAbs = a.status_code === '3' && !isLate && (!finalSched || finalSched === '-');
 
-            let finalType = '';
-            if (isLate) finalType = 'late';
-            else if (isAbs) finalType = 'abs';
-            else if (isAtt) finalType = 'att';
+            let finalType = isLate ? 'late' : (isAbs ? 'abs' : (isAtt ? 'att' : ''));
 
             if (finalType === 'att') totalAtt++;
             if (finalType === 'late') totalLate++;
-            if (finalType === 'abs') {
-                totalAbs++;
-                if (recentAbsences.length < 3) recentAbsences.push(a);
-            }
+            if (finalType === 'abs') { totalAbs++; if (recentAbsences.length < 3) recentAbsences.push(a); }
             
             if (a.attendance_date >= start7dIso && a.attendance_date <= todayIso) {
                 if (finalType === 'att') att7d++;
@@ -279,27 +232,22 @@ window.__loadStudentDetail = async function(student) {
         const attRate7dColor = attRate7d >= 90 ? '#2ecc71' : (attRate7d >= 70 ? '#f39c12' : '#e74c3c');
 
         let restroom7d = 0, noReturn7d = 0;
-        moveData.forEach(m => {
+        resMove.data.forEach(m => {
             if (m.move_date >= start7dIso && m.move_date <= todayIso) {
                 if (m.reason === "화장실/정수기") restroom7d++;
                 if (m.return_period === "복귀안함") noReturn7d++;
             }
         });
-        const recentMoves = moveData.slice(0, 3);
 
-        const sleepLogs = resSleep.data || [];
         let sleepCount7d = 0;
         const sleepDaysSet = new Set();
-        sleepLogs.forEach(s => {
+        resSleep.data.forEach(s => {
             if (s.sleep_date >= start7dIso && s.sleep_date <= todayIso) {
-                sleepCount7d += s.count;
-                sleepDaysSet.add(s.sleep_date);
+                sleepCount7d += s.count; sleepDaysSet.add(s.sleep_date);
             }
         });
-        const recentSleeps = sleepLogs.slice(0, 3);
 
-        const totalScore = eduData.reduce((sum, log) => sum + (EDU_SCORE_MAP[log.reason] || 0), 0);
-        const recentEdus = eduData.slice(0, 3);
+        const totalScore = resEdu.data.reduce((sum, log) => sum + (EDU_SCORE_MAP[log.reason] || 0), 0);
 
         const cardStyle = "background:#ffffff; padding:20px; border-radius:10px; border:1px solid #e2e6ea; position:relative; color:#2c3e50; box-shadow:0 2px 8px rgba(0,0,0,0.02);";
         const btnStyle = "position:absolute; right:20px; top:20px; background:#f1f2f6; color:#57606f; border:1px solid #dfe4ea; padding:5px 12px; border-radius:5px; font-size:12px; cursor:pointer; font-weight:bold;";
@@ -313,9 +261,7 @@ window.__loadStudentDetail = async function(student) {
                             좌석: <b style="color:#34495e;">${student.seat}</b> | 학번: <b style="color:#34495e;">${student.studentId}</b> | 담임: <b style="color:#34495e;">${student.teacher}</b>
                         </div>
                     </div>
-                    <div>
-                        <button onclick="document.getElementById('student-detail-section').style.display='none'" style="background:#7f8c8d; color:white; border:none; padding:8px 15px; border-radius:6px; font-weight:bold; cursor:pointer;">닫기 ✖</button>
-                    </div>
+                    <button onclick="document.getElementById('student-detail-section').style.display='none'" style="background:#7f8c8d; color:white; border:none; padding:8px 15px; border-radius:6px; font-weight:bold; cursor:pointer;">닫기 ✖</button>
                 </div>
             </div>
             
@@ -326,27 +272,19 @@ window.__loadStudentDetail = async function(student) {
                     <h4 style="margin: 0 0 15px 0; color: #2980b9; font-size:16px;">📅 출결 요약</h4>
                     <div style="margin-bottom:15px;">
                         <div style="display:flex; justify-content:space-between; font-weight:bold; color:#34495e; margin-bottom:8px;">
-                            <span style="font-size:15px;">최근 7일 출석률</span>
-                            <span style="color:${attRate7dColor}; font-size:18px;">${attRate7d}%</span>
+                            <span style="font-size:15px;">최근 7일 출석률</span><span style="color:${attRate7dColor}; font-size:18px;">${attRate7d}%</span>
                         </div>
-                        <div style="width:100%; height:8px; background:#ecf0f1; border-radius:4px; margin-bottom:10px; overflow:hidden;">
-                            <div style="width:${attRate7d}%; height:100%; background:${attRate7dColor}; border-radius:4px;"></div>
-                        </div>
+                        <div style="width:100%; height:8px; background:#ecf0f1; border-radius:4px; margin-bottom:10px; overflow:hidden;"><div style="width:${attRate7d}%; height:100%; background:${attRate7dColor}; border-radius:4px;"></div></div>
                         <div style="display:flex; justify-content:space-between; font-size:13px; color:#7f8c8d; padding-bottom:15px; border-bottom:1px dashed #ecf0f1;">
-                            <span>출석 <b style="color:#34495e;">${att7d}</b></span>
-                            <span>지각 <b style="color:#f39c12;">${late7d}</b></span>
-                            <span>결석 <b style="color:#e74c3c;">${abs7d}</b></span>
+                            <span>출석 <b style="color:#34495e;">${att7d}</b></span><span>지각 <b style="color:#f39c12;">${late7d}</b></span><span>결석 <b style="color:#e74c3c;">${abs7d}</b></span>
                         </div>
                     </div>
                     <div style="margin-bottom:15px;">
                         <div style="display:flex; justify-content:space-between; font-weight:bold; color:#34495e; margin-bottom:8px;">
-                            <span style="font-size:15px;">전체 누적 출석률</span>
-                            <span style="color:#2980b9; font-size:16px;">${attRate}%</span>
+                            <span style="font-size:15px;">전체 누적 출석률</span><span style="color:#2980b9; font-size:16px;">${attRate}%</span>
                         </div>
                         <div style="display:flex; justify-content:space-between; font-size:13px; color:#7f8c8d; padding-bottom:15px; border-bottom:1px dashed #ecf0f1;">
-                            <span>출석 <b style="color:#34495e;">${totalAtt}</b></span>
-                            <span>지각 <b style="color:#f39c12;">${totalLate}</b></span>
-                            <span>결석 <b style="color:#e74c3c;">${totalAbs}</b></span>
+                            <span>출석 <b style="color:#34495e;">${totalAtt}</b></span><span>지각 <b style="color:#f39c12;">${totalLate}</b></span><span>결석 <b style="color:#e74c3c;">${totalAbs}</b></span>
                         </div>
                     </div>
                     <div style="font-size:12px; color:#95a5a6; margin-bottom:8px;">최근 무단 결석:</div>
@@ -362,7 +300,7 @@ window.__loadStudentDetail = async function(student) {
                     <div style="margin-bottom:15px; padding-bottom:15px; border-bottom:1px dashed #ecf0f1;">복귀 안함 : <b>${noReturn7d}회</b></div>
                     <div style="font-size:12px; color:#95a5a6; margin-bottom:8px;">최근 항목:</div>
                     <ul style="margin:0; padding:0; list-style:none; font-size:13px; line-height:1.8;">
-                        ${recentMoves.length > 0 ? recentMoves.map(m => `<li><span style="color:#95a5a6; margin-right:8px;">${m.move_date}</span> <b>${m.reason}</b></li>`).join('') : '<li style="color:#95a5a6;">기록이 없습니다.</li>'}
+                        ${resMove.data.slice(0,3).length > 0 ? resMove.data.slice(0,3).map(m => `<li><span style="color:#95a5a6; margin-right:8px;">${m.move_date.slice(5)}</span> <b>${m.reason}</b></li>`).join('') : '<li style="color:#95a5a6;">기록이 없습니다.</li>'}
                     </ul>
                 </div>
 
@@ -373,7 +311,7 @@ window.__loadStudentDetail = async function(student) {
                     <div style="margin-bottom:15px; padding-bottom:15px; border-bottom:1px dashed #ecf0f1;">최근 7일 취침횟수: <b>${sleepCount7d}회</b></div>
                     <div style="font-size:12px; color:#95a5a6; margin-bottom:8px;">최근 항목:</div>
                     <ul style="margin:0; padding:0; list-style:none; font-size:13px; line-height:1.8;">
-                        ${recentSleeps.length > 0 ? recentSleeps.map(s => `<li><span style="color:#95a5a6; margin-right:8px;">${s.sleep_date}</span> ${s.period}교시 <span style="color:#8e44ad; font-weight:bold;">(${s.count}회)</span></li>`).join('') : '<li style="color:#95a5a6;">기록이 없습니다.</li>'}
+                        ${resSleep.data.slice(0,3).length > 0 ? resSleep.data.slice(0,3).map(s => `<li><span style="color:#95a5a6; margin-right:8px;">${s.sleep_date.slice(5)}</span> ${s.period}교시 <span style="color:#8e44ad; font-weight:bold;">(${s.count}회)</span></li>`).join('') : '<li style="color:#95a5a6;">기록이 없습니다.</li>'}
                     </ul>
                 </div>
 
@@ -383,19 +321,18 @@ window.__loadStudentDetail = async function(student) {
                     <div style="margin-bottom:15px; padding-bottom:15px; border-bottom:1px dashed #ecf0f1;">전체 누적점수: <b style="color:#d35400; font-size:18px;">${totalScore}점</b></div>
                     <div style="font-size:12px; color:#95a5a6; margin-bottom:8px;">최근 항목:</div>
                     <ul style="margin:0; padding:0; list-style:none; font-size:13px; line-height:1.8;">
-                        ${recentEdus.length > 0 ? recentEdus.map(e => `<li><span style="color:#95a5a6; margin-right:8px;">${e.score_date}</span> <b>${e.reason}</b> <span style="color:#e74c3c; font-weight:bold;">(+${EDU_SCORE_MAP[e.reason]||0})</span></li>`).join('') : '<li style="color:#95a5a6;">기록이 없습니다.</li>'}
+                        ${resEdu.data.slice(0,3).length > 0 ? resEdu.data.slice(0,3).map(e => `<li><span style="color:#95a5a6; margin-right:8px;">${e.score_date.slice(5)}</span> <b>${e.reason}</b> <span style="color:#e74c3c; font-weight:bold;">(+${EDU_SCORE_MAP[e.reason]||0})</span></li>`).join('') : '<li style="color:#95a5a6;">기록이 없습니다.</li>'}
                     </ul>
                 </div>
 
             </div>
 
             <div id="grade-trend-container" style="margin-top:20px;"></div>
-            
         `;
         detailSection.innerHTML = html;
         
-        // 💡 HTML이 세팅된 후 그래프 렌더링 명령!
-        window.__loadGradeTrend(student.studentId);
+        // 💡 HTML 세팅 후 성적 불러오기 실행 (학생 정보를 그대로 넘깁니다)
+        window.__loadGradeTrend(student);
 
     } catch (err) {
         detailSection.innerHTML = `<div style="color:#e74c3c; text-align:center; padding:30px;"><b>오류가 발생했습니다:</b><br>${err.message}</div>`;
@@ -403,9 +340,9 @@ window.__loadStudentDetail = async function(student) {
 };
 
 // =========================================================
-// 💡 4. 성적 추이 분석 (예상 표준점수 / 백분위 / 컷오프 스위치 적용)
+// 💡 4. 성적 추이 (백분위/표점/원점수 & 컷오프 & 다크 표)
 // =========================================================
-window.__loadGradeTrend = async function(studentId) {
+window.__loadGradeTrend = async function(student) {
     const trendContainer = document.getElementById('grade-trend-container');
     if (!trendContainer) return;
 
@@ -416,35 +353,35 @@ window.__loadGradeTrend = async function(studentId) {
             .order('created_at', { ascending: true });
 
         if (error || !allScores || allScores.length === 0) {
-            trendContainer.innerHTML = '<div style="text-align:center; padding:40px; color:#95a5a6;">등록된 성적 데이터가 없습니다.</div>';
+            trendContainer.innerHTML = '<div style="text-align:center; padding:40px; color:#95a5a6; background:#fff; border-radius:12px; border:1px solid #dee2e6;">등록된 성적 데이터가 없습니다.</div>';
             return;
         }
 
         window.__allMockScores = allScores;
-        window.__currentStudentScores = allScores.filter(s => s.student_id === studentId);
+        window.__currentStudentScores = allScores.filter(s => s.student_id === student.studentId);
+        window.__currentStudentClass = student.className || ''; // 학생의 반 정보 저장 (반별 컷오프용)
 
         if (window.__currentStudentScores.length === 0) {
-            trendContainer.innerHTML = '<div style="text-align:center; padding:40px; color:#95a5a6;">등록된 성적 데이터가 없습니다.</div>';
+            trendContainer.innerHTML = '<div style="text-align:center; padding:40px; color:#95a5a6; background:#fff; border-radius:12px; border:1px solid #dee2e6;">등록된 성적 데이터가 없습니다.</div>';
             return;
         }
 
         window.__currentGradeMode = 'pct'; // 기본값: 백분위
         window.__currentViewMode = 'graph'; 
-        window.__toggles = { topTotal: false, topChoice: false, topClass: false }; // 컷오프 상태 초기화
+        window.__toggles = { topTotal: false, topChoice: false, topClass: false }; // 컷오프 초기화
 
         window.__renderGradeTrendUI();
-    } catch (err) {
-        console.error("성적 로드 에러:", err);
-    }
+    } catch (err) { console.error("성적 로드 에러:", err); }
 };
 
 window.__renderGradeTrendUI = function() {
     const container = document.getElementById('grade-trend-container');
     
-    // 컷오프 버튼 도우미 함수 (이미지 1번 테마 맞춤)
+    // 버튼 스타일 통일
+    const btnSty = (isActive, bg, fg) => `border:1px solid #dee2e6; padding:5px 12px; border-radius:4px; cursor:pointer; font-size:11px; font-weight:bold; background:${isActive ? bg : 'transparent'}; color:${isActive ? '#fff' : fg}; transition:0.2s;`;
     const tglBtn = (key, label) => {
         const isOn = window.__toggles[key];
-        return `<button onclick="window.__toggleCutoff('${key}')" style="border:1px solid #dee2e6; padding:5px 12px; border-radius:20px; cursor:pointer; font-size:12px; font-weight:bold; background:${isOn ? '#f1f2f6' : '#fff'}; color:${isOn ? '#2c3e50' : '#7f8c8d'}; transition:0.2s;">${label}</button>`;
+        return `<button onclick="window.__toggleCutoff('${key}')" style="border:1px solid #dee2e6; padding:5px 12px; border-radius:20px; cursor:pointer; font-size:11px; font-weight:bold; background:${isOn ? '#f1f2f6' : '#fff'}; color:${isOn ? '#2c3e50' : '#7f8c8d'}; transition:0.2s;">${label}</button>`;
     };
 
     container.innerHTML = `
@@ -452,29 +389,31 @@ window.__renderGradeTrendUI = function() {
             <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:15px;">
                 <div style="display:flex; align-items:center; gap:15px;">
                     <h4 style="margin:0; color:#2c3e50; display:flex; align-items:center; gap:8px;">📈 성적 추이 <span style="font-size:12px; color:#7f8c8d; font-weight:normal;">(예상 컷 기준)</span></h4>
+                    
                     <div style="display:flex; gap:5px; background:#f1f2f6; padding:3px; border-radius:6px;">
-                        <button onclick="window.__switchGView('graph')" style="border:none; padding:4px 12px; border-radius:4px; cursor:pointer; font-size:12px; font-weight:bold; background:${window.__currentViewMode==='graph'?'#f1c40f':'transparent'}; color:${window.__currentViewMode==='graph'?'#2c3e50':'#7f8c8d'}; transition:0.2s;">그래프</button>
-                        <button onclick="window.__switchGView('table')" style="border:none; padding:4px 12px; border-radius:4px; cursor:pointer; font-size:12px; font-weight:bold; background:${window.__currentViewMode==='table'?'#f1c40f':'transparent'}; color:${window.__currentViewMode==='table'?'#2c3e50':'#7f8c8d'}; transition:0.2s;">표</button>
+                        <button onclick="window.__switchGView('graph')" style="${btnSty(window.__currentViewMode==='graph', '#f1c40f', '#7f8c8d')} color:${window.__currentViewMode==='graph'?'#2c3e50':'#7f8c8d'};">그래프</button>
+                        <button onclick="window.__switchGView('table')" style="${btnSty(window.__currentViewMode==='table', '#f1c40f', '#7f8c8d')} color:${window.__currentViewMode==='table'?'#2c3e50':'#7f8c8d'};">표</button>
                     </div>
+                    
                     <div style="display:flex; gap:5px; background:#f1f2f6; padding:3px; border-radius:6px; margin-left:10px;">
-                        <button onclick="window.__switchGMode('pct')" style="border:none; padding:4px 12px; border-radius:4px; cursor:pointer; font-size:12px; font-weight:bold; background:${window.__currentGradeMode==='pct'?'#3498db':'transparent'}; color:${window.__currentGradeMode==='pct'?'#fff':'#7f8c8d'}; transition:0.2s;">백분위</button>
-                        <button onclick="window.__switchGMode('raw')" style="border:none; padding:4px 12px; border-radius:4px; cursor:pointer; font-size:12px; font-weight:bold; background:${window.__currentGradeMode==='raw'?'#3498db':'transparent'}; color:${window.__currentGradeMode==='raw'?'#fff':'#7f8c8d'}; transition:0.2s;">원점수</button>
+                        <button onclick="window.__switchGMode('pct')" style="${btnSty(window.__currentGradeMode==='pct', '#3498db', '#7f8c8d')}">백분위</button>
+                        <button onclick="window.__switchGMode('raw')" style="${btnSty(window.__currentGradeMode==='raw', '#3498db', '#7f8c8d')}">원점수</button>
                     </div>
                 </div>
             </div>
             
             <div style="display:flex; flex-wrap:wrap; gap:8px; margin-bottom:20px; ${window.__currentViewMode==='table' ? 'display:none;' : ''}">
-                ${tglBtn('topTotal', '전체 상위 30% OFF')}
-                ${tglBtn('topChoice', '선택 상위 30% OFF')}
-                ${tglBtn('topClass', '반별 상위 30% OFF')}
-                <button style="border:1px solid #dee2e6; padding:5px 12px; border-radius:20px; font-size:12px; color:#bdc3c7; background:#fff; cursor:not-allowed;">HS반 30% OFF</button>
-                <button style="border:1px solid #dee2e6; padding:5px 12px; border-radius:20px; font-size:12px; color:#bdc3c7; background:#fff; cursor:not-allowed;">그린 30% OFF</button>
-                <button style="border:1px solid #dee2e6; padding:5px 12px; border-radius:20px; font-size:12px; color:#bdc3c7; background:#fff; cursor:not-allowed;">블루 30% OFF</button>
-                <button style="border:1px solid #dee2e6; padding:5px 12px; border-radius:20px; font-size:12px; color:#bdc3c7; background:#fff; cursor:not-allowed;">서/의치대 30% OFF</button>
-                <button style="border:1px solid #dee2e6; padding:5px 12px; border-radius:20px; font-size:12px; color:#bdc3c7; background:#fff; cursor:not-allowed;">연고대 30% OFF</button>
+                ${tglBtn('topTotal', '전체 상위 30% ' + (window.__toggles.topTotal?'ON':'OFF'))}
+                ${tglBtn('topChoice', '선택 상위 30% ' + (window.__toggles.topChoice?'ON':'OFF'))}
+                ${tglBtn('topClass', '반별 상위 30% ' + (window.__toggles.topClass?'ON':'OFF'))}
+                <button style="border:1px solid #dee2e6; padding:5px 12px; border-radius:20px; font-size:11px; color:#bdc3c7; background:#fff; cursor:not-allowed;">HS반 30% OFF</button>
+                <button style="border:1px solid #dee2e6; padding:5px 12px; border-radius:20px; font-size:11px; color:#bdc3c7; background:#fff; cursor:not-allowed;">그린 30% OFF</button>
+                <button style="border:1px solid #dee2e6; padding:5px 12px; border-radius:20px; font-size:11px; color:#bdc3c7; background:#fff; cursor:not-allowed;">블루 30% OFF</button>
+                <button style="border:1px solid #dee2e6; padding:5px 12px; border-radius:20px; font-size:11px; color:#bdc3c7; background:#fff; cursor:not-allowed;">서/의치대 30% OFF</button>
+                <button style="border:1px solid #dee2e6; padding:5px 12px; border-radius:20px; font-size:11px; color:#bdc3c7; background:#fff; cursor:not-allowed;">연고대 30% OFF</button>
             </div>
             
-            <div id="grade-display-area" style="min-height:350px; padding:10px;"></div>
+            <div id="grade-display-area" style="min-height:350px;"></div>
         </div>
     `;
     window.__renderGradeDisplay();
@@ -494,7 +433,6 @@ window.__renderGradeDisplay = function() {
 
     const getVal = (s, subj) => {
         if (mode === 'pct') return s[`${subj}_exp_pct`] || 0;
-        if (mode === 'std') return s[`${subj}_exp_std`] || 0;
         return s[`${subj}_raw_total`] !== undefined ? (s[`${subj}_raw_total`] || 0) : (s[`${subj}_raw`] || 0);
     };
 
@@ -504,7 +442,7 @@ window.__renderGradeDisplay = function() {
             const choiceKey = subj === 'kor' ? 'kor_choice' : (subj === 'math' ? 'math_choice' : (subj === 'tam1' ? 'tam1_name' : 'tam2_name'));
             pool = pool.filter(s => s[choiceKey] === myScore[choiceKey]);
         } else if (filterMode === 'topClass') {
-            pool = pool.filter(s => s.class_name === myScore.class_name);
+            pool = pool.filter(s => s.class_name === window.__currentStudentClass);
         }
         let vals = pool.map(s => s[valKey] || 0).sort((a,b) => b-a);
         if (vals.length === 0) return null;
@@ -514,7 +452,7 @@ window.__renderGradeDisplay = function() {
     };
 
     if (view === 'graph') {
-        area.innerHTML = '<canvas id="gradeChart" style="max-height:350px;"></canvas>';
+        area.innerHTML = '<canvas id="gradeChart"></canvas>';
         const ctx = document.getElementById('gradeChart').getContext('2d');
         
         const labels = scores.map(s => s.exam_label);
@@ -522,26 +460,24 @@ window.__renderGradeDisplay = function() {
         const colors = { kor:'#3498db', math:'#e74c3c', tam1:'#2ecc71', tam2:'#f1c40f', eng:'#9b59b6' };
         
         const subjs = [
-            {id:'kor', name:'국어(선택)'}, 
-            {id:'math', name:'수학(선택)'}, 
-            {id:'tam1', name:'탐구1(과목명)'}, 
-            {id:'tam2', name:'탐구2(과목)'},
-            {id:'eng', name:'영어'}
+            {id:'kor', name:'국어(선택)'}, {id:'math', name:'수학(선택)'}, 
+            {id:'tam1', name:'탐구1(과목명)'}, {id:'tam2', name:'탐구2(과목)'}, {id:'eng', name:'영어'}
         ];
 
         subjs.forEach(sbj => {
-            if(sbj.id === 'eng' && mode !== 'raw') return; // 영어는 원점수/등급만 있음
+            if(sbj.id === 'eng' && mode !== 'raw') return; // 영어는 원점수(등급)만
             
-            const valKey = mode === 'pct' ? `${sbj.id}_exp_pct` : (mode === 'std' ? `${sbj.id}_exp_std` : (sbj.id.startsWith('tam') || sbj.id==='eng' ? `${sbj.id}_raw` : `${sbj.id}_raw_total`));
+            const valKey = mode === 'pct' ? `${sbj.id}_exp_pct` : (sbj.id.startsWith('tam') || sbj.id==='eng' ? `${sbj.id}_raw` : `${sbj.id}_raw_total`);
             
+            // 1. 내 성적 (실선)
             datasets.push({
                 label: sbj.name,
                 data: scores.map(s => sbj.id==='eng' ? (s.eng_raw||0) : getVal(s, sbj.id)),
-                borderColor: colors[sbj.id],
-                backgroundColor: colors[sbj.id],
-                tension: 0.1, borderWidth: 2, pointRadius: 4
+                borderColor: colors[sbj.id], backgroundColor: colors[sbj.id],
+                tension: 0.1, borderWidth: 2, pointRadius: 4, fill: false
             });
 
+            // 2. 컷오프 성적 (점선)
             if (sbj.id !== 'eng') {
                 if (toggles.topTotal) datasets.push({ label: `${sbj.name} (전체상위30%)`, data: scores.map(s => getTop30(s.exam_label, sbj.id, valKey, 'topTotal', s)), borderColor: colors[sbj.id], borderDash: [5, 5], borderWidth: 1, pointRadius: 0, fill: false });
                 if (toggles.topChoice) datasets.push({ label: `${sbj.name} (선택상위30%)`, data: scores.map(s => getTop30(s.exam_label, sbj.id, valKey, 'topChoice', s)), borderColor: '#9b59b6', borderDash: [3, 3], borderWidth: 1, pointRadius: 0, fill: false });
@@ -554,16 +490,13 @@ window.__renderGradeDisplay = function() {
             type: 'line', data: { labels, datasets },
             options: {
                 responsive: true, maintainAspectRatio: false,
-                scales: {
-                    y: { beginAtZero: mode==='pct', max: mode==='pct'?100:null, grid: { color: '#f1f2f6' } },
-                    x: { grid: { display: false } }
-                },
+                scales: { y: { beginAtZero: mode==='pct', max: mode==='pct'?100:null, grid: { color: '#f1f2f6' } }, x: { grid: { display: false } } },
                 plugins: { legend: { position: 'bottom', labels: { boxWidth: 10, font: { size: 11 } } } }
             }
         });
 
     } else {
-        // 💡 표(Table) 형식 다크테마 스타일 렌더링
+        // 💡 표(Table) 형식 다크테마 스타일 렌더링 (이미지 2번과 동일)
         const v = (val) => val === null || val === undefined ? '-' : val;
         
         let h = `
@@ -612,7 +545,7 @@ window.__switchGView = function(v) { window.__currentViewMode = v; window.__rend
 window.__switchGMode = function(m) { window.__currentGradeMode = m; window.__renderGradeTrendUI(); };
 
 // =========================================================
-// 💡 5. 상세 모달창 (주차별 타임테이블 등)
+// 💡 5. 상세 모달창 (주차별 타임테이블 및 필터 테이블)
 // =========================================================
 window.__openDetailModal = async function(type, studentId, studentName) {
     let modalOverlay = document.getElementById('custom-detail-modal');
@@ -821,7 +754,6 @@ window.__openDetailModal = async function(type, studentId, studentName) {
                             memo = extraMemo || baseMemo || '-';
 
                             if (cellData) {
-                                // 💡 [핵심] 지각 우선 판별
                                 const isLate = cellData.status === '2' || memo.includes('지각');
                                 if (isLate) statusHtml = `<div class="st-2">지각</div>`;
                                 else if (cellData.status === '1') statusHtml = `<div class="st-1">출석</div>`;
@@ -950,3 +882,5 @@ window.__openDetailModal = async function(type, studentId, studentName) {
         `;
     }
 };
+
+init();
