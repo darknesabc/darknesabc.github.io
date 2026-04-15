@@ -61,14 +61,17 @@ async function init() {
             else if (status.includes("3")) typeClass = "3";
             else if (status === "미입력") typeClass = "none"; // 데이터 없을 때 스타일
 
-            dashboard.innerHTML += `
-                <div class="card status-${typeClass}">
-                    <div class="seat">${s.seat_no}</div>
-                    <div class="name">${s.name || '빈자리'}</div>
-                    <div class="status-badge badge-${typeClass}">${status}</div>
-                    <div style="font-size:11px; color:#aaa; margin-top:10px;">${s.teacher_name}</div>
-                </div>
-            `;
+            // admin.js 렌더링 부분
+dashboard.innerHTML += `
+    <div class="card status-${status}"> <div class="seat">${s.seat_no}</div>
+        <div class="name">${s.name}</div>
+        <div class="status-badge badge-${status}">${status || '미입력'}</div>
+        
+        ${memo ? `<div class="memo-text">${memo}</div>` : ''}
+        
+        <div class="teacher-name">${s.teacher_name}</div>
+    </div>
+`;
         });
 
     } catch (err) {
