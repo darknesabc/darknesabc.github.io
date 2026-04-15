@@ -18,3 +18,15 @@ header { text-align: center; margin-bottom: 30px; }
 .badge-1 { background: #eafaf1; color: #2ecc71; }
 .badge-3 { background: #fdedec; color: #e74c3c; }
 .badge-text { background: #ebf5fb; color: #3498db; }
+
+/* 로그인 박스 스타일 */
+.login-container { display: flex; justify-content: center; align-items: center; height: 100vh; background: #f0f2f5; }
+.login-box { background: white; padding: 40px; border-radius: 15px; box-shadow: 0 10px 25px rgba(0,0,0,0.1); width: 100%; max-width: 350px; text-align: center; }
+.login-box h2 { margin-bottom: 25px; color: #333; }
+.login-box input { width: 100%; padding: 12px; margin-bottom: 15px; border: 1px solid #ddd; border-radius: 8px; box-sizing: border-box; }
+.login-box button { width: 100%; padding: 12px; background: #3498db; color: white; border: none; border-radius: 8px; cursor: pointer; font-weight: bold; }
+#login-msg { color: #e74c3c; font-size: 13px; margin-top: 15px; }
+
+/* 헤더 상단 로그아웃 버튼 등 */
+.header-top { display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px; }
+.btn-logout { background: #95a5a6; color: white; border: none; padding: 5px 15px; border-radius: 5px; cursor: pointer; }
