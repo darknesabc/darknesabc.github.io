@@ -174,7 +174,7 @@ async function init() {
 init();
 
 // =========================================================
-// 💡 학생 카드 클릭 시 하단에 '다크 테마 4분할 상세페이지'를 펼쳐주는 함수
+// 💡 1. 학생 카드 클릭 시 하단에 '라이트 테마 4분할 상세페이지'를 펼쳐주는 함수
 // =========================================================
 window.__loadStudentDetail = async function(student) {
     if (!student || !student.studentId) return;
@@ -186,18 +186,18 @@ window.__loadStudentDetail = async function(student) {
         detailSection.style.marginTop = '40px';
         detailSection.style.marginBottom = '60px';
         detailSection.style.padding = '25px';
-        detailSection.style.backgroundColor = '#1e222d'; // 기존 다크 테마 배경색
+        detailSection.style.backgroundColor = '#f8f9fa'; // 화이트-그레이 라이트 배경
         detailSection.style.borderRadius = '12px';
-        detailSection.style.boxShadow = '0 10px 30px rgba(0,0,0,0.3)';
+        detailSection.style.border = '1px solid #dee2e6'; // 부드러운 테두리
+        detailSection.style.boxShadow = '0 8px 24px rgba(0,0,0,0.05)'; // 가벼운 그림자
         document.getElementById('admin-content').appendChild(detailSection);
     }
 
     detailSection.style.display = 'block';
-    detailSection.innerHTML = `<div style="text-align:center; padding:50px; font-size:18px; color:#a5b1c2;">⏳ <b>${student.name}</b> 학생의 상세 데이터를 빛의 속도로 불러오는 중입니다...</div>`;
+    detailSection.innerHTML = `<div style="text-align:center; padding:50px; font-size:18px; color:#7f8c8d;">⏳ <b>${student.name}</b> 학생의 상세 데이터를 불러오는 중입니다...</div>`;
     detailSection.scrollIntoView({ behavior: 'smooth', block: 'start' });
 
     try {
-        // 1. 수퍼베이스에서 4가지 데이터(이동, 교육점수, 취침, 출결)를 동시에 가져옵니다.
         const [resMove, resEdu, resSleep, resAtt] = await Promise.all([
             _supabase.from('move_log').select('*').eq('student_id', student.studentId).order('move_date', {ascending: false}).order('move_time', {ascending: false}),
             _supabase.from('edu_score_log').select('*').eq('student_id', student.studentId).order('score_date', {ascending: false}),
@@ -205,14 +205,12 @@ window.__loadStudentDetail = async function(student) {
             _supabase.from('attendance').select('*').eq('student_id', student.studentId).order('attendance_date', {ascending: false})
         ]);
 
-        // 2. 날짜 기준 (최근 7일 계산용)
         const today = new Date();
         const start7d = new Date();
         start7d.setDate(today.getDate() - 6);
         const todayIso = today.toISOString().split('T')[0];
         const start7dIso = start7d.toISOString().split('T')[0];
 
-        // 3. 출결 데이터 가공
         const attLogs = resAtt.data || [];
         let totalAtt = 0, totalAbs = 0;
         const recentAbsences = [];
@@ -220,13 +218,12 @@ window.__loadStudentDetail = async function(student) {
             if (a.status_code === '1') totalAtt++;
             if (a.status_code === '3') {
                 totalAbs++;
-                if (!a.memo && recentAbsences.length < 3) recentAbsences.push(a); // 스케줄 없는 순수 결석만 최근 결석으로 노출
+                if (!a.memo && recentAbsences.length < 3) recentAbsences.push(a);
             }
         });
         const attRate = (totalAtt + totalAbs) > 0 ? Math.round((totalAtt / (totalAtt + totalAbs)) * 100) : 0;
         const attRateColor = attRate >= 90 ? '#2ecc71' : (attRate >= 70 ? '#f39c12' : '#e74c3c');
 
-        // 4. 이동 데이터 가공 (최근 7일 통계 포함)
         const moveLogs = resMove.data || [];
         let restroom7d = 0, noReturn7d = 0;
         moveLogs.forEach(m => {
@@ -237,7 +234,6 @@ window.__loadStudentDetail = async function(student) {
         });
         const recentMoves = moveLogs.slice(0, 3);
 
-        // 5. 취침 데이터 가공
         const sleepLogs = resSleep.data || [];
         let sleepCount7d = 0;
         const sleepDaysSet = new Set();
@@ -249,30 +245,28 @@ window.__loadStudentDetail = async function(student) {
         });
         const recentSleeps = sleepLogs.slice(0, 3);
 
-        // 6. 교육점수 가공
         const eduLogs = resEdu.data || [];
         const totalScore = eduLogs.reduce((sum, log) => sum + (EDU_SCORE_MAP[log.reason] || 0), 0);
         const recentEdus = eduLogs.slice(0, 3);
 
-        // 공통 카드 스타일
-        const cardStyle = "background:#2b303b; padding:20px; border-radius:10px; border:1px solid #3c404b; position:relative; color:#d1d8e0;";
-        const btnStyle = "position:absolute; right:20px; top:20px; background:#4a5468; color:white; border:none; padding:5px 12px; border-radius:5px; font-size:12px; cursor:pointer; transition:0.2s;";
+        // 💡 라이트 테마 공통 카드 스타일
+        const cardStyle = "background:#ffffff; padding:20px; border-radius:10px; border:1px solid #e2e6ea; position:relative; color:#2c3e50; box-shadow:0 2px 8px rgba(0,0,0,0.02);";
+        const btnStyle = "position:absolute; right:20px; top:20px; background:#f1f2f6; color:#57606f; border:1px solid #dfe4ea; padding:5px 12px; border-radius:5px; font-size:12px; cursor:pointer; font-weight:bold;";
 
-        // 7. 화면 HTML 조립
         let html = `
-            <div style="border-bottom: 1px solid #3c404b; padding-bottom: 20px; margin-bottom: 25px;">
+            <div style="border-bottom: 2px solid #e9ecef; padding-bottom: 20px; margin-bottom: 25px;">
                 <div style="display:flex; justify-content:space-between; align-items:flex-start;">
                     <div>
-                        <h2 style="margin: 0 0 10px 0; color: #ffffff; font-size:24px;">${student.name} <span style="font-size:14px; color:#e74c3c; background:rgba(231,76,60,0.1); padding:3px 8px; border-radius:4px; margin-left:10px;">🚨 출결위험 (${attRate}%)</span></h2>
-                        <div style="color:#a5b1c2; font-size:14px; line-height:1.6;">
-                            좌석: <b style="color:#fff;">${student.seat}</b><br>
-                            학번: <b style="color:#fff;">${student.studentId}</b><br>
-                            담임: <b style="color:#fff;">${student.teacher}</b>
+                        <h2 style="margin: 0 0 10px 0; color: #2c3e50; font-size:24px;">${student.name} <span style="font-size:14px; color:#e74c3c; background:rgba(231,76,60,0.1); padding:3px 8px; border-radius:4px; margin-left:10px;">🚨 출결위험 (${attRate}%)</span></h2>
+                        <div style="color:#7f8c8d; font-size:14px; line-height:1.6;">
+                            좌석: <b style="color:#34495e;">${student.seat}</b><br>
+                            학번: <b style="color:#34495e;">${student.studentId}</b><br>
+                            담임: <b style="color:#34495e;">${student.teacher}</b>
                         </div>
                     </div>
                     <div>
                         <button onclick="alert('비밀번호 초기화 기능은 준비 중입니다.')" style="background:#e74c3c; color:white; border:none; padding:8px 15px; border-radius:6px; font-weight:bold; cursor:pointer; margin-right:10px;">🔒 비밀번호 초기화</button>
-                        <button onclick="document.getElementById('student-detail-section').style.display='none'" style="background:#4a5468; color:white; border:none; padding:8px 15px; border-radius:6px; font-weight:bold; cursor:pointer;">닫기 ✖</button>
+                        <button onclick="document.getElementById('student-detail-section').style.display='none'" style="background:#7f8c8d; color:white; border:none; padding:8px 15px; border-radius:6px; font-weight:bold; cursor:pointer;">닫기 ✖</button>
                     </div>
                 </div>
             </div>
@@ -280,61 +274,159 @@ window.__loadStudentDetail = async function(student) {
             <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 20px;">
                 
                 <div style="${cardStyle}">
-                    <button style="${btnStyle}" onclick="window.__openDetailModal('attendance', '${student.studentId}')">상세</button>
-                    <h4 style="margin: 0 0 15px 0; color: #ffffff; font-size:16px;">📅 출결 요약</h4>
-                    <div style="margin-bottom:15px;">전체 누적 출석률 <span style="float:right; font-size:18px; font-weight:bold; color:${attRateColor};">${attRate}%</span></div>
-                    <div style="font-size:12px; color:#a5b1c2; margin-bottom:8px;">최근 결석:</div>
+                    <button style="${btnStyle}" onclick="window.__openDetailModal('attendance', '${student.studentId}', '${student.name}')">상세</button>
+                    <h4 style="margin: 0 0 15px 0; color: #2980b9; font-size:16px;">📅 출결 요약</h4>
+                    <div style="margin-bottom:15px; color:#34495e; font-weight:bold;">전체 누적 출석률 <span style="float:right; font-size:18px; color:${attRateColor};">${attRate}%</span></div>
+                    <div style="font-size:12px; color:#95a5a6; margin-bottom:8px;">최근 결석:</div>
                     <ul style="margin:0; padding-left:15px; font-size:13px; color:#e74c3c; line-height:1.8;">
-                        ${recentAbsences.length > 0 ? recentAbsences.map(a => `<li>${a.attendance_date} ${a.period}교시</li>`).join('') : '<li style="color:#a5b1c2; list-style:none; margin-left:-15px;">최근 결석이 없습니다.</li>'}
+                        ${recentAbsences.length > 0 ? recentAbsences.map(a => `<li>${a.attendance_date} ${a.period}교시</li>`).join('') : '<li style="color:#95a5a6; list-style:none; margin-left:-15px;">최근 결석이 없습니다.</li>'}
                     </ul>
                 </div>
 
                 <div style="${cardStyle}">
-                    <button style="${btnStyle}" onclick="window.__openDetailModal('move', '${student.studentId}')">상세</button>
-                    <h4 style="margin: 0 0 15px 0; color: #ffffff; font-size:16px;">🚶 이동 요약 <span style="font-size:12px; color:#a5b1c2; font-weight:normal;">(최근 7일)</span></h4>
-                    <div style="margin-bottom:8px;">화장실 : <b style="color:#fff;">${restroom7d}회</b></div>
-                    <div style="margin-bottom:15px;">복귀 안함 : <b style="color:#fff;">${noReturn7d}회</b></div>
-                    <div style="font-size:12px; color:#a5b1c2; margin-bottom:8px;">최근 항목:</div>
+                    <button style="${btnStyle}" onclick="window.__openDetailModal('move', '${student.studentId}', '${student.name}')">상세</button>
+                    <h4 style="margin: 0 0 15px 0; color: #27ae60; font-size:16px;">🚶 이동 요약 <span style="font-size:12px; color:#95a5a6; font-weight:normal;">(최근 7일)</span></h4>
+                    <div style="margin-bottom:8px;">화장실 : <b>${restroom7d}회</b></div>
+                    <div style="margin-bottom:15px;">복귀 안함 : <b>${noReturn7d}회</b></div>
+                    <div style="font-size:12px; color:#95a5a6; margin-bottom:8px;">최근 항목:</div>
                     <ul style="margin:0; padding:0; list-style:none; font-size:13px; line-height:1.8;">
-                        ${recentMoves.length > 0 ? recentMoves.map(m => `<li><span style="color:#a5b1c2;">${m.move_date}</span> <b style="color:#fff;">${m.reason}</b></li>`).join('') : '<li style="color:#a5b1c2;">기록이 없습니다.</li>'}
+                        ${recentMoves.length > 0 ? recentMoves.map(m => `<li><span style="color:#95a5a6; margin-right:8px;">${m.move_date}</span> <b>${m.reason}</b></li>`).join('') : '<li style="color:#95a5a6;">기록이 없습니다.</li>'}
                     </ul>
                 </div>
 
                 <div style="${cardStyle}">
-                    <button style="${btnStyle}" onclick="window.__openDetailModal('sleep', '${student.studentId}')">상세</button>
-                    <h4 style="margin: 0 0 15px 0; color: #ffffff; font-size:16px;">💤 취침 요약</h4>
-                    <div style="margin-bottom:8px;">최근 7일 취침일수: <b style="color:#fff;">${sleepDaysSet.size}일</b></div>
-                    <div style="margin-bottom:15px;">최근 7일 취침횟수: <b style="color:#fff;">${sleepCount7d}회</b></div>
-                    <div style="font-size:12px; color:#a5b1c2; margin-bottom:8px;">최근 항목:</div>
+                    <button style="${btnStyle}" onclick="window.__openDetailModal('sleep', '${student.studentId}', '${student.name}')">상세</button>
+                    <h4 style="margin: 0 0 15px 0; color: #8e44ad; font-size:16px;">💤 취침 요약</h4>
+                    <div style="margin-bottom:8px;">최근 7일 취침일수: <b>${sleepDaysSet.size}일</b></div>
+                    <div style="margin-bottom:15px;">최근 7일 취침횟수: <b>${sleepCount7d}회</b></div>
+                    <div style="font-size:12px; color:#95a5a6; margin-bottom:8px;">최근 항목:</div>
                     <ul style="margin:0; padding:0; list-style:none; font-size:13px; line-height:1.8;">
-                        ${recentSleeps.length > 0 ? recentSleeps.map(s => `<li><span style="color:#a5b1c2;">${s.sleep_date}</span> ${s.period}교시 <span style="color:#9b59b6;">(${s.count}회)</span></li>`).join('') : '<li style="color:#a5b1c2;">기록이 없습니다.</li>'}
+                        ${recentSleeps.length > 0 ? recentSleeps.map(s => `<li><span style="color:#95a5a6; margin-right:8px;">${s.sleep_date}</span> ${s.period}교시 <span style="color:#8e44ad; font-weight:bold;">(${s.count}회)</span></li>`).join('') : '<li style="color:#95a5a6;">기록이 없습니다.</li>'}
                     </ul>
                 </div>
 
                 <div style="${cardStyle}">
-                    <button style="${btnStyle}" onclick="window.__openDetailModal('eduscore', '${student.studentId}')">상세</button>
-                    <h4 style="margin: 0 0 15px 0; color: #ffffff; font-size:16px;">🚨 교육점수 요약</h4>
-                    <div style="margin-bottom:15px;">전체 누적점수: <b style="color:#f39c12; font-size:18px;">${totalScore}점</b></div>
-                    <div style="font-size:12px; color:#a5b1c2; margin-bottom:8px;">최근 항목:</div>
+                    <button style="${btnStyle}" onclick="window.__openDetailModal('eduscore', '${student.studentId}', '${student.name}')">상세</button>
+                    <h4 style="margin: 0 0 15px 0; color: #e67e22; font-size:16px;">🚨 교육점수 요약</h4>
+                    <div style="margin-bottom:15px;">전체 누적점수: <b style="color:#d35400; font-size:18px;">${totalScore}점</b></div>
+                    <div style="font-size:12px; color:#95a5a6; margin-bottom:8px;">최근 항목:</div>
                     <ul style="margin:0; padding:0; list-style:none; font-size:13px; line-height:1.8;">
-                        ${recentEdus.length > 0 ? recentEdus.map(e => `<li><span style="color:#a5b1c2;">${e.score_date}</span> <b style="color:#fff;">${e.reason}</b> <span style="color:#e74c3c;">(+${EDU_SCORE_MAP[e.reason]||0})</span></li>`).join('') : '<li style="color:#a5b1c2;">기록이 없습니다.</li>'}
+                        ${recentEdus.length > 0 ? recentEdus.map(e => `<li><span style="color:#95a5a6; margin-right:8px;">${e.score_date}</span> <b>${e.reason}</b> <span style="color:#e74c3c; font-weight:bold;">(+${EDU_SCORE_MAP[e.reason]||0})</span></li>`).join('') : '<li style="color:#95a5a6;">기록이 없습니다.</li>'}
                     </ul>
                 </div>
 
             </div>
         `;
-        
         detailSection.innerHTML = html;
-
     } catch (err) {
         detailSection.innerHTML = `<div style="color:#e74c3c; text-align:center; padding:30px;"><b>오류가 발생했습니다:</b><br>${err.message}</div>`;
     }
 };
 
-// 💡 각 카드의 [상세] 버튼 클릭 시 실행되는 함수
-window.__openDetailModal = function(type, studentId) {
-    // 여기에 기존에 사용하시던 모달창 호출 코드를 연결하시면 됩니다!
-    // 예: if(type === 'attendance') showAttendanceModal(studentId);
-    
-    alert(`학번 [${studentId}] 학생의 [${type}] 상세 페이지 호출 로직을 이 곳에 연결하세요!`);
+// =========================================================
+// 💡 2. '상세' 버튼 클릭 시 전체 내역을 팝업으로 보여주는 함수
+// =========================================================
+window.__openDetailModal = async function(type, studentId, studentName) {
+    // 1. 팝업(모달) 배경과 컨테이너 생성
+    let modalOverlay = document.getElementById('custom-detail-modal');
+    if (!modalOverlay) {
+        modalOverlay = document.createElement('div');
+        modalOverlay.id = 'custom-detail-modal';
+        modalOverlay.style.position = 'fixed';
+        modalOverlay.style.top = '0'; modalOverlay.style.left = '0';
+        modalOverlay.style.width = '100%'; modalOverlay.style.height = '100%';
+        modalOverlay.style.backgroundColor = 'rgba(0,0,0,0.6)';
+        modalOverlay.style.zIndex = '9999';
+        modalOverlay.style.display = 'flex';
+        modalOverlay.style.justifyContent = 'center';
+        modalOverlay.style.alignItems = 'center';
+        document.body.appendChild(modalOverlay);
+    }
+    modalOverlay.style.display = 'flex';
+
+    // 타이틀 맵핑
+    const titleMap = {
+        'attendance': '📅 출결 전체 내역',
+        'move': '🚶 이동 전체 내역',
+        'sleep': '💤 취침 전체 내역',
+        'eduscore': '🚨 교육점수(벌점) 전체 내역'
+    };
+
+    // 로딩 화면 표시
+    modalOverlay.innerHTML = `
+        <div style="background:#fff; width:90%; max-width:500px; max-height:80vh; border-radius:12px; padding:25px; box-shadow:0 10px 30px rgba(0,0,0,0.2); display:flex; flex-direction:column;">
+            <div style="display:flex; justify-content:space-between; align-items:center; border-bottom:1px solid #eee; padding-bottom:15px; margin-bottom:15px;">
+                <h3 style="margin:0; color:#2c3e50;">${titleMap[type]} - ${studentName}</h3>
+                <button onclick="document.getElementById('custom-detail-modal').style.display='none'" style="background:none; border:none; font-size:20px; cursor:pointer; color:#7f8c8d;">✖</button>
+            </div>
+            <div style="flex:1; overflow-y:auto; text-align:center; padding:30px; color:#7f8c8d;">⏳ 데이터를 불러오는 중입니다...</div>
+        </div>
+    `;
+
+    try {
+        let contentHtml = '<ul style="list-style:none; padding:0; margin:0; line-height:2.0; font-size:14px; color:#34495e;">';
+        
+        // 2. 항목별 수퍼베이스 데이터 조회 및 HTML 생성
+        if (type === 'attendance') {
+            const { data } = await _supabase.from('attendance').select('*').eq('student_id', studentId).order('attendance_date', {ascending: false}).order('period', {ascending: true});
+            if (!data || data.length === 0) contentHtml += '<li>기록이 없습니다.</li>';
+            else {
+                data.forEach(d => {
+                    let statusStr = d.status_code === '1' ? '<b style="color:#27ae60;">출석</b>' : (d.status_code === '3' ? '<b style="color:#e74c3c;">결석</b>' : d.status_code);
+                    let memoStr = d.memo ? ` <span style="color:#7f8c8d; font-size:12px;">(${d.memo})</span>` : '';
+                    contentHtml += `<li style="border-bottom:1px solid #f1f2f6; padding:8px 0;"><span style="display:inline-block; width:100px; color:#7f8c8d;">${d.attendance_date}</span> <span style="display:inline-block; width:50px;">${d.period}교시</span> ${statusStr}${memoStr}</li>`;
+                });
+            }
+        } 
+        else if (type === 'move') {
+            const { data } = await _supabase.from('move_log').select('*').eq('student_id', studentId).order('move_date', {ascending: false}).order('move_time', {ascending: false});
+            if (!data || data.length === 0) contentHtml += '<li>기록이 없습니다.</li>';
+            else {
+                data.forEach(d => {
+                    contentHtml += `<li style="border-bottom:1px solid #f1f2f6; padding:8px 0;"><span style="display:inline-block; width:130px; color:#7f8c8d;">${d.move_date} ${d.move_time}</span> <b>${d.reason}</b> <span style="color:#95a5a6; font-size:12px; margin-left:5px;">(복귀: ${d.return_period || '-'})</span></li>`;
+                });
+            }
+        }
+        else if (type === 'sleep') {
+            const { data } = await _supabase.from('sleep_log').select('*').eq('student_id', studentId).order('sleep_date', {ascending: false});
+            if (!data || data.length === 0) contentHtml += '<li>기록이 없습니다.</li>';
+            else {
+                data.forEach(d => {
+                    contentHtml += `<li style="border-bottom:1px solid #f1f2f6; padding:8px 0;"><span style="display:inline-block; width:100px; color:#7f8c8d;">${d.sleep_date}</span> <span style="display:inline-block; width:50px;">${d.period}교시</span> <b style="color:#8e44ad;">${d.count}회 적발</b></li>`;
+                });
+            }
+        }
+        else if (type === 'eduscore') {
+            const { data } = await _supabase.from('edu_score_log').select('*').eq('student_id', studentId).order('score_date', {ascending: false});
+            if (!data || data.length === 0) contentHtml += '<li>기록이 없습니다.</li>';
+            else {
+                data.forEach(d => {
+                    let score = EDU_SCORE_MAP[d.reason] || 0;
+                    contentHtml += `<li style="border-bottom:1px solid #f1f2f6; padding:8px 0;"><span style="display:inline-block; width:100px; color:#7f8c8d;">${d.score_date}</span> <b>${d.reason}</b> <span style="color:#e74c3c; font-weight:bold; margin-left:10px;">+${score}점</span></li>`;
+                });
+            }
+        }
+        contentHtml += '</ul>';
+
+        // 3. 만들어진 목록을 팝업창에 삽입
+        modalOverlay.innerHTML = `
+            <div style="background:#fff; width:90%; max-width:500px; max-height:80vh; border-radius:12px; padding:25px; box-shadow:0 10px 30px rgba(0,0,0,0.2); display:flex; flex-direction:column;">
+                <div style="display:flex; justify-content:space-between; align-items:center; border-bottom:1px solid #eee; padding-bottom:15px; margin-bottom:15px;">
+                    <h3 style="margin:0; color:#2c3e50;">${titleMap[type]} - ${studentName}</h3>
+                    <button onclick="document.getElementById('custom-detail-modal').style.display='none'" style="background:none; border:none; font-size:20px; cursor:pointer; color:#7f8c8d; padding:0;">✖</button>
+                </div>
+                <div style="flex:1; overflow-y:auto; padding-right:10px;">
+                    ${contentHtml}
+                </div>
+            </div>
+        `;
+    } catch (err) {
+        modalOverlay.innerHTML = `
+            <div style="background:#fff; width:90%; max-width:500px; border-radius:12px; padding:25px; text-align:center;">
+                <h3 style="color:#e74c3c;">오류 발생</h3>
+                <p>${err.message}</p>
+                <button onclick="document.getElementById('custom-detail-modal').style.display='none'" style="margin-top:15px; padding:8px 20px; border:none; background:#7f8c8d; color:#fff; border-radius:5px; cursor:pointer;">닫기</button>
+            </div>
+        `;
+    }
 };
