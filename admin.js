@@ -16,17 +16,43 @@ const EDU_SCORE_MAP = {
 // =========================================================
 // 1. 공통 유틸리티 (로그인, 로그아웃, 시간)
 // =========================================================
+// 1. 로그인 처리 함수
 async function handleLogin() {
-    const id = document.getElementById('admin-id').value;
-    const pw = document.getElementById('admin-pw').value;
+    // 앞뒤 공백을 제거하여 가져오기
+    const id = document.getElementById('admin-id').value.trim();
+    const pw = document.getElementById('admin-pw').value.trim();
+    const loginMsg = document.getElementById('login-msg');
+
+    // 💡 [추가] 빈칸 입력 방지
+    if (!id || !pw) {
+        loginMsg.innerText = "아이디와 비밀번호를 모두 입력해주세요.";
+        return; // 빈칸이면 수퍼베이스에 요청조차 하지 않음
+    }
+
     try {
-        const { data } = await _supabase.from('managers').select('*').eq('manager_id', id).eq('password', pw).single();
+        // 💡 [수정] .single() 대신 .maybeSingle() 사용 (데이터가 없어도 에러 안 뿜음)
+        const { data, error } = await _supabase
+            .from('managers')
+            .select('*')
+            .eq('manager_id', id)
+            .eq('password', pw)
+            .maybeSingle();
+
+        if (error) throw error; // 진짜 시스템 에러가 났을 때만 잡기
+
         if (data) {
+            // 로그인 성공
             localStorage.setItem('managerName', data.manager_name);
             localStorage.setItem('managerRole', data.role); 
             location.reload(); 
-        } else { alert("로그인 정보가 올바르지 않습니다."); }
-    } catch (err) { alert(err.message); }
+        } else {
+            // 정보가 틀려서 data가 null로 돌아왔을 때
+            loginMsg.innerText = "로그인 정보가 올바르지 않습니다.";
+        }
+    } catch (err) {
+        loginMsg.innerText = "에러: " + err.message;
+        console.error("로그인 에러 상세:", err);
+    }
 }
 
 function handleLogout() { localStorage.clear(); location.reload(); }
