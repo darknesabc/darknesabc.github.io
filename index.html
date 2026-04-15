@@ -8,13 +8,28 @@
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 </head>
 <body>
-    <header>
-        <h1>실시간 출결 현황판</h1>
-        <div id="status-summary">데이터 불러오는 중...</div>
-    </header>
-    
-    <main id="dashboard">
-        </main>
+    <div id="login-section" class="login-container">
+        <div class="login-box">
+            <h2>관리자 로그인</h2>
+            <input type="text" id="admin-id" placeholder="아이디">
+            <input type="password" id="admin-pw" placeholder="비밀번호">
+            <button onclick="handleLogin()">로그인</button>
+            <p id="login-msg"></p>
+        </div>
+    </div>
+
+    <div id="admin-content" style="display:none;">
+        <header>
+            <div class="header-top">
+                <h1 id="welcome-msg">님, 환영합니다</h1>
+                <button class="btn-logout" onclick="handleLogout()">로그아웃</button>
+            </div>
+            <div id="status-summary">데이터 불러오는 중...</div>
+        </header>
+        
+        <main id="dashboard">
+            </main>
+    </div>
 
     <script src="admin.js"></script>
 </body>
