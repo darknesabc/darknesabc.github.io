@@ -174,7 +174,7 @@ async function init() {
 init();
 
 // =========================================================
-// 💡 1. 학생 카드 클릭 시 '라이트 테마 4분할 상세페이지' (막대그래프 복구)
+// 💡 1. 학생 카드 클릭 시 '라이트 테마 4분할 상세페이지' (건수 통계 추가)
 // =========================================================
 window.__loadStudentDetail = async function(student) {
     if (!student || !student.studentId) return;
@@ -211,28 +211,43 @@ window.__loadStudentDetail = async function(student) {
         const todayIso = today.toISOString().split('T')[0];
         const start7dIso = start7d.toISOString().split('T')[0];
 
-        // 💡 출결 데이터 처리 (최근 7일 및 전체 누적 분리)
+        // 💡 출결 데이터 처리 (출석, 지각, 결석 완벽 분리)
         const attLogs = resAtt.data || [];
-        let totalAtt = 0, totalAbs = 0;
-        let att7d = 0, abs7d = 0;
+        let totalAtt = 0, totalLate = 0, totalAbs = 0;
+        let att7d = 0, late7d = 0, abs7d = 0;
         const recentAbsences = [];
         
         attLogs.forEach(a => {
+            const isLate = a.status_code === '2' || (a.memo && a.memo.includes('지각'));
+            const isAtt = a.status_code === '1';
+            const isAbs = a.status_code === '3' && (!a.memo || (!isLate && a.memo === '-'));
+
+            let finalType = '';
+            if (isAtt) finalType = 'att';
+            else if (isLate) finalType = 'late';
+            else if (isAbs) finalType = 'abs';
+
             // 전체 누적
-            if (a.status_code === '1') totalAtt++;
-            if (a.status_code === '3' && !a.memo) {
+            if (finalType === 'att') totalAtt++;
+            if (finalType === 'late') totalLate++;
+            if (finalType === 'abs') {
                 totalAbs++;
                 if (recentAbsences.length < 3) recentAbsences.push(a);
             }
+            
             // 최근 7일
             if (a.attendance_date >= start7dIso && a.attendance_date <= todayIso) {
-                if (a.status_code === '1') att7d++;
-                if (a.status_code === '3' && !a.memo) abs7d++;
+                if (finalType === 'att') att7d++;
+                if (finalType === 'late') late7d++;
+                if (finalType === 'abs') abs7d++;
             }
         });
         
-        const attRate = (totalAtt + totalAbs) > 0 ? Math.round((totalAtt / (totalAtt + totalAbs)) * 100) : 0;
-        const attRate7d = (att7d + abs7d) > 0 ? Math.round((att7d / (att7d + abs7d)) * 100) : 0;
+        const totalCount = totalAtt + totalLate + totalAbs;
+        const count7d = att7d + late7d + abs7d;
+
+        const attRate = totalCount > 0 ? Math.round((totalAtt / totalCount) * 100) : 0;
+        const attRate7d = count7d > 0 ? Math.round((att7d / count7d) * 100) : 0;
         const attRate7dColor = attRate7d >= 90 ? '#2ecc71' : (attRate7d >= 70 ? '#f39c12' : '#e74c3c');
 
         const moveLogs = resMove.data || [];
@@ -285,18 +300,30 @@ window.__loadStudentDetail = async function(student) {
                     <h4 style="margin: 0 0 15px 0; color: #2980b9; font-size:16px;">📅 출결 요약</h4>
                     
                     <div style="margin-bottom:15px;">
-                        <div style="display:flex; justify-content:space-between; font-weight:bold; color:#34495e;">
-                            <span>최근 7일 출석률</span>
+                        <div style="display:flex; justify-content:space-between; font-weight:bold; color:#34495e; margin-bottom:8px;">
+                            <span style="font-size:15px;">최근 7일 출석률</span>
                             <span style="color:${attRate7dColor}; font-size:18px;">${attRate7d}%</span>
                         </div>
-                        <div style="width:100%; height:8px; background:#ecf0f1; border-radius:4px; margin-top:8px; overflow:hidden;">
+                        <div style="width:100%; height:8px; background:#ecf0f1; border-radius:4px; margin-bottom:10px; overflow:hidden;">
                             <div style="width:${attRate7d}%; height:100%; background:${attRate7dColor}; border-radius:4px;"></div>
+                        </div>
+                        <div style="display:flex; justify-content:space-between; font-size:13px; color:#7f8c8d; padding-bottom:15px; border-bottom:1px dashed #ecf0f1;">
+                            <span>출석 <b style="color:#34495e;">${att7d}</b></span>
+                            <span>지각 <b style="color:#f39c12;">${late7d}</b></span>
+                            <span>결석 <b style="color:#e74c3c;">${abs7d}</b></span>
                         </div>
                     </div>
                     
-                    <div style="display:flex; justify-content:space-between; margin-bottom:15px; font-size:13px; color:#7f8c8d; padding-bottom:15px; border-bottom:1px dashed #ecf0f1;">
-                        <span>전체 누적 출석률</span>
-                        <b style="color:#34495e;">${attRate}%</b>
+                    <div style="margin-bottom:15px;">
+                        <div style="display:flex; justify-content:space-between; font-weight:bold; color:#34495e; margin-bottom:8px;">
+                            <span style="font-size:15px;">전체 누적 출석률</span>
+                            <span style="color:#2980b9; font-size:16px;">${attRate}%</span>
+                        </div>
+                        <div style="display:flex; justify-content:space-between; font-size:13px; color:#7f8c8d; padding-bottom:15px; border-bottom:1px dashed #ecf0f1;">
+                            <span>출석 <b style="color:#34495e;">${totalAtt}</b></span>
+                            <span>지각 <b style="color:#f39c12;">${totalLate}</b></span>
+                            <span>결석 <b style="color:#e74c3c;">${totalAbs}</b></span>
+                        </div>
                     </div>
 
                     <div style="font-size:12px; color:#95a5a6; margin-bottom:8px;">최근 결석:</div>
@@ -346,7 +373,7 @@ window.__loadStudentDetail = async function(student) {
 };
 
 // =========================================================
-// 💡 2. '상세' 버튼 클릭 시 팝업을 띄워주는 함수 (타임테이블 완벽 복원)
+// 💡 2. '상세' 버튼 클릭 시 팝업을 띄워주는 함수 (일요일 포함 타임테이블)
 // =========================================================
 window.__openDetailModal = async function(type, studentId, studentName) {
     let modalOverlay = document.getElementById('custom-detail-modal');
@@ -373,7 +400,7 @@ window.__openDetailModal = async function(type, studentId, studentName) {
     };
 
     modalOverlay.innerHTML = `
-        <div style="background:#fff; width:95%; max-width:900px; max-height:85vh; border-radius:12px; padding:25px; box-shadow:0 10px 30px rgba(0,0,0,0.2); display:flex; flex-direction:column;">
+        <div style="background:#fff; width:98%; max-width:1200px; max-height:85vh; border-radius:12px; padding:25px; box-shadow:0 10px 30px rgba(0,0,0,0.2); display:flex; flex-direction:column;">
             <div style="display:flex; justify-content:space-between; align-items:center; border-bottom:1px solid #eee; padding-bottom:15px; margin-bottom:15px;">
                 <h3 style="margin:0; color:#2c3e50;">${titleMap[type]} - ${studentName}</h3>
                 <button onclick="document.getElementById('custom-detail-modal').style.display='none'" style="background:none; border:none; font-size:20px; cursor:pointer; color:#7f8c8d; padding:0;">✖</button>
@@ -389,7 +416,6 @@ window.__openDetailModal = async function(type, studentId, studentName) {
     try {
         let contentHtml = '';
         
-        // 💡 [핵심] 출결일 경우: 주차별 타임테이블 테이블 생성 로직
         if (type === 'attendance') {
             const { data } = await _supabase.from('attendance').select('*').eq('student_id', studentId).order('attendance_date', {ascending: false});
             
@@ -398,7 +424,6 @@ window.__openDetailModal = async function(type, studentId, studentName) {
                 return;
             }
 
-            // 데이터를 주차(월요일 기준)별로 그룹화
             const weekMap = {};
             const getMonday = (dStr) => {
                 const d = new Date(dStr);
@@ -416,7 +441,6 @@ window.__openDetailModal = async function(type, studentId, studentName) {
 
             const weeks = Object.keys(weekMap).sort().reverse();
             
-            // 1. 주차 선택 드롭다운
             contentHtml += `<div style="margin-bottom:15px;">
                 <select id="week-selector" onchange="document.querySelectorAll('.week-table-container').forEach(el => el.style.display='none'); document.getElementById('week-'+this.value).style.display='block';" style="padding:8px 12px; border-radius:6px; border:1px solid #bdc3c7; background:#f8f9fa; font-size:14px; cursor:pointer; color:#2c3e50; font-weight:bold;">
             `;
@@ -428,20 +452,20 @@ window.__openDetailModal = async function(type, studentId, studentName) {
             };
 
             weeks.forEach((mon, idx) => {
-                const endDay = new Date(mon); endDay.setDate(endDay.getDate() + 6);
+                const endDay = new Date(mon); endDay.setDate(endDay.getDate() + 6); // 일요일까지 커버
                 const label = idx === 0 ? `최신 주차 (${formatDateShort(mon)} ~ ${formatDateShort(endDay.toISOString().split('T')[0])})` : `${formatDateShort(mon)} 주차`;
                 contentHtml += `<option value="${mon}">${label}</option>`;
             });
             contentHtml += `</select></div>`;
 
-            // 2. 주차별 테이블 생성
             contentHtml += `<style>
-                .att-table { width:100%; border-collapse:collapse; text-align:center; font-size:13px; color:#2c3e50; }
+                .att-table { width:100%; border-collapse:collapse; text-align:center; font-size:12px; color:#2c3e50; min-width:800px; }
                 .att-table th, .att-table td { border:1px solid #dfe6e9; padding:8px 2px; }
                 .att-table th { background:#f1f2f6; font-weight:bold; }
-                .st-1 { background:#e8f8f5; color:#27ae60; font-weight:bold; } /* 출석 */
-                .st-3 { background:#fadedb; color:#e74c3c; font-weight:bold; } /* 결석 */
-                .st-memo { font-size:11px; color:#7f8c8d; }
+                .st-1 { background:#e8f8f5; color:#27ae60; font-weight:bold; border-radius:3px; }
+                .st-2 { background:#fef9e7; color:#f39c12; font-weight:bold; border-radius:3px; }
+                .st-3 { background:#fadedb; color:#e74c3c; font-weight:bold; border-radius:3px; }
+                .st-memo { font-size:11px; color:#7f8c8d; max-width:70px; word-break:keep-all; }
             </style>`;
 
             weeks.forEach((mon, idx) => {
@@ -450,31 +474,37 @@ window.__openDetailModal = async function(type, studentId, studentName) {
                     <table class="att-table">
                         <thead>
                             <tr>
-                                <th rowspan="2" style="width:50px;">교시</th>
+                                <th rowspan="2" style="width:40px;">교시</th>
                 `;
                 
-                // 상단 날짜 헤더 (월~토 6일 기준)
                 const weekDates = [];
-                for(let i=0; i<6; i++) {
+                // 💡 [핵심] 월요일부터 일요일까지 총 7일 반복
+                for(let i=0; i<7; i++) {
                     const d = new Date(mon); d.setDate(d.getDate() + i);
                     const dStr = d.toISOString().split('T')[0];
                     weekDates.push(dStr);
-                    contentHtml += `<th colspan="2">${formatDateShort(dStr)}</th>`;
+                    // 일요일은 글씨를 빨간색으로 표시
+                    const dateColor = i === 6 ? '#e74c3c' : '#2c3e50';
+                    contentHtml += `<th colspan="2" style="color:${dateColor}">${formatDateShort(dStr)}</th>`;
                 }
                 contentHtml += `</tr><tr>`;
-                for(let i=0; i<6; i++) { contentHtml += `<th>스케줄</th><th>출/결</th>`; }
+                for(let i=0; i<7; i++) { contentHtml += `<th>스케줄</th><th>출/결</th>`; }
                 contentHtml += `</tr></thead><tbody>`;
 
-                // 1~8교시 데이터 채우기
                 for(let p=1; p<=8; p++) {
                     contentHtml += `<tr><th>${p}</th>`;
                     weekDates.forEach(dateStr => {
                         const cellData = (weekMap[mon][dateStr] && weekMap[mon][dateStr][p]) ? weekMap[mon][dateStr][p] : null;
                         const memo = cellData && cellData.memo ? cellData.memo : '-';
                         let statusHtml = '-';
-                        if (cellData && cellData.status === '1') statusHtml = `<div class="st-1">출석</div>`;
-                        else if (cellData && cellData.status === '3') statusHtml = `<div class="st-3">결석</div>`;
-                        else if (cellData && cellData.status) statusHtml = cellData.status;
+                        
+                        if (cellData) {
+                            const isLate = cellData.status === '2' || (memo && memo.includes('지각'));
+                            if (cellData.status === '1') statusHtml = `<div class="st-1">출석</div>`;
+                            else if (isLate) statusHtml = `<div class="st-2">지각</div>`;
+                            else if (cellData.status === '3') statusHtml = `<div class="st-3">결석</div>`;
+                            else statusHtml = cellData.status;
+                        }
 
                         contentHtml += `<td class="st-memo">${memo}</td><td>${statusHtml}</td>`;
                     });
@@ -483,7 +513,6 @@ window.__openDetailModal = async function(type, studentId, studentName) {
                 contentHtml += `</tbody></table></div>`;
             });
         } 
-        // 다른 항목들 (이동, 취침, 교육점수)은 깔끔한 리스트로 유지
         else {
             contentHtml += '<ul style="list-style:none; padding:0; margin:0; line-height:2.0; font-size:14px; color:#34495e;">';
             if (type === 'move') {
