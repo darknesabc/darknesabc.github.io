@@ -188,7 +188,7 @@ window.__toggleDashboard = function() {
 };
 
 // =========================================================
-// 3. 학생 상세 페이지 로드
+// 3. 학생 상세 페이지 로드 (요약 카드 복구 완료)
 // =========================================================
 window.__loadStudentDetail = async function(student) {
     if (!student || !student.studentId) return;
@@ -215,8 +215,11 @@ window.__loadStudentDetail = async function(student) {
 
         const now = new Date();
         const todayIso = new Date(now.getTime() - (now.getTimezoneOffset() * 60000)).toISOString().split('T')[0];
-        const start7d = new Date(now); start7d.setDate(start7d.getDate() - 6);
+        
+        const start7d = new Date(now);
+        start7d.setDate(start7d.getDate() - 6);
         const start7dIso = new Date(start7d.getTime() - (start7d.getTimezoneOffset() * 60000)).toISOString().split('T')[0];
+        
         const currentP = parseInt(getCurrentPeriod(), 10) || 0;
 
         const formatShortDate = (dateStr) => {
@@ -227,13 +230,23 @@ window.__loadStudentDetail = async function(student) {
         let totalAtt = 0, totalLate = 0, totalAbs = 0;
         let att7d = 0, late7d = 0, abs7d = 0;
         const recentAbsences = [];
+        
         resAtt.data.forEach(a => {
             if (a.attendance_date > todayIso || (a.attendance_date === todayIso && parseInt(a.period, 10) > currentP)) return;
             if (new Date(a.attendance_date).getDay() === 0) return;
-            const isLate = a.status_code === '2'; const isAtt = a.status_code === '1'; const isAbs = a.status_code === '3';
-            if (isAtt) totalAtt++; if (isLate) totalLate++; if (isAbs) { totalAbs++; if (recentAbsences.length < 3) recentAbsences.push(a); }
+
+            const isLate = a.status_code === '2';
+            const isAtt = a.status_code === '1';
+            const isAbs = a.status_code === '3';
+
+            if (isAtt) totalAtt++;
+            if (isLate) totalLate++;
+            if (isAbs) { totalAbs++; if (recentAbsences.length < 3) recentAbsences.push(a); }
+            
             if (a.attendance_date >= start7dIso && a.attendance_date <= todayIso) {
-                if (isAtt) att7d++; if (isLate) late7d++; if (isAbs) abs7d++;
+                if (isAtt) att7d++;
+                if (isLate) late7d++;
+                if (isAbs) abs7d++;
             }
         });
         
@@ -243,7 +256,24 @@ window.__loadStudentDetail = async function(student) {
         const attRate7d = count7d > 0 ? Math.round((att7d / count7d) * 100) : 0;
         const attRate7dColor = attRate7d >= 90 ? '#2ecc71' : (attRate7d >= 70 ? '#f39c12' : '#e74c3c');
 
+        let restroom7d = 0, noReturn7d = 0;
+        resMove.data.forEach(m => {
+            if (m.move_date >= start7dIso && m.move_date <= todayIso) {
+                if (m.reason === "화장실/정수기") restroom7d++;
+                if (m.return_period === "복귀안함") noReturn7d++;
+            }
+        });
+
+        let sleepCount7d = 0;
+        const sleepDaysSet = new Set();
+        resSleep.data.forEach(s => {
+            if (s.sleep_date >= start7dIso && s.sleep_date <= todayIso) {
+                sleepCount7d += s.count; sleepDaysSet.add(s.sleep_date);
+            }
+        });
+
         const totalScore = resEdu.data.reduce((sum, log) => sum + (EDU_SCORE_MAP[log.reason] || 0), 0);
+
         const cardStyle = "background:#ffffff; padding:20px; border-radius:10px; border:1px solid #e2e6ea; position:relative; color:#2c3e50; box-shadow:0 2px 8px rgba(0,0,0,0.02);";
         const btnStyle = "position:absolute; right:20px; top:20px; background:#f1f2f6; color:#57606f; border:1px solid #dfe4ea; padding:5px 12px; border-radius:5px; font-size:12px; cursor:pointer; font-weight:bold;";
 
@@ -264,13 +294,65 @@ window.__loadStudentDetail = async function(student) {
             </div>
             
             <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 20px;">
-                <div style="${cardStyle}"><button style="${btnStyle}" onclick="window.__openDetailModal('attendance', '${student.studentId}', '${student.name}')">상세</button><h4 style="margin: 0 0 15px 0; color: #2980b9; font-size:16px;">📅 출결 요약</h4>
-                    <div style="margin-bottom:8px; display:flex; justify-content:space-between;"><span>최근 7일 출석률</span><b style="color:${attRate7dColor};">${attRate7d}%</b></div>
-                    <div style="width:100%; height:8px; background:#ecf0f1; border-radius:4px; overflow:hidden;"><div style="width:${attRate7d}%; height:100%; background:${attRate7dColor};"></div></div>
+                
+                <div style="${cardStyle}">
+                    <button style="${btnStyle}" onclick="window.__openDetailModal('attendance', '${student.studentId}', '${student.name}')">상세</button>
+                    <h4 style="margin: 0 0 15px 0; color: #2980b9; font-size:16px;">📅 출결 요약</h4>
+                    <div style="margin-bottom:15px;">
+                        <div style="display:flex; justify-content:space-between; font-weight:bold; color:#34495e; margin-bottom:8px;">
+                            <span style="font-size:15px;">최근 7일 출석률</span><span style="color:${attRate7dColor}; font-size:18px;">${attRate7d}%</span>
+                        </div>
+                        <div style="width:100%; height:8px; background:#ecf0f1; border-radius:4px; margin-bottom:10px; overflow:hidden;"><div style="width:${attRate7d}%; height:100%; background:${attRate7dColor}; border-radius:4px;"></div></div>
+                        <div style="display:flex; justify-content:space-between; font-size:13px; color:#7f8c8d; padding-bottom:15px; border-bottom:1px dashed #ecf0f1;">
+                            <span>출석 <b style="color:#34495e;">${att7d}</b></span><span>지각 <b style="color:#f39c12;">${late7d}</b></span><span>결석 <b style="color:#e74c3c;">${abs7d}</b></span>
+                        </div>
+                    </div>
+                    <div style="margin-bottom:15px;">
+                        <div style="display:flex; justify-content:space-between; font-weight:bold; color:#34495e; margin-bottom:8px;">
+                            <span style="font-size:15px;">전체 누적 출석률</span><span style="color:#2980b9; font-size:16px;">${attRate}%</span>
+                        </div>
+                        <div style="display:flex; justify-content:space-between; font-size:13px; color:#7f8c8d; padding-bottom:15px; border-bottom:1px dashed #ecf0f1;">
+                            <span>출석 <b style="color:#34495e;">${totalAtt}</b></span><span>지각 <b style="color:#f39c12;">${totalLate}</b></span><span>결석 <b style="color:#e74c3c;">${totalAbs}</b></span>
+                        </div>
+                    </div>
+                    <div style="font-size:12px; color:#95a5a6; margin-bottom:8px;">최근 무단 결석:</div>
+                    <ul style="margin:0; padding-left:15px; font-size:13px; color:#e74c3c; line-height:1.8;">
+                        ${recentAbsences.length > 0 ? recentAbsences.map(a => `<li>${formatShortDate(a.attendance_date)} ${a.period}교시</li>`).join('') : '<li style="color:#95a5a6; list-style:none; margin-left:-15px;">최근 결석이 없습니다.</li>'}
+                    </ul>
                 </div>
-                <div style="${cardStyle}"><button style="${btnStyle}" onclick="window.__openDetailModal('move', '${student.studentId}', '${student.name}')">상세</button><h4 style="margin: 0 0 15px 0; color: #27ae60; font-size:16px;">🚶 이동 요약</h4>최근 7일 화장실: <b>${resMove.data.filter(m=>m.reason==="화장실/정수기").length}회</b></div>
-                <div style="${cardStyle}"><button style="${btnStyle}" onclick="window.__openDetailModal('sleep', '${student.studentId}', '${student.name}')">상세</button><h4 style="margin: 0 0 15px 0; color: #8e44ad; font-size:16px;">💤 취침 요약</h4>전체 취침 횟수: <b>${resSleep.data.reduce((a,c)=>a+c.count, 0)}회</b></div>
-                <div style="${cardStyle}"><button style="${btnStyle}" onclick="window.__openDetailModal('eduscore', '${student.studentId}', '${student.name}')">상세</button><h4 style="margin: 0 0 15px 0; color: #e67e22; font-size:16px;">🚨 교육점수 요약</h4>누적 벌점: <b style="color:#e74c3c;">${totalScore}점</b></div>
+
+                <div style="${cardStyle}">
+                    <button style="${btnStyle}" onclick="window.__openDetailModal('move', '${student.studentId}', '${student.name}')">상세</button>
+                    <h4 style="margin: 0 0 15px 0; color: #27ae60; font-size:16px;">🚶 이동 요약 <span style="font-size:12px; color:#95a5a6; font-weight:normal;">(최근 7일)</span></h4>
+                    <div style="margin-bottom:8px;">화장실 : <b>${restroom7d}회</b></div>
+                    <div style="margin-bottom:15px; padding-bottom:15px; border-bottom:1px dashed #ecf0f1;">복귀 안함 : <b>${noReturn7d}회</b></div>
+                    <div style="font-size:12px; color:#95a5a6; margin-bottom:8px;">최근 항목:</div>
+                    <ul style="margin:0; padding:0; list-style:none; font-size:13px; line-height:1.8;">
+                        ${resMove.data.slice(0,3).length > 0 ? resMove.data.slice(0,3).map(m => `<li><span style="color:#95a5a6; margin-right:8px;">${m.move_date.slice(5)}</span> <b>${m.reason}</b></li>`).join('') : '<li style="color:#95a5a6;">기록이 없습니다.</li>'}
+                    </ul>
+                </div>
+
+                <div style="${cardStyle}">
+                    <button style="${btnStyle}" onclick="window.__openDetailModal('sleep', '${student.studentId}', '${student.name}')">상세</button>
+                    <h4 style="margin: 0 0 15px 0; color: #8e44ad; font-size:16px;">💤 취침 요약</h4>
+                    <div style="margin-bottom:8px;">최근 7일 취침일수: <b>${sleepDaysSet.size}일</b></div>
+                    <div style="margin-bottom:15px; padding-bottom:15px; border-bottom:1px dashed #ecf0f1;">최근 7일 취침횟수: <b>${sleepCount7d}회</b></div>
+                    <div style="font-size:12px; color:#95a5a6; margin-bottom:8px;">최근 항목:</div>
+                    <ul style="margin:0; padding:0; list-style:none; font-size:13px; line-height:1.8;">
+                        ${resSleep.data.slice(0,3).length > 0 ? resSleep.data.slice(0,3).map(s => `<li><span style="color:#95a5a6; margin-right:8px;">${s.sleep_date.slice(5)}</span> ${s.period}교시 <span style="color:#8e44ad; font-weight:bold;">(${s.count}회)</span></li>`).join('') : '<li style="color:#95a5a6;">기록이 없습니다.</li>'}
+                    </ul>
+                </div>
+
+                <div style="${cardStyle}">
+                    <button style="${btnStyle}" onclick="window.__openDetailModal('eduscore', '${student.studentId}', '${student.name}')">상세</button>
+                    <h4 style="margin: 0 0 15px 0; color: #e67e22; font-size:16px;">🚨 교육점수 요약</h4>
+                    <div style="margin-bottom:15px; padding-bottom:15px; border-bottom:1px dashed #ecf0f1;">전체 누적점수: <b style="color:#d35400; font-size:18px;">${totalScore}점</b></div>
+                    <div style="font-size:12px; color:#95a5a6; margin-bottom:8px;">최근 항목:</div>
+                    <ul style="margin:0; padding:0; list-style:none; font-size:13px; line-height:1.8;">
+                        ${resEdu.data.slice(0,3).length > 0 ? resEdu.data.slice(0,3).map(e => `<li><span style="color:#95a5a6; margin-right:8px;">${e.score_date.slice(5)}</span> <b>${e.reason}</b> <span style="color:#e74c3c; font-weight:bold;">(+${EDU_SCORE_MAP[e.reason]||0})</span></li>`).join('') : '<li style="color:#95a5a6;">기록이 없습니다.</li>'}
+                    </ul>
+                </div>
+
             </div>
 
             <div id="grade-summary-container"></div>
@@ -278,7 +360,10 @@ window.__loadStudentDetail = async function(student) {
         `;
         detailSection.innerHTML = html;
         window.__loadGradeTrend(student);
-    } catch (err) { detailSection.innerHTML = `<div style="color:#e74c3c; text-align:center; padding:30px;"><b>오류:</b> ${err.message}</div>`; }
+
+    } catch (err) {
+        detailSection.innerHTML = `<div style="color:#e74c3c; text-align:center; padding:30px;"><b>오류가 발생했습니다:</b><br>${err.message}</div>`;
+    }
 };
 
 // =========================================================
@@ -805,6 +890,9 @@ window.__renderRadarChartUI = function() {
     setTimeout(() => { window.__renderRadarChartCanvas(); }, 50);
 };
 
+// =========================================================
+// 💡 [레이더 차트] 방사형 그래프 렌더러 (다중 컬러 적용 완벽 복구)
+// =========================================================
 window.__renderRadarChartCanvas = function() {
     const ctx = document.getElementById('radarChartCanvas');
     if (!ctx) return;
@@ -821,6 +909,25 @@ window.__renderRadarChartCanvas = function() {
         return stat && stat.total > 0 ? Math.round((stat.o / stat.total) * 100) : 0;
     });
 
+    // 💡 단원명(또는 행동영역) 글자를 분석해서 색상을 반환하는 함수
+    const getLabelColor = (label, subject) => {
+        if (subject === '국어') {
+            if (/(독서|인문|사회|과학|기술|예술|갈래\s*복합)/.test(label)) return '#3498db'; // 파랑 (독서)
+            if (/(현대시|고전시가|현대소설|고전소설|극|수필|문학)/.test(label)) return '#2ecc71'; // 초록 (문학)
+            if (/(화법|작문|언어|매체)/.test(label)) return '#f39c12'; // 주황 (선택)
+            return '#7f8c8d'; // 기본색
+        } else if (subject === '수학') {
+            if (/(지수|로그|삼각|수열)/.test(label)) return '#3498db'; // 파랑 (수학I)
+            if (/(극한|연속|미분|적분)/.test(label)) return '#8e44ad'; // 보라 (수학II)
+            if (/(확률|통계|경우|이차곡선|벡터|공간|미적분|기하)/.test(label)) return '#f39c12'; // 주황 (선택)
+            return '#27ae60'; // 초록 (고1수학 등)
+        }
+        return '#3498db'; // 다른 과목 기본색 (파랑)
+    };
+
+    // 각 포인트와 라벨에 들어갈 색상 배열 생성
+    const pointColors = labels.map(l => getLabelColor(l, subj));
+
     if (window.__radarChartInstance) window.__radarChartInstance.destroy();
 
     window.__radarChartInstance = new Chart(ctx, {
@@ -830,14 +937,15 @@ window.__renderRadarChartCanvas = function() {
             datasets: [{
                 label: `${subj} 성취도(%)`,
                 data: dataPoints,
-                backgroundColor: type === 'unit' ? 'rgba(52, 152, 219, 0.15)' : 'rgba(142, 68, 173, 0.15)',
-                borderColor: type === 'unit' ? '#3498db' : '#8e44ad',
-                pointBackgroundColor: type === 'unit' ? '#2980b9' : '#8e44ad',
+                backgroundColor: 'rgba(52, 152, 219, 0.1)', // 연한 파란색 배경
+                borderColor: 'rgba(52, 152, 219, 0.5)',     // 연한 테두리
+                pointBackgroundColor: pointColors,          // 💡 포인트마다 다채로운 색상!
                 pointBorderColor: '#fff',
                 pointHoverBackgroundColor: '#fff',
-                pointHoverBorderColor: '#2980b9',
+                pointHoverBorderColor: pointColors,
                 borderWidth: 2,
-                pointRadius: 4,
+                pointRadius: 5,
+                pointHoverRadius: 7
             }]
         },
         options: {
@@ -852,7 +960,9 @@ window.__renderRadarChartCanvas = function() {
                     grid: { color: '#ecf0f1' },
                     angleLines: { color: '#ecf0f1' },
                     pointLabels: {
-                        color: '#2c3e50',
+                        color: function(context) {
+                            return getLabelColor(context.label, subj); // 💡 라벨 글씨도 같은 색상으로!
+                        },
                         font: { size: 12, weight: 'bold' }
                     }
                 }
