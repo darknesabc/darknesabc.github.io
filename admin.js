@@ -492,11 +492,10 @@ window.__loadGradeErrata = async function(examLabel) {
         return;
     }
     
-    // 💡 오직 '학번(student_id)'만 기준점으로 사용합니다.
     const studentId = String(scoreInfo.student_id || "").trim();
 
     try {
-        // 수퍼베이스에서 O/X 및 문항정보 일괄 로드
+        // 💡 올바른 테이블 이름으로 복구
         const [errataRes, qInfoRes] = await Promise.all([
             _supabase.from('mock_errata').select('*').eq('exam_label', examLabel),
             _supabase.from('mock_question_info').select('*').eq('exam_label', examLabel)
@@ -507,25 +506,44 @@ window.__loadGradeErrata = async function(examLabel) {
         const allErrata = errataRes.data || [];
         const qInfos = qInfoRes.data || [];
 
-        // 💡 [핵심 픽스] 동명이인 방지를 위해 이름 매칭 삭제! 오직 '학번'이 정확히 일치하는 데이터만 가져옵니다.
+        // 👨‍💻 [디버깅] 관리자님, F12를 눌러 콘솔 탭을 확인해 보세요!
+        console.log(`=======================================`);
+        console.log(`🎯 [정오표 로드] 시험명: "${examLabel}" / 찾을학번: "${studentId}"`);
+        console.log(`📥 [DB 응답] 가져온 전체 정오표 데이터 개수: ${allErrata.length}개`);
+        
+        if (allErrata.length === 0) {
+            // 데이터가 0개라면 100% RLS 잠김 문제이거나, exam_label 오타입니다.
+            container.innerHTML = `
+                <div style="text-align:center; padding:30px; color:#e74c3c; border:1px solid #fdf3f2; background:#fff; border-radius:8px;">
+                    <b>데이터베이스에서 데이터를 가져오지 못했습니다 (0개).</b><br><br>
+                    <span style="font-size:13px; color:#7f8c8d;">
+                    1. 수퍼베이스 <b>mock_errata</b> 테이블의 <b>RLS(자물쇠)</b>가 해제되어 있는지 꼭 확인해 주세요!<br>
+                    2. 성적표의 시험명과 정오표의 시험명(exam_label) 띄어쓰기가 완벽히 똑같은지 확인해 주세요.
+                    </span>
+                </div>`;
+            return;
+        }
+
         const myErrata = allErrata.filter(e => String(e.student_id).trim() === studentId);
+        console.log(`🔍 [매칭 결과] 이 학생(${studentId})의 정오표 개수: ${myErrata.length}개`);
+        console.log(`=======================================`);
 
         if (myErrata.length === 0) {
-            container.innerHTML = '<div style="text-align:center; padding:30px; color:#95a5a6; border:1px solid #f1f2f6; border-radius:8px;">이 시험의 정오표(O/X) 데이터가 아직 등록되지 않았습니다.<br><span style="font-size:12px; color:#bdc3c7;">(※ 수퍼베이스의 student_id가 정확히 일치하는지 확인해주세요)</span></div>';
+            container.innerHTML = '<div style="text-align:center; padding:30px; color:#95a5a6; border:1px solid #f1f2f6; border-radius:8px;">이 시험의 정오표(O/X) 데이터가 아직 등록되지 않았습니다.<br><span style="font-size:12px; color:#bdc3c7;">(DB에 해당 학번이 정확히 입력되었는지 확인해주세요)</span></div>';
             return;
         }
 
         // 1. 코호트 분석 (전체 정답률 계산)
         const stats = {}; 
         allErrata.forEach(row => {
-            const subj = row.subject;
+            const subj = String(row.subject || "").trim().replace(/\s+/g, '');
             if (!stats[subj]) stats[subj] = {};
             for (let i = 1; i <= 45; i++) {
-                const val = row[`q${i}`];
-                if (val === 'O' || val === 'X' || val === '○' || val === '×') {
+                const val = String(row[`q${i}`] || "").trim();
+                if (val === 'O' || val === 'X' || val === '○' || val === '×' || val === 'o' || val === 'x') {
                     if (!stats[subj][i]) stats[subj][i] = { o: 0, total: 0 };
                     stats[subj][i].total++;
-                    if (val === 'O' || val === '○') stats[subj][i].o++;
+                    if (val === 'O' || val === '○' || val === 'o') stats[subj][i].o++;
                 }
             }
         });
@@ -533,17 +551,18 @@ window.__loadGradeErrata = async function(examLabel) {
         // 2. 출제 영역 정보 매핑
         const qInfoMap = {}; 
         qInfos.forEach(q => {
-            if (!qInfoMap[q.subject]) qInfoMap[q.subject] = {};
+            const subj = String(q.subject || "").trim().replace(/\s+/g, '');
+            if (!qInfoMap[subj]) qInfoMap[subj] = {};
             const unit = q.unit_name || '';
             const beh = q.behavior_domain || q.sub_unit || '';
             let label = unit;
             if (beh && beh !== '기타' && beh !== '-') {
                 label += ` <span style="font-size:11px; color:#95a5a6; border:1px solid #ecf0f1; padding:2px 6px; border-radius:4px; margin-left:6px; background:#f8f9fa;">${beh}</span>`;
             }
-            qInfoMap[q.subject][q.question_num] = label;
+            qInfoMap[subj][q.question_num] = label;
         });
 
-        // 3. 내 과목 찾기 헬퍼 (공백 무시 등 융통성 강화)
+        // 3. 내 과목 찾기 헬퍼
         const findRow = (subjHint, choiceName) => {
             const cName = String(choiceName || "").replace(/\s+/g, '');
             return myErrata.find(e => {
@@ -551,11 +570,12 @@ window.__loadGradeErrata = async function(examLabel) {
                 return eSubj === cName || eSubj.includes(subjHint) || (cName && eSubj.includes(cName.slice(0,2)));
             });
         };
-        const korRow = findRow('국어', scoreInfo.kor_choice) || myErrata.find(e => e.subject.includes('언어') || e.subject.includes('화법'));
-        const mathRow = findRow('수학', scoreInfo.math_choice) || myErrata.find(e => e.subject.includes('미적') || e.subject.includes('기하') || e.subject.includes('확률'));
+        
+        const korRow = findRow('국어', scoreInfo.kor_choice) || myErrata.find(e => { const s = String(e.subject||"").replace(/\s+/g, ''); return s.includes('언어') || s.includes('화법'); });
+        const mathRow = findRow('수학', scoreInfo.math_choice) || myErrata.find(e => { const s = String(e.subject||"").replace(/\s+/g, ''); return s.includes('미적') || s.includes('기하') || s.includes('확률'); });
         const engRow = findRow('영어', '영어');
-        const tam1Row = findRow('탐구', scoreInfo.tam1_name) || myErrata.find(e => e.subject === scoreInfo.tam1_name);
-        const tam2Row = findRow('탐구', scoreInfo.tam2_name) || myErrata.find(e => e.subject === scoreInfo.tam2_name);
+        const tam1Row = findRow('탐구', scoreInfo.tam1_name) || findRow('', scoreInfo.tam1_name);
+        const tam2Row = findRow('탐구', scoreInfo.tam2_name) || findRow('', scoreInfo.tam2_name);
 
         // 4. 섹션별 아코디언 HTML 렌더러
         const renderSection = (title, subtitle, qStart, qEnd, errataRow, subjKeyForInfo) => {
@@ -567,14 +587,15 @@ window.__loadGradeErrata = async function(examLabel) {
             }
             if (!hasData) return '';
 
-            const subj = errataRow.subject;
+            const subj = String(errataRow.subject || "").trim().replace(/\s+/g, '');
+            const cleanSubjKey = String(subjKeyForInfo || "").trim().replace(/\s+/g, '');
             let rowsHtml = '';
             
             for (let i = qStart; i <= qEnd; i++) {
-                const ox = errataRow[`q${i}`];
+                const ox = String(errataRow[`q${i}`] || "").trim();
                 if (!ox) continue;
                 
-                const isO = (ox === 'O' || ox === '○');
+                const isO = (ox === 'O' || ox === '○' || ox === 'o');
                 const oxColor = isO ? '#3498db' : '#e74c3c';
                 const oxBg = isO ? '#fff' : '#fdf3f2';
                 
@@ -583,9 +604,9 @@ window.__loadGradeErrata = async function(examLabel) {
                 const barColor = rate >= 80 ? '#2ecc71' : (rate >= 50 ? '#f1c40f' : '#e74c3c');
                 
                 let qInfo = '';
-                if (qInfoMap[subjKeyForInfo] && qInfoMap[subjKeyForInfo][i]) qInfo = qInfoMap[subjKeyForInfo][i];
-                else if (qInfoMap['국어'] && qInfoMap['국어'][i] && subjKeyForInfo.includes('국어')) qInfo = qInfoMap['국어'][i];
-                else if (qInfoMap['수학'] && qInfoMap['수학'][i] && subjKeyForInfo.includes('수학')) qInfo = qInfoMap['수학'][i];
+                if (qInfoMap[cleanSubjKey] && qInfoMap[cleanSubjKey][i]) qInfo = qInfoMap[cleanSubjKey][i];
+                else if (qInfoMap['국어'] && qInfoMap['국어'][i] && cleanSubjKey.includes('국어')) qInfo = qInfoMap['국어'][i];
+                else if (qInfoMap['수학'] && qInfoMap['수학'][i] && cleanSubjKey.includes('수학')) qInfo = qInfoMap['수학'][i];
                 else if (qInfoMap[subj] && qInfoMap[subj][i]) qInfo = qInfoMap[subj][i];
 
                 rowsHtml += `
