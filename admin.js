@@ -501,7 +501,7 @@ window.__renderGradeSummaryTable = function() {
 
 
 // =========================================================
-// 💡 [최종 에러 수정본] 정오표 데이터 호출 (단원별/행동영역별 맵핑 및 수집)
+// 💡 [최종 완성] 정오표 데이터 호출 (eval_key 문자열 맵핑 완벽 적용)
 // =========================================================
 window.__loadGradeErrata = async function(examLabel) {
     const container = document.getElementById('grade-errata-area');
@@ -617,83 +617,90 @@ window.__loadGradeErrata = async function(examLabel) {
             const qNum = parseInt(String(q.question_num).replace(/[^0-9]/g, ''), 10);
             if (isNaN(qNum)) return;
 
-            let unit = String(q.unit_name || '').replace(/^\d+\.?\s*/, '').trim(); 
-            const subUnit = String(q.sub_unit || q.subunit || '').replace(/^\d+\.?\s*/, '').trim();
-            let beh = String(q.behavior_domain || '').replace(/^\d+\.?\s*/, '').trim();
+            let unitName = String(q.unit_name || '').replace(/^\d+\.?\s*/, '').trim(); 
+            const subUnitName = String(q.sub_unit || q.subunit || '').replace(/^\d+\.?\s*/, '').trim();
             
-            let uKey = 9999;
-            let bKey = 9999; 
-            const cleanTarget = unit.replace(/\s+/g, '');
-            // 💡 [에러 해결] 이름 충돌 방지를 위해 cleanTargetBeh 로 변경
-            const cleanTargetBeh = beh.replace(/\s+/g, ''); 
+            // 💡 행동영역 이름과 코드(키)를 명확히 분리 추출
+            let behName = String(q.behavior_domain || q.eval_name || '').replace(/^\d+\.?\s*/, '').trim();
+            let behKeyStr = String(q.eval_key || q.behavior_key || q.eval_code || '').trim();
+            
+            let uKeyNum = 9999;
+            const cleanUnit = unitName.replace(/\s+/g, '');
+            const cleanBeh = behName.replace(/\s+/g, ''); 
             
             if (window.__unitMap && window.__unitMap.length > 0) {
                 // 1. 단원명 매칭
                 const foundUnit = window.__unitMap.find(u => {
-                    const mapName = String(u.unit_name || u.unit || u.name || u.title || '').replace(/\s+/g, '');
+                    const mapName = String(u.unit_name || u.unit || '').replace(/\s+/g, '');
+                    if (!mapName) return false;
                     const mapSubj = String(u.subject || '').replace(/\s+/g, '');
                     const baseNorm = normSubj.replace(/[12ⅠⅡIIV]/g, '').replace(/과학/g, '').replace(/학/g, '');
                     const baseMap = mapSubj.replace(/[12ⅠⅡIIV]/g, '').replace(/과학/g, '').replace(/학/g, '');
                     const isTamguMatch = baseNorm && baseMap && (baseNorm.includes(baseMap) || baseMap.includes(baseNorm)) && (normSubj.slice(-1) === mapSubj.slice(-1));
                     const subjMatch = !mapSubj || mapSubj.includes(normSubj) || normSubj.includes(mapSubj) || isTamguMatch;
                     
-                    return subjMatch && mapName && (mapName === cleanTarget || mapName.includes(cleanTarget) || cleanTarget.includes(mapName));
+                    return subjMatch && (mapName === cleanUnit || mapName.includes(cleanUnit) || cleanUnit.includes(mapName));
                 });
                 if (foundUnit) {
-                    unit = foundUnit.unit_name || foundUnit.unit || foundUnit.name || unit; 
-                    const mappedKey = getSafeNum(foundUnit.unit_key ?? foundUnit.unit_code ?? foundUnit.chapter_num ?? foundUnit.unit_num);
-                    if (mappedKey !== 9999) uKey = mappedKey;
+                    unitName = foundUnit.unit_name || foundUnit.unit || unitName; 
+                    const mappedKey = getSafeNum(foundUnit.unit_key ?? foundUnit.unit_code);
+                    if (mappedKey !== 9999) uKeyNum = mappedKey;
                 }
 
-                // 2. 행동영역(eval_name & eval_key) 매칭
-                if (cleanTargetBeh) {
-                    const foundBeh = window.__unitMap.find(u => {
-                        const mapEvalName = String(u.eval_name || u.eval || '').replace(/\s+/g, '');
-                        if (!mapEvalName) return false;
-                        const mapSubj = String(u.subject || '').replace(/\s+/g, '');
-                        const baseNorm = normSubj.replace(/[12ⅠⅡIIV]/g, '').replace(/과학/g, '').replace(/학/g, '');
-                        const baseMap = mapSubj.replace(/[12ⅠⅡIIV]/g, '').replace(/과학/g, '').replace(/학/g, '');
-                        const isTamguMatch = baseNorm && baseMap && (baseNorm.includes(baseMap) || baseMap.includes(baseNorm)) && (normSubj.slice(-1) === mapSubj.slice(-1));
-                        const subjMatch = !mapSubj || mapSubj.includes(normSubj) || normSubj.includes(mapSubj) || isTamguMatch;
-                        
-                        return subjMatch && (mapEvalName === cleanTargetBeh || mapEvalName.includes(cleanTargetBeh) || cleanTargetBeh.includes(mapEvalName));
-                    });
-                    if (foundBeh) {
-                        beh = foundBeh.eval_name || foundBeh.eval || beh;
-                        const mappedBKey = getSafeNum(foundBeh.eval_key ?? foundBeh.eval_code);
-                        if (mappedBKey !== 9999) bKey = mappedBKey;
+                // 💡 2. 행동영역(eval_key, eval_name) 완벽 맵핑 로직 (국어A, 수학B 등)
+                const foundBeh = window.__unitMap.find(u => {
+                    const mapEvalKey = String(u.eval_key || u.eval_code || '').trim();
+                    const mapEvalName = String(u.eval_name || u.eval || '').replace(/\s+/g, '');
+                    if (!mapEvalKey && !mapEvalName) return false;
+                    
+                    // 우선순위 1: eval_key(예: '국어A')가 정확히 일치하면 무조건 채택
+                    if (behKeyStr && mapEvalKey && behKeyStr === mapEvalKey) return true;
+
+                    // 우선순위 2: eval_name(예: '사실적이해') 문자열 비교
+                    const mapSubj = String(u.subject || '').replace(/\s+/g, '');
+                    const baseNorm = normSubj.replace(/[12ⅠⅡIIV]/g, '').replace(/과학/g, '').replace(/학/g, '');
+                    const baseMap = mapSubj.replace(/[12ⅠⅡIIV]/g, '').replace(/과학/g, '').replace(/학/g, '');
+                    const isTamguMatch = baseNorm && baseMap && (baseNorm.includes(baseMap) || baseMap.includes(baseNorm)) && (normSubj.slice(-1) === mapSubj.slice(-1));
+                    const subjMatch = !mapSubj || mapSubj.includes(normSubj) || normSubj.includes(mapSubj) || isTamguMatch;
+                    
+                    if (cleanBeh && cleanBeh !== '-' && subjMatch && mapEvalName) {
+                        return mapEvalName === cleanBeh || mapEvalName.includes(cleanBeh) || cleanBeh.includes(mapEvalName);
                     }
+                    return false;
+                });
+                
+                if (foundBeh) {
+                    behName = foundBeh.eval_name || foundBeh.eval || behName;
+                    behKeyStr = foundBeh.eval_key || foundBeh.eval_code || behKeyStr;
                 }
             }
 
-            if (uKey === 9999 && typeof KOR_UNIT_ORDER !== 'undefined' && KOR_UNIT_ORDER[cleanTarget]) uKey = KOR_UNIT_ORDER[cleanTarget];
-            if (uKey === 9999) {
-                const rawKey = getSafeNum(q.unit_key ?? q.unit_code ?? q.chapter_num ?? q.unit_num);
-                if (rawKey !== 9999) uKey = rawKey;
-            }
-            if (bKey === 9999) {
-                const rawBKey = getSafeNum(q.eval_key ?? q.behavior_key ?? q.eval_code);
-                if (rawBKey !== 9999) bKey = rawBKey;
+            if (uKeyNum === 9999 && typeof KOR_UNIT_ORDER !== 'undefined' && KOR_UNIT_ORDER[cleanUnit]) {
+                uKeyNum = KOR_UNIT_ORDER[cleanUnit];
             }
 
-            let cleanUnit = unit;
-            if (!cleanUnit || cleanUnit === '-' || cleanUnit === 'null') cleanUnit = '기타';
-            // 💡 여기서 에러가 발생하지 않도록 수정 완료
-            let cleanBeh = beh;
-            if (!cleanBeh || cleanBeh === '-' || cleanBeh === 'null') cleanBeh = '기타';
+            if (uKeyNum === 9999) {
+                const rawKey = getSafeNum(q.unit_key ?? q.unit_code ?? q.chapter_num ?? q.unit_num);
+                if (rawKey !== 9999) uKeyNum = rawKey;
+            }
+
+            if (!unitName || unitName === '-' || unitName === 'null') unitName = '기타';
+            if (!behName || behName === '-' || behName === 'null') behName = '기타';
+            if (!behKeyStr) behKeyStr = 'Z'; // 키가 없으면 맨 뒤로
             
+            // 💡 최종적으로 저장되는 정보 (행동영역은 문자열 키(behKeyStr) 그대로 보관)
             qInfoRawMap[normSubj][qNum] = { 
-                unit: cleanUnit, 
-                subUnit: subUnit,
-                beh: cleanBeh, 
-                unitKey: uKey, 
-                behKey: bKey, 
+                unit: unitName, 
+                subUnit: subUnitName,
+                beh: behName, 
+                unitKey: uKeyNum, 
+                behKey: behKeyStr, 
                 qSubj: normSubj 
             };
 
             let labelHtml = '';
             if (normSubj === '수학' || normSubj === '수학공통') {
-                const uStr = cleanUnit.replace(/\s+/g, '');
+                const uStr = unitName.replace(/\s+/g, '');
                 if (uStr.includes('지수') || uStr.includes('로그') || uStr.includes('삼각') || uStr.includes('수열')) labelHtml += `<span style="color:#2980b9; font-weight:900; margin-right:6px;">[수학I]</span>`;
                 else if (uStr.includes('극한') || uStr.includes('연속') || uStr.includes('미분') || uStr.includes('적분')) labelHtml += `<span style="color:#2ecc71; font-weight:900; margin-right:6px;">[수학II]</span>`;
                 else if (uStr.includes('다항식') || uStr.includes('방정식') || uStr.includes('부등식') || uStr.includes('도형') || uStr.includes('함수') || uStr.includes('경우')) labelHtml += `<span style="color:#27ae60; font-weight:900; margin-right:6px;">[고1수학]</span>`;
@@ -702,20 +709,20 @@ window.__loadGradeErrata = async function(examLabel) {
             
             const isTamgu = !['국어', '국어공통', '화법과작문', '언어와매체', '수학', '수학공통', '미적분', '기하', '확률과통계', '영어', '수학1', '수학2'].includes(normSubj);
             
-            if (isTamgu && uKey !== 9999) {
-                labelHtml += `<span style="display:inline-flex; align-items:center; justify-content:center; width:18px; height:18px; background:#8e44ad; color:#fff; border-radius:4px; font-size:11px; font-weight:bold; margin-right:8px; vertical-align:middle;">${uKey}</span>`;
+            if (isTamgu && uKeyNum !== 9999) {
+                labelHtml += `<span style="display:inline-flex; align-items:center; justify-content:center; width:18px; height:18px; background:#8e44ad; color:#fff; border-radius:4px; font-size:11px; font-weight:bold; margin-right:8px; vertical-align:middle;">${uKeyNum}</span>`;
             }
             
             let labelArr = [];
-            if (cleanUnit !== '기타') labelArr.push(cleanUnit);
-            if (isTamgu && subUnit && subUnit !== '-' && subUnit !== 'null') labelArr.push(subUnit.replace(/^\d+\.?\s*/, ''));
+            if (unitName !== '기타') labelArr.push(unitName);
+            if (isTamgu && subUnitName && subUnitName !== '-' && subUnitName !== 'null') labelArr.push(subUnitName.replace(/^\d+\.?\s*/, ''));
             
             let joinedUnit = labelArr.join(' - ');
             if (!joinedUnit) joinedUnit = '단원 정보 없음';
             labelHtml += joinedUnit;
             
-            if (cleanBeh !== '기타') {
-                labelHtml += ` <span style="font-size:11px; color:#95a5a6; border:1px solid #ecf0f1; padding:2px 6px; border-radius:4px; margin-left:6px; background:#f8f9fa;">${cleanBeh}</span>`;
+            if (behName !== '기타') {
+                labelHtml += ` <span style="font-size:11px; color:#95a5a6; border:1px solid #ecf0f1; padding:2px 6px; border-radius:4px; margin-left:6px; background:#f8f9fa;">${behName}</span>`;
             }
             qInfoMap[normSubj][qNum] = labelHtml;
         });
@@ -757,7 +764,7 @@ window.__loadGradeErrata = async function(examLabel) {
                     unitInfo = qInfoRawMap[normS]?.[i];
                 }
 
-                if (!unitInfo) unitInfo = { unit: '분류없음', subUnit: '분류없음', beh: '분류없음', unitKey: 9999, behKey: 9999, qSubj: normS };
+                if (!unitInfo) unitInfo = { unit: '분류없음', subUnit: '분류없음', beh: '분류없음', unitKey: 9999, behKey: 'Z', qSubj: normS };
 
                 const u = unitInfo.unit;
                 const b = unitInfo.beh;
@@ -783,6 +790,7 @@ window.__loadGradeErrata = async function(examLabel) {
                     radarStats[majorCat].behaviors[b].total++;
                     if (isO) radarStats[majorCat].behaviors[b].o++;
 
+                    // 행동영역의 하위 데이터는 '단원명'
                     if (!radarStats[majorCat].behaviors[b].details[u]) radarStats[majorCat].behaviors[b].details[u] = { o: 0, total: 0 };
                     radarStats[majorCat].behaviors[b].details[u].total++;
                     if (isO) radarStats[majorCat].behaviors[b].details[u].o++;
@@ -793,6 +801,7 @@ window.__loadGradeErrata = async function(examLabel) {
         window.__radarStats = radarStats;
         window.__renderRadarChartUI();
 
+        // 테이블 렌더링 유지
         const findRowStrict = (targetName) => {
             if (!targetName) return null;
             const target = normalizeSubj(targetName);
@@ -852,7 +861,7 @@ window.__loadGradeErrata = async function(examLabel) {
 };
 
 // =========================================================
-// 💡 [최종] UI 렌더링 (단원/행동영역 스위치)
+// 💡 [최종 완성] UI 렌더링 (단원/행동영역 스위치)
 // =========================================================
 window.__switchRadarType = function(type) { window.__radarCurrentType = type; window.__renderRadarChartUI(); };
 window.__switchRadarSubj = function(subj) { window.__radarCurrentSubj = subj; window.__renderRadarChartUI(); };
@@ -872,7 +881,7 @@ window.__renderRadarChartUI = function() {
     }
 
     const subj = window.__radarCurrentSubj;
-    const type = window.__radarCurrentType || 'unit'; // 'unit' 또는 'beh'
+    const type = window.__radarCurrentType || 'unit'; 
 
     const btnSty = (isActive, bg) => `padding:6px 15px; border-radius:20px; border:1px solid ${isActive?bg:'#dee2e6'}; cursor:pointer; font-size:12px; font-weight:bold; transition:0.2s; background:${isActive?bg:'#f8f9fa'}; color:${isActive?'#fff':'#7f8c8d'};`;
 
@@ -907,7 +916,7 @@ window.__renderRadarChartUI = function() {
 };
 
 // =========================================================
-// 💡 [최종] 캔버스 및 클릭 이벤트 (행동영역 정렬 완벽 적용)
+// 💡 [최종 완성] 캔버스 및 클릭 이벤트 (문자열 키 알파벳 정렬)
 // =========================================================
 window.__renderRadarChartCanvas = function() {
     const ctx = document.getElementById('radarChartCanvas');
@@ -928,7 +937,7 @@ window.__renderRadarChartCanvas = function() {
 
     let labels = Object.keys(dataObj).filter(k => k !== '기타' && k !== '분류없음' && k !== '');
     
-    // 💡 정렬 로직 (단원은 unitKey, 행동영역은 behKey 기준)
+    // 💡 [핵심] 행동영역의 문자열 키('국어A', '수학B' 등)를 알파벳 순서대로 정렬
     labels.sort((a, b) => {
         if (type === 'unit') {
             const keyA = dataObj[a]?.unitKey ?? 9999;
@@ -936,10 +945,9 @@ window.__renderRadarChartCanvas = function() {
             if (keyA === keyB) return a.localeCompare(b, 'ko'); 
             return keyA - keyB;
         } else {
-            const keyA = dataObj[a]?.behKey ?? 9999;
-            const keyB = dataObj[b]?.behKey ?? 9999;
-            if (keyA === keyB) return a.localeCompare(b, 'ko'); 
-            return keyA - keyB;
+            const keyA = String(dataObj[a]?.behKey || 'Z');
+            const keyB = String(dataObj[b]?.behKey || 'Z');
+            return keyA.localeCompare(keyB, 'en'); 
         }
     });
 
