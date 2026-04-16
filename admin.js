@@ -492,7 +492,7 @@ window.__renderGradeSummaryTable = function() {
 };
 
 // =========================================================
-// 💡 [NEW] 정오표 데이터 호출 & 취약 영역 데이터 집계 (unit_key 완벽 적용)
+// 💡 [수정됨] 정오표 데이터 호출 & 취약 영역 데이터 집계 (unit_map 완벽 적용)
 // =========================================================
 window.__loadGradeErrata = async function(examLabel) {
     const container = document.getElementById('grade-errata-area');
@@ -526,7 +526,6 @@ window.__loadGradeErrata = async function(examLabel) {
             } else fetchMore = false;
         }
 
-        // 💡 [핵심] 문항 정보와 unit_map(정렬키)을 함께 가져옵니다.
         const { data: qInfos } = await _supabase.from('mock_question_info').select('*').eq('exam_label', examLabel);
         const { data: unitMapData } = await _supabase.from('unit_map').select('*');
         window.__unitMap = unitMapData || [];
@@ -545,8 +544,9 @@ window.__loadGradeErrata = async function(examLabel) {
             return;
         }
 
+        // 💡 [버그수정] 지학1, 지구과학1 등 탐구과목 매칭 정확도 향상
         const normalizeSubj = (name) => {
-            let s = String(name || "").trim().replace(/\s+/g, '').replace(/·/g, '').replace(/과학/g, '');
+            let s = String(name || "").trim().replace(/\s+/g, '').replace(/·/g, '');
             s = s.replace(/II/g, '2').replace(/I/g, '1').replace(/Ⅱ/g, '2').replace(/Ⅰ/g, '1');
             if (s.includes('화법') || s.includes('화작')) return '화법과작문';
             if (s.includes('언어') || s.includes('언매')) return '언어와매체';
@@ -562,14 +562,14 @@ window.__loadGradeErrata = async function(examLabel) {
             if (s.includes('정치') || s.includes('정법')) return '정치와법';
             if (s.includes('경제')) return '경제';
             if ((s.includes('사회') && s.includes('문화')) || s.includes('사문')) return '사회문화';
-            if (s.match(/물리.*1/) || s === '물1') return '물리1';
-            if (s.match(/화학.*1/) || s === '화1') return '화학1';
-            if (s.match(/생명.*1/) || s === '생1') return '생명1';
-            if (s.match(/지구.*1/) || s.match(/지학.*1/) || s === '지1') return '지구1';
-            if (s.match(/물리.*2/) || s === '물2') return '물리2';
-            if (s.match(/화학.*2/) || s === '화2') return '화학2';
-            if (s.match(/생명.*2/) || s === '생2') return '생명2';
-            if (s.match(/지구.*2/) || s.match(/지학.*2/) || s === '지2') return '지구2';
+            if (s.includes('물리') && s.includes('1')) return '물리학1';
+            if (s.includes('화학') && s.includes('1')) return '화학1';
+            if ((s.includes('생명') || s.includes('생물')) && s.includes('1')) return '생명과학1';
+            if ((s.includes('지구') || s.includes('지학')) && s.includes('1')) return '지구과학1';
+            if (s.includes('물리') && s.includes('2')) return '물리학2';
+            if (s.includes('화학') && s.includes('2')) return '화학2';
+            if ((s.includes('생명') || s.includes('생물')) && s.includes('2')) return '생명과학2';
+            if ((s.includes('지구') || s.includes('지학')) && s.includes('2')) return '지구과학2';
             if (s === '수학1' || s === '수1') return '수학1';
             if (s === '수학2' || s === '수2') return '수학2';
             if (s.includes('영어')) return '영어';
@@ -613,24 +613,30 @@ window.__loadGradeErrata = async function(examLabel) {
             const subUnit = String(q.sub_unit || q.subunit || '').trim();
             const beh = String(q.behavior_domain || '').trim();
             
-            // 💡 [아이디어 적용] unit_map에서 unit_name과 unit_key(순서)를 1순위로 덮어씁니다!
             let uKey = parseFloat(q.unit_key ?? q.unit_code ?? q.chapter_num ?? q.unit_num);
             
+            // 💡 [핵심] unit_map에서 unit_name과 unit_key를 1순위로 무조건 덮어씁니다!
             if (window.__unitMap && window.__unitMap.length > 0) {
                 const cleanTarget = unit.replace(/\s+/g, '');
                 const found = window.__unitMap.find(u => {
                     const mapName = String(u.unit_name || u.unit || u.name || u.title || '').replace(/\s+/g, '');
                     const mapSubj = String(u.subject || '').replace(/\s+/g, '');
-                    const subjMatch = !mapSubj || mapSubj.includes(normSubj) || normSubj.includes(mapSubj);
+                    
+                    const baseNorm = normSubj.replace(/[12ⅠⅡIIV]/g, '').replace(/과학/g, '').replace(/학/g, '');
+                    const baseMap = mapSubj.replace(/[12ⅠⅡIIV]/g, '').replace(/과학/g, '').replace(/학/g, '');
+                    const isTamguMatch = baseNorm && baseMap && (baseNorm.includes(baseMap) || baseMap.includes(baseNorm)) && (normSubj.slice(-1) === mapSubj.slice(-1));
+                    
+                    const subjMatch = !mapSubj || mapSubj.includes(normSubj) || normSubj.includes(mapSubj) || isTamguMatch;
                     return subjMatch && mapName && (mapName === cleanTarget || mapName.includes(cleanTarget) || cleanTarget.includes(mapName));
                 });
                 if (found) {
-                    unit = found.unit_name || found.unit || found.name || unit; // 표준 이름으로 통일!
-                    if (isNaN(uKey)) uKey = parseFloat(found.unit_key ?? found.unit_code ?? found.chapter_num ?? found.unit_num);
+                    unit = found.unit_name || found.unit || found.name || unit; // 선생님 요청: unit_name 통일
+                    const mappedKey = parseFloat(found.unit_key ?? found.unit_code ?? found.chapter_num ?? found.unit_num);
+                    if (!isNaN(mappedKey)) uKey = mappedKey; // 선생님 요청: unit_key 절대 덮어쓰기
                 }
             }
 
-            let cleanUnit = unit.replace(/^\d+\.?\s*/, ''); // 단원 앞 숫자 제거
+            let cleanUnit = unit.replace(/^\d+\.?\s*/, '');
             if (!cleanUnit || cleanUnit === '-' || cleanUnit === 'null') cleanUnit = '기타';
             let cleanBeh = beh;
             if (!cleanBeh || cleanBeh === '-' || cleanBeh === 'null') cleanBeh = '기타';
@@ -646,15 +652,14 @@ window.__loadGradeErrata = async function(examLabel) {
             if (normSubj === '수학' || normSubj === '수학공통') {
                 const uStr = cleanUnit.replace(/\s+/g, '');
                 if (uStr.includes('지수') || uStr.includes('로그') || uStr.includes('삼각') || uStr.includes('수열')) labelHtml += `<span style="color:#2980b9; font-weight:900; margin-right:6px;">[수학I]</span>`;
-                else if (uStr.includes('극한') || uStr.includes('연속') || uStr.includes('미분') || uStr.includes('적분')) labelHtml += `<span style="color:#8e44ad; font-weight:900; margin-right:6px;">[수학II]</span>`;
+                else if (uStr.includes('극한') || uStr.includes('연속') || uStr.includes('미분') || uStr.includes('적분')) labelHtml += `<span style="color:#2ecc71; font-weight:900; margin-right:6px;">[수학II]</span>`;
                 else if (uStr.includes('다항식') || uStr.includes('방정식') || uStr.includes('부등식') || uStr.includes('도형') || uStr.includes('함수') || uStr.includes('경우')) labelHtml += `<span style="color:#27ae60; font-weight:900; margin-right:6px;">[고1수학]</span>`;
             } else if (normSubj === '수학1') labelHtml += `<span style="color:#2980b9; font-weight:900; margin-right:6px;">[수학I]</span>`;
-            else if (normSubj === '수학2') labelHtml += `<span style="color:#8e44ad; font-weight:900; margin-right:6px;">[수학II]</span>`;
+            else if (normSubj === '수학2') labelHtml += `<span style="color:#2ecc71; font-weight:900; margin-right:6px;">[수학II]</span>`;
             
             const isTamgu = !['국어', '국어공통', '화법과작문', '언어와매체', '수학', '수학공통', '미적분', '기하', '확률과통계', '영어', '수학1', '수학2'].includes(normSubj);
             
             if (isTamgu && !isNaN(uKey) && uKey !== 9999) {
-                // 탐구 과목은 추출한 unitKey를 보라색 뱃지로 표시!
                 labelHtml += `<span style="display:inline-flex; align-items:center; justify-content:center; width:18px; height:18px; background:#8e44ad; color:#fff; border-radius:4px; font-size:11px; font-weight:bold; margin-right:8px; vertical-align:middle;">${uKey}</span>`;
             }
             
@@ -703,7 +708,6 @@ window.__loadGradeErrata = async function(examLabel) {
                 const isO = ['O','○','o'].includes(ox);
                 let unitInfo = null;
                 
-                // 💡 [핵심 버그 수정] 학생이 선택한 과목 번호(국어 35~, 수학 23~)는 무조건 그 학생 과목 정보로만 핀셋 추출!
                 if (majorCat === '국어') {
                     if (i >= 35) unitInfo = qInfoRawMap[myKorChoice]?.[i];
                     if (!unitInfo) unitInfo = qInfoRawMap['국어공통']?.[i] || qInfoRawMap['국어']?.[i] || qInfoRawMap['공통']?.[i];
@@ -840,7 +844,7 @@ window.__renderRadarChartUI = function() {
 };
 
 // =========================================================
-// 💡 [레이더 차트] 방사형 그래프 렌더러 (unit_key 정렬 & 색상 완벽 매칭)
+// 💡 [수정됨] 방사형 레이더 그래프 렌더러 (글씨 색상, 순서 완벽 고정)
 // =========================================================
 window.__renderRadarChartCanvas = function() {
     const ctx = document.getElementById('radarChartCanvas');
@@ -853,11 +857,24 @@ window.__renderRadarChartCanvas = function() {
     let labels = Object.keys(dataObj).filter(k => k !== '분류없음' && k !== '기타' && k !== '');
     if (labels.length === 0) labels = ['데이터 없음'];
 
-    // 💡 [핵심] unit_key를 활용하여 시계방향으로 아주 깔끔하게 정렬!
+    // 💡 [핵심] unit_map의 키를 활용한 절대 정렬 + 수학 1/2/선택 꼬임 방지
     labels.sort((a, b) => {
         const keyA = dataObj[a]?.unitKey ?? 9999;
         const keyB = dataObj[b]?.unitKey ?? 9999;
-        return keyA - keyB;
+        
+        if (keyA !== keyB) return keyA - keyB;
+        
+        // 키가 같거나 없을 때를 대비한 하드코딩 정렬 안전장치 (수1 -> 수2 -> 선택 순서 고정)
+        if (subj === '수학') {
+            const order = (l) => {
+                const qs = dataObj[l]?.qSubj || '';
+                if (['미적분', '기하', '확률과통계'].includes(qs)) return 3;
+                if (qs === '수학2' || /(극한|연속|미분|적분)/.test(l)) return 2;
+                return 1;
+            };
+            return order(a) - order(b);
+        }
+        return 0;
     });
 
     const dataPoints = labels.map(l => {
@@ -865,22 +882,19 @@ window.__renderRadarChartCanvas = function() {
         return stat && stat.total > 0 ? Math.round((stat.o / stat.total) * 100) : 0;
     });
 
-    // 💡 [핵심] 원본 과목명(qSubj)을 읽어서 헷갈림 없이 색상을 칠해줍니다.
+    // 💡 [핵심] 글씨 색상 및 포인트 색상 분리 (국어: 독서/문학/선택, 수학: 수1/수2/선택)
     const getLabelColor = (label, subject) => {
         const stat = dataObj[label];
         const qSubj = stat ? stat.qSubj : subject; 
 
         if (subject === '국어') {
             if (['화법과작문', '언어와매체'].includes(qSubj)) return '#f39c12'; // 선택(주황)
-            if (qSubj === '국어공통' || qSubj === '국어') {
-                 if (/(시|소설|극|수필|문학|갈래)/.test(label)) return '#2ecc71'; // 문학(초록)
-                 return '#3498db'; // 독서(파랑)
-            }
-            return '#3498db';
+            if (/(시|소설|극|수필|문학|갈래)/.test(label)) return '#2ecc71'; // 문학(초록)
+            return '#3498db'; // 독서(파랑)
         } else if (subject === '수학') {
             if (['미적분', '기하', '확률과통계'].includes(qSubj)) return '#f39c12'; // 선택(주황)
-            if (qSubj === '수학2') return '#8e44ad'; // 수2(보라)
-            if (qSubj === '수학1') return '#3498db'; // 수1(파랑)
+            if (qSubj === '수학2' || /(극한|연속|미분|적분)/.test(label)) return '#2ecc71'; // 수2(초록)
+            if (qSubj === '수학1' || /(지수|로그|삼각|수열)/.test(label)) return '#3498db'; // 수1(파랑)
             return '#27ae60'; // 기타
         }
         return '#3498db'; // 탐구는 기본 파랑
@@ -920,6 +934,7 @@ window.__renderRadarChartCanvas = function() {
                     grid: { color: '#ecf0f1' },
                     angleLines: { color: '#ecf0f1' },
                     pointLabels: {
+                        // 💡 여기서 글씨 색상이 반환되어 차트에 칠해집니다.
                         color: function(context) { return type === 'unit' ? getLabelColor(context.label, subj) : '#2c3e50'; },
                         font: { size: 12, weight: 'bold' }
                     }
@@ -927,37 +942,14 @@ window.__renderRadarChartCanvas = function() {
             },
             plugins: {
                 legend: { display: false },
+                // 💡 [버그수정] 툴팁이 2개씩 중복으로 총 4줄씩 나오던 버그 수정 (심플한 차트 기본 툴팁으로 교체)
                 tooltip: {
-                    // 💡 [핵심] 0%가 여러 개일 때 툴팁이 복사되는 버그 방지!
-                    filter: function(tooltipItem, index, tooltipItems, data) {
-                        if (tooltipItem.raw === 0) {
-                            const firstZero = tooltipItems.find(t => t.raw === 0);
-                            return tooltipItem.dataIndex === firstZero.dataIndex; 
-                        }
-                        return true;
-                    },
                     callbacks: {
                         title: function(tooltipItems) {
-                            const val = tooltipItems[0].raw;
-                            const dataset = tooltipItems[0].dataset;
-                            const chartLabels = tooltipItems[0].chart.data.labels;
-                            const sameValLabels = chartLabels.filter((l, i) => dataset.data[i] === val);
-                            
-                            if (val === 0 && sameValLabels.length > 1) {
-                                return `🚨 취약 영역 (0%) - 총 ${sameValLabels.length}개`;
-                            }
                             return tooltipItems[0].label;
                         },
                         label: function(context) {
-                            const val = context.raw;
-                            const dataset = context.dataset;
-                            const chartLabels = context.chart.data.labels;
-                            const sameValLabels = chartLabels.filter((l, i) => dataset.data[i] === val);
-                            
-                            if (val === 0 && sameValLabels.length > 1) {
-                                return sameValLabels.map(l => ` • ${l}`);
-                            }
-                            return ` ${val}%`;
+                            return ` 성취도: ${context.raw}%`;
                         }
                     }
                 }
