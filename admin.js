@@ -478,13 +478,13 @@ window.__renderGradeSummaryTable = function() {
 };
 
 // =========================================================
-// 💡 [NEW] 정오표 데이터 호출 및 렌더링 로직 (프론트 단독 연산)
+// 💡 [NEW] 정오표 데이터 호출 및 렌더링 로직 (1000개 제한 돌파 페이징 적용)
 // =========================================================
 window.__loadGradeErrata = async function(examLabel) {
     const container = document.getElementById('grade-errata-area');
     if (!container) return;
     
-    container.innerHTML = '<div style="text-align:center; padding:30px; color:#95a5a6;"><span style="font-size:24px; display:block; margin-bottom:10px;">⏳</span>데이터를 분석하는 중입니다...</div>';
+    container.innerHTML = '<div style="text-align:center; padding:30px; color:#95a5a6;"><span style="font-size:24px; display:block; margin-bottom:10px;">⏳</span>전체 데이터를 모아 분석하는 중입니다... (잠시만 기다려주세요)</div>';
 
     const scoreInfo = window.__currentStudentScores.find(s => s.exam_label === examLabel);
     if (!scoreInfo) {
@@ -495,41 +495,63 @@ window.__loadGradeErrata = async function(examLabel) {
     const studentId = String(scoreInfo.student_id || "").trim();
 
     try {
-        // 💡 올바른 테이블 이름으로 복구
-        const [errataRes, qInfoRes] = await Promise.all([
-            _supabase.from('mock_errata').select('*').eq('exam_label', examLabel),
-            _supabase.from('mock_question_info').select('*').eq('exam_label', examLabel)
-        ]);
+        // 💡 [핵심 픽스] 수퍼베이스의 1000개 제한을 뚫기 위해 반복문(while)으로 끝까지 가져옵니다!
+        let allErrata = [];
+        let fetchMore = true;
+        let startIdx = 0;
+        const limitSize = 1000;
 
-        if (errataRes.error) console.error("정오표 로드 에러:", errataRes.error);
+        while (fetchMore) {
+            const { data, error } = await _supabase
+                .from('mock_errata')
+                .select('*')
+                .eq('exam_label', examLabel)
+                .range(startIdx, startIdx + limitSize - 1);
+            
+            if (error) {
+                console.error("정오표 페이징 로드 에러:", error);
+                break;
+            }
+            
+            if (data && data.length > 0) {
+                allErrata = allErrata.concat(data);
+                startIdx += limitSize;
+                // 가져온 데이터가 1000개 미만이면 더 이상 가져올 게 없으므로 종료
+                if (data.length < limitSize) fetchMore = false; 
+            } else {
+                fetchMore = false;
+            }
+        }
 
-        const allErrata = errataRes.data || [];
-        const qInfos = qInfoRes.data || [];
+        // 문항 정보는 1000개가 넘지 않으므로 한 번에 가져옵니다.
+        const { data: qInfos, error: qError } = await _supabase
+            .from('mock_question_info')
+            .select('*')
+            .eq('exam_label', examLabel);
+            
+        if (qError) console.error("문항정보 로드 에러:", qError);
 
-        // 👨‍💻 [디버깅] 관리자님, F12를 눌러 콘솔 탭을 확인해 보세요!
         console.log(`=======================================`);
         console.log(`🎯 [정오표 로드] 시험명: "${examLabel}" / 찾을학번: "${studentId}"`);
-        console.log(`📥 [DB 응답] 가져온 전체 정오표 데이터 개수: ${allErrata.length}개`);
+        console.log(`📥 [DB 응답] 전체 정오표 데이터 개수: ${allErrata.length}개 (페이징 돌파 성공!)`);
         
         if (allErrata.length === 0) {
-            // 데이터가 0개라면 100% RLS 잠김 문제이거나, exam_label 오타입니다.
-            container.innerHTML = `
-                <div style="text-align:center; padding:30px; color:#e74c3c; border:1px solid #fdf3f2; background:#fff; border-radius:8px;">
-                    <b>데이터베이스에서 데이터를 가져오지 못했습니다 (0개).</b><br><br>
-                    <span style="font-size:13px; color:#7f8c8d;">
-                    1. 수퍼베이스 <b>mock_errata</b> 테이블의 <b>RLS(자물쇠)</b>가 해제되어 있는지 꼭 확인해 주세요!<br>
-                    2. 성적표의 시험명과 정오표의 시험명(exam_label) 띄어쓰기가 완벽히 똑같은지 확인해 주세요.
-                    </span>
-                </div>`;
+            container.innerHTML = '<div style="text-align:center; padding:30px; color:#e74c3c; border:1px solid #fdf3f2; border-radius:8px;">DB에서 데이터를 가져오지 못했습니다.</div>';
             return;
         }
 
-        const myErrata = allErrata.filter(e => String(e.student_id).trim() === studentId);
+        // 강력한 매칭 (컬럼이든 값이든 학번이 일치하면 찾아냄)
+        const myErrata = allErrata.filter(e => {
+            const isMatchColumn = String(e.student_id || "").trim() === studentId;
+            const isMatchAnywhere = Object.values(e).some(val => String(val).trim() === studentId);
+            return isMatchColumn || isMatchAnywhere;
+        });
+
         console.log(`🔍 [매칭 결과] 이 학생(${studentId})의 정오표 개수: ${myErrata.length}개`);
         console.log(`=======================================`);
 
         if (myErrata.length === 0) {
-            container.innerHTML = '<div style="text-align:center; padding:30px; color:#95a5a6; border:1px solid #f1f2f6; border-radius:8px;">이 시험의 정오표(O/X) 데이터가 아직 등록되지 않았습니다.<br><span style="font-size:12px; color:#bdc3c7;">(DB에 해당 학번이 정확히 입력되었는지 확인해주세요)</span></div>';
+            container.innerHTML = '<div style="text-align:center; padding:30px; color:#95a5a6; border:1px solid #f1f2f6; border-radius:8px;">이 시험의 정오표(O/X) 데이터가 아직 등록되지 않았습니다.<br><span style="font-size:12px; color:#bdc3c7;">(엑셀 업로드 내역을 확인해 주세요.)</span></div>';
             return;
         }
 
