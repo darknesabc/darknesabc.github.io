@@ -492,7 +492,8 @@ window.__loadGradeErrata = async function(examLabel) {
         return;
     }
     
-    const studentId = scoreInfo.student_id;
+    // 💡 오직 '학번(student_id)'만 기준점으로 사용합니다.
+    const studentId = String(scoreInfo.student_id || "").trim();
 
     try {
         // 수퍼베이스에서 O/X 및 문항정보 일괄 로드
@@ -501,12 +502,16 @@ window.__loadGradeErrata = async function(examLabel) {
             _supabase.from('mock_question_info').select('*').eq('exam_label', examLabel)
         ]);
 
+        if (errataRes.error) console.error("정오표 로드 에러:", errataRes.error);
+
         const allErrata = errataRes.data || [];
         const qInfos = qInfoRes.data || [];
 
-        const myErrata = allErrata.filter(e => e.student_id === studentId);
+        // 💡 [핵심 픽스] 동명이인 방지를 위해 이름 매칭 삭제! 오직 '학번'이 정확히 일치하는 데이터만 가져옵니다.
+        const myErrata = allErrata.filter(e => String(e.student_id).trim() === studentId);
+
         if (myErrata.length === 0) {
-            container.innerHTML = '<div style="text-align:center; padding:30px; color:#95a5a6; border:1px solid #f1f2f6; border-radius:8px;">이 시험의 정오표(O/X) 데이터가 아직 등록되지 않았습니다.</div>';
+            container.innerHTML = '<div style="text-align:center; padding:30px; color:#95a5a6; border:1px solid #f1f2f6; border-radius:8px;">이 시험의 정오표(O/X) 데이터가 아직 등록되지 않았습니다.<br><span style="font-size:12px; color:#bdc3c7;">(※ 수퍼베이스의 student_id가 정확히 일치하는지 확인해주세요)</span></div>';
             return;
         }
 
@@ -538,9 +543,13 @@ window.__loadGradeErrata = async function(examLabel) {
             qInfoMap[q.subject][q.question_num] = label;
         });
 
-        // 3. 내 과목 찾기 헬퍼
+        // 3. 내 과목 찾기 헬퍼 (공백 무시 등 융통성 강화)
         const findRow = (subjHint, choiceName) => {
-            return myErrata.find(e => e.subject === choiceName || e.subject.includes(subjHint) || (choiceName && e.subject.includes(choiceName.slice(0,2))));
+            const cName = String(choiceName || "").replace(/\s+/g, '');
+            return myErrata.find(e => {
+                const eSubj = String(e.subject || "").replace(/\s+/g, '');
+                return eSubj === cName || eSubj.includes(subjHint) || (cName && eSubj.includes(cName.slice(0,2)));
+            });
         };
         const korRow = findRow('국어', scoreInfo.kor_choice) || myErrata.find(e => e.subject.includes('언어') || e.subject.includes('화법'));
         const mathRow = findRow('수학', scoreInfo.math_choice) || myErrata.find(e => e.subject.includes('미적') || e.subject.includes('기하') || e.subject.includes('확률'));
