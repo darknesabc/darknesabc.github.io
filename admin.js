@@ -622,9 +622,10 @@ window.__loadGradeErrata = async function(examLabel) {
             let beh = String(q.behavior_domain || '').replace(/^\d+\.?\s*/, '').trim();
             
             let uKey = 9999;
-            let bKey = 9999; // 💡 행동영역 정렬을 위한 키
+            let bKey = 9999; 
             const cleanTarget = unit.replace(/\s+/g, '');
-            const cleanBeh = beh.replace(/\s+/g, '');
+            // 💡 [버그 수정] 중복 선언을 피하기 위해 이름을 cleanTargetBeh로 변경했습니다.
+            const cleanTargetBeh = beh.replace(/\s+/g, ''); 
             
             if (window.__unitMap && window.__unitMap.length > 0) {
                 // 💡 [1순위] 단원명 (unit_name & unit_key) 매칭
@@ -645,7 +646,7 @@ window.__loadGradeErrata = async function(examLabel) {
                 }
 
                 // 💡 [2순위] 행동영역 (eval_name & eval_key) 매칭
-                if (cleanBeh) {
+                if (cleanTargetBeh) {
                     const foundBeh = window.__unitMap.find(u => {
                         const mapEvalName = String(u.eval_name || u.eval || '').replace(/\s+/g, '');
                         if (!mapEvalName) return false;
@@ -655,7 +656,7 @@ window.__loadGradeErrata = async function(examLabel) {
                         const isTamguMatch = baseNorm && baseMap && (baseNorm.includes(baseMap) || baseMap.includes(baseNorm)) && (normSubj.slice(-1) === mapSubj.slice(-1));
                         const subjMatch = !mapSubj || mapSubj.includes(normSubj) || normSubj.includes(mapSubj) || isTamguMatch;
                         
-                        return subjMatch && (mapEvalName === cleanBeh || mapEvalName.includes(cleanBeh) || cleanBeh.includes(mapEvalName));
+                        return subjMatch && (mapEvalName === cleanTargetBeh || mapEvalName.includes(cleanTargetBeh) || cleanTargetBeh.includes(mapEvalName));
                     });
                     if (foundBeh) {
                         beh = foundBeh.eval_name || foundBeh.eval || beh;
@@ -674,7 +675,6 @@ window.__loadGradeErrata = async function(examLabel) {
                 if (rawKey !== 9999) uKey = rawKey;
             }
 
-            // 💡 행동영역 키 fallback
             if (bKey === 9999) {
                 const rawBKey = getSafeNum(q.eval_key ?? q.behavior_key ?? q.eval_code);
                 if (rawBKey !== 9999) bKey = rawBKey;
@@ -685,13 +685,12 @@ window.__loadGradeErrata = async function(examLabel) {
             let cleanBeh = beh;
             if (!cleanBeh || cleanBeh === '-' || cleanBeh === 'null') cleanBeh = '기타';
             
-            // 💡 맵에 bKey 포함해서 저장
             qInfoRawMap[normSubj][qNum] = { 
                 unit: cleanUnit, 
                 subUnit: subUnit,
                 beh: cleanBeh, 
                 unitKey: uKey, 
-                behKey: bKey, // 행동영역 순서 키
+                behKey: bKey, 
                 qSubj: normSubj 
             };
 
@@ -770,7 +769,7 @@ window.__loadGradeErrata = async function(examLabel) {
                 const u = unitInfo.unit;
                 const b = unitInfo.beh;
 
-                // 💡 [단원별 누적]
+                // 1. 단원별(units) 누적
                 if (!radarStats[majorCat].units[u]) radarStats[majorCat].units[u] = { o: 0, total: 0, qSubj: unitInfo.qSubj, unitKey: unitInfo.unitKey, details: {} };
                 
                 radarStats[majorCat].units[u].total++;
@@ -784,7 +783,7 @@ window.__loadGradeErrata = async function(examLabel) {
                 radarStats[majorCat].units[u].details[detailKeyUnitView].total++;
                 if (isO) radarStats[majorCat].units[u].details[detailKeyUnitView].o++;
 
-                // 💡 [행동영역별 누적 추가]
+                // 2. 행동영역별(behaviors) 누적
                 if (b && b !== '-' && b !== 'null' && b !== '기타' && b !== '분류없음') {
                     if (!radarStats[majorCat].behaviors[b]) {
                         radarStats[majorCat].behaviors[b] = { o: 0, total: 0, behKey: unitInfo.behKey, details: {} };
@@ -792,7 +791,6 @@ window.__loadGradeErrata = async function(examLabel) {
                     radarStats[majorCat].behaviors[b].total++;
                     if (isO) radarStats[majorCat].behaviors[b].o++;
 
-                    // 행동영역의 하위 세부 데이터는 "단원명(unit)"이 됩니다!
                     if (!radarStats[majorCat].behaviors[b].details[u]) {
                         radarStats[majorCat].behaviors[b].details[u] = { o: 0, total: 0 };
                     }
@@ -805,7 +803,7 @@ window.__loadGradeErrata = async function(examLabel) {
         window.__radarStats = radarStats;
         window.__renderRadarChartUI();
 
-        // 이하 하단 정오표 테이블 렌더링
+        // 테이블 렌더링 로직 유지
         const findRowStrict = (targetName) => {
             if (!targetName) return null;
             const target = normalizeSubj(targetName);
