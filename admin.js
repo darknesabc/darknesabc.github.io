@@ -474,13 +474,13 @@ window.__renderGradeDisplay = function() {
         return s[`${subj}_raw_total`] !== undefined ? (s[`${subj}_raw_total`] || 0) : (s[`${subj}_raw`] || 0);
     };
 
-    // 💡 [수정] class_group 컬럼을 사용하여 그룹별 컷오프를 완벽하게 필터링
+    // 💡 [핵심 수정] 탐구 1/2 구분 없이 과목명이 일치하면 점수를 통합하는 로직
     const getTop30 = (examLabel, subj, valKey, filterMode, myScore) => {
         let pool = window.__allMockScores.filter(s => s.exam_label === examLabel);
         
-        if (filterMode === 'topChoice') {
-            const choiceKey = subj === 'kor' ? 'kor_choice' : (subj === 'math' ? 'math_choice' : (subj === 'tam1' ? 'tam1_name' : 'tam2_name'));
-            pool = pool.filter(s => s[choiceKey] === myScore[choiceKey]);
+        // 1. 그룹 필터링 적용 (선택과목 컷오프가 아닐 때만 풀을 줄임)
+        if (filterMode === 'topClass') {
+            pool = pool.filter(s => s.class_name === window.__currentStudentClass);
         } else if (filterMode === 'topHS') {
             pool = pool.filter(s => s.class_group && s.class_group.includes('HS'));
         } else if (filterMode === 'topGreen') {
@@ -493,8 +493,39 @@ window.__renderGradeDisplay = function() {
             pool = pool.filter(s => s.class_group && s.class_group.includes('연고'));
         }
         
-        let vals = pool.map(s => Number(s[valKey]) || 0).filter(v => v > 0).sort((a,b) => b-a);
+        let vals = [];
+
+        // 2. 점수 추출 로직
+        if (filterMode === 'topChoice') {
+            if (subj === 'kor' || subj === 'math') {
+                // 국어, 수학은 자기들끼리만
+                const choiceKey = subj === 'kor' ? 'kor_choice' : 'math_choice';
+                pool = pool.filter(s => s[choiceKey] === myScore[choiceKey]);
+                vals = pool.map(s => Number(s[valKey]) || 0);
+            } else if (subj === 'tam1' || subj === 'tam2') {
+                // 💡 [핵심] 탐구는 1, 2 구분 없이 과목명이 같으면 양쪽 칸에서 모두 끌어모음!
+                const myTamName = subj === 'tam1' ? myScore.tam1_name : myScore.tam2_name;
+                if (!myTamName) return null;
+
+                // "_exp_pct", "_raw" 등 현재 모드에 맞는 꼬리표 찾기
+                const suffix = valKey.replace(subj, "");
+
+                pool.forEach(s => {
+                    // 탐구1 칸에 쓴 사람 점수 줍기
+                    if (s.tam1_name === myTamName) vals.push(Number(s["tam1" + suffix]) || 0);
+                    // 탐구2 칸에 쓴 사람 점수 줍기
+                    if (s.tam2_name === myTamName) vals.push(Number(s["tam2" + suffix]) || 0);
+                });
+            }
+        } else {
+            // 전체 30%나 반별 30% 등은 원래 컬럼에서 그대로 점수 추출
+            vals = pool.map(s => Number(s[valKey]) || 0);
+        }
+        
+        // 3. 0점 제외하고 정렬 후 상위 30% 커트라인 추출
+        vals = vals.filter(v => v > 0).sort((a,b) => b-a);
         if (vals.length === 0) return null;
+        
         let idx = Math.floor(vals.length * 0.3);
         if (idx >= vals.length) idx = vals.length - 1;
         return vals[idx];
@@ -546,6 +577,7 @@ window.__renderGradeDisplay = function() {
                 
                 addLine('topTotal', '전체상위30%', [5, 5], colors[sbj.id]);
                 addLine('topChoice', '선택상위30%', [3, 3], '#9b59b6');
+                addLine('topClass', '반별상위30%', [2, 4], '#1abc9c');
                 addLine('topHS', 'HS반 30%', [4, 2], '#e67e22');
                 addLine('topGreen', '그린 30%', [4, 2], '#2ecc71');
                 addLine('topBlue', '블루 30%', [4, 2], '#3498db');
@@ -560,7 +592,6 @@ window.__renderGradeDisplay = function() {
             options: {
                 responsive: true, maintainAspectRatio: false,
                 scales: { y: { beginAtZero: mode==='pct', max: mode==='pct'?100:null, grid: { color: '#f1f2f6' } }, x: { grid: { display: false } } },
-                // 💡 [수정] 툴팁 배경을 어둡게, 글씨를 하얗게 만들어서 확실하게 보이게 수정
                 plugins: { 
                     legend: { display: false }, 
                     tooltip: { mode: 'index', intersect: false, backgroundColor: 'rgba(0,0,0,0.8)', titleColor: '#fff', bodyColor: '#fff' } 
