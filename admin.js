@@ -646,12 +646,15 @@ window.__renderGradeDisplay = function() {
         const v = (val) => val === null || val === undefined ? '-' : val;
         
         let h = `
-        <div style="overflow-x:auto; border-radius:8px; border:1px solid #2f3542;">
+        <div style="overflow-x:auto; border-radius:8px; border:1px solid #dee2e6; box-shadow: 0 2px 4px rgba(0,0,0,0.02);">
             <style>
-                .dt-table { width:100%; border-collapse:collapse; font-size:12px; text-align:center; color:#dfe4ea; min-width:800px; background:#1e2128; }
-                .dt-table th, .dt-table td { border:1px solid #2f3542; padding:10px 5px; }
-                .dt-table th { background:#282c34; font-weight:bold; color:#f1f2f6; }
-                .c-kor { color:#3498db; } .c-math { color:#e74c3c; } .c-eng { color:#9b59b6; } .c-tam { color:#2ecc71; } .c-tam2 { color:#f1c40f; }
+                /* 💡 [수정] 다크테마 -> 화이트(라이트) 테마로 완벽 교체 */
+                .dt-table { width:100%; border-collapse:collapse; font-size:12px; text-align:center; color:#2c3e50; min-width:800px; background:#fff; }
+                .dt-table th, .dt-table td { border:1px solid #dee2e6; padding:10px 5px; }
+                .dt-table th { background:#f8f9fa; font-weight:bold; color:#34495e; }
+                .dt-table tbody tr:hover { background-color:#f1f2f6; transition:0.2s; } /* 마우스 올렸을 때 효과 */
+                /* 흰 배경에 잘 보이도록 탐구 색상 채도 조절 */
+                .c-kor { color:#3498db; } .c-math { color:#e74c3c; } .c-eng { color:#9b59b6; } .c-tam { color:#27ae60; } .c-tam2 { color:#f39c12; }
             </style>
             <table class="dt-table">
                 <thead>
@@ -663,7 +666,7 @@ window.__renderGradeDisplay = function() {
                         <th colspan="4">탐구1</th>
                         <th colspan="4">탐구2</th>
                     </tr>
-                    <tr style="font-size:11px; color:#a4b0be;">
+                    <tr style="font-size:11px; color:#7f8c8d; background:#fff;">
                         <th>원점</th><th>표점</th><th class="c-kor">백분위</th><th>등급</th>
                         <th>원점</th><th>표점</th><th class="c-math">백분위</th><th>등급</th>
                         <th>원점</th><th>백분위</th><th class="c-eng">등급</th>
@@ -675,12 +678,12 @@ window.__renderGradeDisplay = function() {
         `;
         scores.forEach(s => {
             h += `<tr>
-                <td style="font-weight:bold; color:#fff;">${s.exam_label}</td>
+                <td style="font-weight:bold; color:#2c3e50; background:#f8f9fa;">${s.exam_label}</td>
                 <td>${v(s.kor_raw_total)}</td> <td>${v(s.kor_exp_std)}</td> <td class="c-kor" style="font-weight:bold;">${v(s.kor_exp_pct)}</td> <td>${v(s.kor_exp_grade)}</td>
                 <td>${v(s.math_raw_total)}</td> <td>${v(s.math_exp_std)}</td> <td class="c-math" style="font-weight:bold;">${v(s.math_exp_pct)}</td> <td>${v(s.math_exp_grade)}</td>
                 <td>${v(s.eng_raw)}</td> <td>-</td> <td class="c-eng" style="font-weight:bold;">${v(s.eng_grade)}</td>
-                <td class="c-tam">${v(s.tam1_name)}</td> <td>${v(s.tam1_raw)}</td> <td class="c-tam" style="font-weight:bold;">${v(s.tam1_exp_pct)}</td> <td>${v(s.tam1_exp_grade)}</td>
-                <td class="c-tam2">${v(s.tam2_name)}</td> <td>${v(s.tam2_raw)}</td> <td class="c-tam2" style="font-weight:bold;">${v(s.tam2_exp_pct)}</td> <td>${v(s.tam2_exp_grade)}</td>
+                <td class="c-tam" style="font-size:11px;">${v(s.tam1_name)}</td> <td>${v(s.tam1_raw)}</td> <td class="c-tam" style="font-weight:bold;">${v(s.tam1_exp_pct)}</td> <td>${v(s.tam1_exp_grade)}</td>
+                <td class="c-tam2" style="font-size:11px;">${v(s.tam2_name)}</td> <td>${v(s.tam2_raw)}</td> <td class="c-tam2" style="font-weight:bold;">${v(s.tam2_exp_pct)}</td> <td>${v(s.tam2_exp_grade)}</td>
             </tr>`;
         });
         h += '</tbody></table></div>';
