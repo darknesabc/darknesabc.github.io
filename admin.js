@@ -478,7 +478,7 @@ window.__renderGradeSummaryTable = function() {
 };
 
 // =========================================================
-// 💡 [NEW] 정오표 데이터 호출 및 렌더링 로직 (공통합산 & 과목명 정규화 패치)
+// 💡 [NEW] 정오표 데이터 호출 및 렌더링 로직 (지학1 추가 & 대단원-소단원 패치)
 // =========================================================
 window.__loadGradeErrata = async function(examLabel) {
     const container = document.getElementById('grade-errata-area');
@@ -539,7 +539,7 @@ window.__loadGradeErrata = async function(examLabel) {
             return;
         }
 
-        // 💡 [핵심 픽스 1] 과목명 찰떡 매칭 사전 (생윤=생활과윤리, 물1=물리학1 등 모두 통일)
+        // 💡 [핵심 픽스 1] 과목명 정규화 사전에 '지학1', '지학2' 완벽 추가
         const normalizeSubj = (name) => {
             let s = String(name || "").trim().replace(/\s+/g, '').replace(/·/g, '');
             if (s.includes('화법') || s.includes('화작')) return '화법과작문';
@@ -559,18 +559,18 @@ window.__loadGradeErrata = async function(examLabel) {
             if (s.includes('물리1') || s.includes('물리학1') || s.includes('물리학I') || s === '물1') return '물리학1';
             if (s.includes('화학1') || s.includes('화학I') || s === '화1') return '화학1';
             if (s.includes('생명1') || s.includes('생명과학1') || s.includes('생명과학I') || s === '생1') return '생명과학1';
-            if (s.includes('지구1') || s.includes('지구과학1') || s.includes('지구과학I') || s === '지1') return '지구과학1';
+            // 👇 지학1, 지학2 추가됨
+            if (s.includes('지구1') || s.includes('지구과학1') || s.includes('지구과학I') || s === '지1' || s.includes('지학1')) return '지구과학1';
             if (s.includes('물리2') || s.includes('물리학2') || s.includes('물리학II') || s === '물2') return '물리학2';
             if (s.includes('화학2') || s.includes('화학II') || s === '화2') return '화학2';
             if (s.includes('생명2') || s.includes('생명과학2') || s.includes('생명과학II') || s === '생2') return '생명과학2';
-            if (s.includes('지구2') || s.includes('지구과학2') || s.includes('지구과학II') || s === '지2') return '지구과학2';
+            if (s.includes('지구2') || s.includes('지구과학2') || s.includes('지구과학II') || s === '지2' || s.includes('지학2')) return '지구과학2';
             if (s.includes('영어')) return '영어';
             if (s.includes('국어')) return '국어';
             if (s.includes('수학')) return '수학';
             return s;
         };
 
-        // 💡 [핵심 픽스 2] 공통문항 전교생 합산 통계 생성
         const stats = {}; 
         const addToStats = (targetKey, rowData) => {
             if (!stats[targetKey]) stats[targetKey] = {};
@@ -586,10 +586,8 @@ window.__loadGradeErrata = async function(examLabel) {
 
         allErrata.forEach(row => {
             const normSubj = normalizeSubj(row.subject);
-            // 선택과목별(사문, 생윤 등) 고유 통계 적립
             addToStats(normSubj, row);
 
-            // 국어공통, 수학공통 통계 별도 합산 적립 (화작, 언매 모두 '국어공통'에 쌓임)
             if (normSubj === '화법과작문' || normSubj === '언어와매체' || normSubj === '국어') {
                 addToStats('국어공통', row);
             }
@@ -598,21 +596,31 @@ window.__loadGradeErrata = async function(examLabel) {
             }
         });
 
-        // 💡 [핵심 픽스 3] 출제 영역 매칭 시에도 과목명 정규화 적용
+        // 💡 [핵심 픽스 2] 출제 영역 매칭 시 "대단원 - 소단원 <행동영역>" 형태로 조합
         const qInfoMap = {}; 
         (qInfos || []).forEach(q => {
             const normSubj = normalizeSubj(q.subject);
             if (!qInfoMap[normSubj]) qInfoMap[normSubj] = {};
-            const unit = q.unit_name || '';
-            const beh = q.behavior_domain || q.sub_unit || '';
-            let label = unit;
-            if (beh && beh !== '기타' && beh !== '-') {
+            
+            const unit = String(q.unit_name || '').trim();
+            const subUnit = String(q.sub_unit || '').trim();
+            const beh = String(q.behavior_domain || '').trim();
+            
+            // 대단원과 소단원을 하이픈(-)으로 예쁘게 묶기
+            let labelArr = [];
+            if (unit && unit !== '-' && unit !== 'null') labelArr.push(unit);
+            if (subUnit && subUnit !== '-' && subUnit !== 'null') labelArr.push(subUnit);
+            
+            let label = labelArr.join(' - ');
+            if (!label) label = '단원 정보 없음';
+            
+            // 행동영역은 오른쪽 끝에 예쁜 태그로 붙이기
+            if (beh && beh !== '기타' && beh !== '-' && beh !== 'null') {
                 label += ` <span style="font-size:11px; color:#95a5a6; border:1px solid #ecf0f1; padding:2px 6px; border-radius:4px; margin-left:6px; background:#f8f9fa;">${beh}</span>`;
             }
             qInfoMap[normSubj][q.question_num] = label;
         });
 
-        // 3. 내 과목 찾기 (정규화된 과목명으로 완벽 스캔)
         const findRow = (subjHint, choiceName) => {
             const normChoice = normalizeSubj(choiceName);
             return myErrata.find(e => {
@@ -627,7 +635,6 @@ window.__loadGradeErrata = async function(examLabel) {
         const tam1Row = findRow('탐구', scoreInfo.tam1_name) || findRow('', scoreInfo.tam1_name);
         const tam2Row = findRow('탐구', scoreInfo.tam2_name) || findRow('', scoreInfo.tam2_name);
 
-        // 4. 섹션별 아코디언 HTML 렌더러
         const renderSection = (title, subtitle, qStart, qEnd, errataRow, statKey, infoKey) => {
             if (!errataRow) return '';
             
@@ -646,12 +653,10 @@ window.__loadGradeErrata = async function(examLabel) {
                 const oxColor = isO ? '#3498db' : '#e74c3c';
                 const oxBg = isO ? '#fff' : '#fdf3f2';
                 
-                // 정규화된 키값(statKey)으로 정확한 통계 추출
                 const stat = (stats[statKey] && stats[statKey][i]) ? stats[statKey][i] : { o: 0, total: 0 };
                 const rate = stat.total > 0 ? Math.round((stat.o / stat.total) * 1000) / 10 : 0;
                 const barColor = rate >= 80 ? '#2ecc71' : (rate >= 50 ? '#f1c40f' : '#e74c3c');
                 
-                // 단원 정보 추출 (공통과목일 경우 기본 '국어/수학' 테이블도 스캔)
                 let qInfo = '-';
                 if (qInfoMap[infoKey] && qInfoMap[infoKey][i]) {
                     qInfo = qInfoMap[infoKey][i];
@@ -708,7 +713,6 @@ window.__loadGradeErrata = async function(examLabel) {
             `;
         };
 
-        // 5. 최종 렌더링 조립 (인자로 '통계Key'와 '문항정보Key'를 정확히 분리 전달)
         let html = '';
         html += renderSection('국어 공통', '문항 1~34 ▼', 1, 34, korRow, '국어공통', '국어공통');
         if (scoreInfo.kor_choice) {
