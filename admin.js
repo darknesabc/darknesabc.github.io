@@ -212,7 +212,7 @@ window.__toggleDashboard = function() {
 };
 
 // =========================================================
-// 3. 학생 상세 페이지 로드 (공결 처리 완벽 대응 버전)
+// 3. 학생 상세 페이지 로드 (스케줄 메모 = 공결 자동 인식 버전)
 // =========================================================
 window.__loadStudentDetail = async function(student) {
     if (!student || !student.studentId) return;
@@ -269,7 +269,6 @@ window.__loadStudentDetail = async function(student) {
             }
         });
 
-        // 💡 통계 변수에 '공결' 추가
         let totalAtt = 0, totalLate = 0, totalAbs = 0, totalExcused = 0;
         let att7d = 0, late7d = 0, abs7d = 0, excused7d = 0;
         const recentAbsences = [];
@@ -282,17 +281,17 @@ window.__loadStudentDetail = async function(student) {
             
             const hasEduLate = schedMap[a.attendance_date]?.[p] === true;
             const hasMemoLate = a.memo ? a.memo.includes('지각') : false;
-            
-            // 💡 [핵심] 공결 판별 로직 추가
-            // status_code가 3(결석)이더라도, memo에 '공결' 또는 '조퇴', '병결' 등이 적혀있으면 isExcused로 빼냅니다.
-            const isExcused = (a.memo && (a.memo.includes('공결') || a.memo.includes('조퇴') || a.memo.includes('병결') || a.memo.includes('스케줄')));
-            
             const isLate = (a.status_code === '2') || hasEduLate || hasMemoLate;
+            
+            // 💡 [핵심 수정 로직] 결석(3)이면서, 메모가 비어있지 않다면(스케줄 이름 등 사유가 있다면) 공결로 인정!
+            const hasValidMemo = a.memo && a.memo.trim() !== '' && a.memo.trim() !== '-';
+            const isExcused = (a.status_code === '3') && !isLate && hasValidMemo; 
+            
             const isAtt = (a.status_code === '1');
-            const isAbs = (a.status_code === '3') && !isExcused; // 💡 진짜 결석 = 결석코드 && 공결이 아님
+            const isAbs = (a.status_code === '3') && !isLate && !isExcused; // 메모가 없는 찐 무단결석만 남김
 
             let finalType = '';
-            if (isExcused) finalType = 'excused'; // 공결이 최우선
+            if (isExcused) finalType = 'excused'; 
             else if (isLate) finalType = 'late';
             else if (isAbs) finalType = 'abs';
             else if (isAtt) finalType = 'att';
@@ -303,7 +302,6 @@ window.__loadStudentDetail = async function(student) {
             if (finalType === 'excused') totalExcused++;
             if (finalType === 'abs') { 
                 totalAbs++; 
-                // 💡 최근 무단 결석 리스트에는 진짜 결석만 추가!
                 if (recentAbsences.length < 3) recentAbsences.push(a); 
             }
             
@@ -316,13 +314,10 @@ window.__loadStudentDetail = async function(student) {
             }
         });
         
-        // 💡 [핵심] 출석률 계산 시 공결(totalExcused)은 모수에서 완전히 제외!
-        const totalCount = totalAtt + totalLate + totalAbs; // 공결 제외한 유효 수업 일수
+        // 공결(excused)은 출석률 모수에서 완전히 제외
+        const totalCount = totalAtt + totalLate + totalAbs; 
         const count7d = att7d + late7d + abs7d;
         
-        // 출석 + 지각을 '출석'으로 간주하여 계산 (학원 방침에 따라 변경 가능)
-        // 현재 로직상 지각도 출석률에 긍정 반영되려면 분자에 totalLate를 더해야 합니다. 
-        // 만약 지각은 출석률에서 까이는 거라면 totalAtt만 남기면 됩니다.
         const attRate = totalCount > 0 ? Math.round((totalAtt / totalCount) * 100) : 100;
         const attRate7d = count7d > 0 ? Math.round((att7d / count7d) * 100) : 100;
         
