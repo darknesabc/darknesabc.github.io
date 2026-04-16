@@ -188,7 +188,7 @@ window.__toggleDashboard = function() {
 };
 
 // =========================================================
-// 3. 학생 상세 페이지 로드 (요약 카드 복구 완료)
+// 3. 학생 상세 페이지 로드 (지각 카운팅 3중 체크 로직 복구 완료)
 // =========================================================
 window.__loadStudentDetail = async function(student) {
     if (!student || !student.studentId) return;
@@ -227,6 +227,26 @@ window.__loadStudentDetail = async function(student) {
             return `${d.getMonth()+1}/${d.getDate()}(${days[d.getDay()]})`;
         };
 
+        // 💡 [핵심 픽스] 교육점수(벌점)에서 지각 시간을 교시로 변환하는 헬퍼 함수
+        const getPeriodFromTime = (timeStr) => {
+            if (!timeStr) return 1;
+            const [h, m] = timeStr.split(':').map(Number); const t = h * 60 + m;
+            if (t < 8*60+30) return 1; if (t < 10*60+10) return 2; if (t < 12*60) return 3;
+            if (t < 14*60+30) return 4; if (t < 15*60+50) return 5; if (t < 17*60+30) return 6;
+            if (t < 20*60+10) return 7; return 8;
+        };
+
+        // 💡 교육점수 기록 중 '지각'인 항목을 날짜와 교시별로 맵핑
+        const schedMap = {};
+        resEdu.data.forEach(ed => {
+            if (ed.reason.includes('지각')) {
+                const dStr = ed.score_date; 
+                const sp = getPeriodFromTime(ed.score_time);
+                if (!schedMap[dStr]) schedMap[dStr] = {};
+                schedMap[dStr][sp] = true;
+            }
+        });
+
         let totalAtt = 0, totalLate = 0, totalAbs = 0;
         let att7d = 0, late7d = 0, abs7d = 0;
         const recentAbsences = [];
@@ -235,18 +255,30 @@ window.__loadStudentDetail = async function(student) {
             if (a.attendance_date > todayIso || (a.attendance_date === todayIso && parseInt(a.period, 10) > currentP)) return;
             if (new Date(a.attendance_date).getDay() === 0) return;
 
-            const isLate = a.status_code === '2';
-            const isAtt = a.status_code === '1';
-            const isAbs = a.status_code === '3';
+            const p = parseInt(a.period, 10);
+            
+            // 💡 [핵심 픽스] 출결코드, 벌점내역, 선생님 메모 3가지를 모두 교차 검증하여 지각 판별
+            const hasEduLate = schedMap[a.attendance_date]?.[p] === true;
+            const hasMemoLate = a.memo ? a.memo.includes('지각') : false;
+            
+            const isLate = (a.status_code === '2') || hasEduLate || hasMemoLate;
+            const isAtt = (a.status_code === '1');
+            const isAbs = (a.status_code === '3');
 
-            if (isAtt) totalAtt++;
-            if (isLate) totalLate++;
-            if (isAbs) { totalAbs++; if (recentAbsences.length < 3) recentAbsences.push(a); }
+            // 판별 우선순위: 지각 > 결석 > 출석
+            let finalType = '';
+            if (isLate) finalType = 'late';
+            else if (isAbs) finalType = 'abs';
+            else if (isAtt) finalType = 'att';
+
+            if (finalType === 'att') totalAtt++;
+            if (finalType === 'late') totalLate++;
+            if (finalType === 'abs') { totalAbs++; if (recentAbsences.length < 3) recentAbsences.push(a); }
             
             if (a.attendance_date >= start7dIso && a.attendance_date <= todayIso) {
-                if (isAtt) att7d++;
-                if (isLate) late7d++;
-                if (isAbs) abs7d++;
+                if (finalType === 'att') att7d++;
+                if (finalType === 'late') late7d++;
+                if (finalType === 'abs') abs7d++;
             }
         });
         
