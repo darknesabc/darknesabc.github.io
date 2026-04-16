@@ -44,9 +44,17 @@ function getCurrentPeriod() {
     ];
     const now = new Date();
     const currentTime = now.getHours().toString().padStart(2, '0') + ":" + now.getMinutes().toString().padStart(2, '0');
-    let currentP = SCHEDULE[0].p;
-    for (const slot of SCHEDULE) { if (currentTime >= slot.start) currentP = slot.p; }
-    return currentP;
+
+    // 💡 [수정됨] 현재 시간이 해당 교시의 '종료 시간(end)' 이전인지 확인
+    // 3교시가 12:00에 끝나는 순간, 자동으로 다음 교시인 4교시를 바라보게 됩니다!
+    for (let i = 0; i < SCHEDULE.length; i++) {
+        if (currentTime < SCHEDULE[i].end) {
+            return SCHEDULE[i].p;
+        }
+    }
+    
+    // 밤 10시(22:00)가 넘어가면 기본적으로 마지막 교시인 8교시를 유지합니다.
+    return "8"; 
 }
 
 // =========================================================
