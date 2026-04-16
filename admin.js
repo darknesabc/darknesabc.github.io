@@ -469,16 +469,16 @@ window.__renderGradeDisplay = function() {
     const view = window.__currentViewMode; 
     const toggles = window.__toggles;
 
+    // 💡 [수정] 영어는 백분위 모드일 때 '등급(grade)'을 반환
     const getVal = (s, subj) => {
-        if (mode === 'pct') return s[`${subj}_exp_pct`] || 0;
-        return s[`${subj}_raw_total`] !== undefined ? (s[`${subj}_raw_total`] || 0) : (s[`${subj}_raw`] || 0);
+        if (subj === 'eng' && mode === 'pct') return s.eng_grade ? Number(s.eng_grade) : null;
+        if (mode === 'pct') return s[`${subj}_exp_pct`] ? Number(s[`${subj}_exp_pct`]) : null;
+        return s[`${subj}_raw_total`] !== undefined ? (s[`${subj}_raw_total`] ? Number(s[`${subj}_raw_total`]) : null) : (s[`${subj}_raw`] ? Number(s[`${subj}_raw`]) : null);
     };
 
-    // 💡 [완벽 픽스] 탐구는 1, 2 구분 없이 과목명이 같으면 무조건 한 바구니에 모읍니다!
     const getTop30 = (examLabel, subj, valKey, filterMode, myScore) => {
         let pool = window.__allMockScores.filter(s => s.exam_label === examLabel);
         
-        // 1. 그룹 필터링 (반별, HS반, 그린반 등)
         if (filterMode === 'topClass') {
             pool = pool.filter(s => s.class_name === window.__currentStudentClass);
         } else if (filterMode === 'topHS') {
@@ -495,9 +495,7 @@ window.__renderGradeDisplay = function() {
         
         let vals = [];
 
-        // 2. 과목별 점수 추출
         if (subj === 'kor' || subj === 'math') {
-            // 국어, 수학
             if (filterMode === 'topChoice') {
                 const choiceKey = subj === 'kor' ? 'kor_choice' : 'math_choice';
                 const myChoice = myScore[choiceKey];
@@ -507,24 +505,25 @@ window.__renderGradeDisplay = function() {
             vals = pool.map(s => Number(s[valKey]) || 0);
             
         } else if (subj === 'tam1' || subj === 'tam2') {
-            // 탐구 (어떤 필터든 무조건 과목명이 같은 학생만 긁어모음)
             const myTamName = subj === 'tam1' ? myScore.tam1_name : myScore.tam2_name;
             if (!myTamName) return null;
-
-            const suffix = valKey.replace(subj, ""); // ex: "_exp_pct", "_raw"
-
+            const suffix = valKey.replace(subj, ""); 
             pool.forEach(s => {
-                // 탐구 1칸에 같은 과목을 쓴 학생 점수 담기
                 if (s.tam1_name === myTamName) vals.push(Number(s["tam1" + suffix]) || 0);
-                // 탐구 2칸에 같은 과목을 쓴 학생 점수 담기
                 if (s.tam2_name === myTamName) vals.push(Number(s["tam2" + suffix]) || 0);
             });
+        } else if (subj === 'eng') {
+            vals = pool.map(s => Number(s[valKey]) || 0);
         }
         
-        // 3. 0점 제외하고 정렬 후 상위 30% 컷오프 계산
-        vals = vals.filter(v => v > 0).sort((a, b) => b - a);
-        if (vals.length === 0) return null;
+        // 💡 [핵심] 영어 등급은 '작은 숫자(1)'가 높은 성적이므로 오름차순(a-b)으로 정렬하여 30% 컷 계산
+        if (subj === 'eng' && valKey === 'eng_grade') {
+            vals = vals.filter(v => v > 0).sort((a, b) => a - b);
+        } else {
+            vals = vals.filter(v => v > 0).sort((a, b) => b - a);
+        }
         
+        if (vals.length === 0) return null;
         let idx = Math.floor(vals.length * 0.3);
         if (idx >= vals.length) idx = vals.length - 1;
         return vals[idx];
@@ -547,66 +546,105 @@ window.__renderGradeDisplay = function() {
 
         subjs.forEach(sbj => {
             if (!window.__subjectToggles[sbj.id]) return;
-            if(sbj.id === 'eng' && mode !== 'raw') return; 
             
-            const valKey = mode === 'pct' ? `${sbj.id}_exp_pct` : (sbj.id.startsWith('tam') || sbj.id==='eng' ? `${sbj.id}_raw` : `${sbj.id}_raw_total`);
+            // 💡 [핵심] 영어는 백분위 모드에서 '등급' 컬럼을 사용
+            let valKey;
+            if (sbj.id === 'eng') {
+                valKey = mode === 'pct' ? 'eng_grade' : 'eng_raw';
+            } else {
+                valKey = mode === 'pct' ? `${sbj.id}_exp_pct` : (sbj.id.startsWith('tam') ? `${sbj.id}_raw` : `${sbj.id}_raw_total`);
+            }
+            
+            // 💡 [핵심] 영어가 '백분위 모드'일 때만 전용 오른쪽 Y축(yGrade) 사용
+            const isEngGrade = (sbj.id === 'eng' && mode === 'pct');
+            const yAxisID = isEngGrade ? 'yGrade' : 'y';
             
             datasets.push({
                 label: sbj.name,
-                data: scores.map(s => sbj.id==='eng' ? (s.eng_raw||0) : getVal(s, sbj.id)),
+                data: scores.map(s => getVal(s, sbj.id)),
                 borderColor: colors[sbj.id], backgroundColor: colors[sbj.id],
-                tension: 0.1, borderWidth: 2, pointRadius: 4, fill: false
+                tension: 0.1, borderWidth: 2, pointRadius: 4, fill: false,
+                yAxisID: yAxisID
             });
 
-            if (sbj.id !== 'eng') {
-                const addLine = (key, label, dashPattern, color) => {
-                    if (toggles[key]) {
-                        datasets.push({ 
-                            label: `${sbj.name} (${label})`, 
-                            data: scores.map(s => getTop30(s.exam_label, sbj.id, valKey, key, s)), 
-                            borderColor: color || colors[sbj.id], 
-                            borderDash: dashPattern, 
-                            borderWidth: 1.5, 
-                            pointRadius: rPt, 
-                            pointStyle: 'rect', 
-                            fill: false 
-                        });
-                    }
-                };
-                
-                addLine('topTotal', '전체상위30%', [5, 5], colors[sbj.id]);
-                addLine('topChoice', '선택상위30%', [3, 3], '#9b59b6');
-                addLine('topClass', '반별상위30%', [2, 4], '#1abc9c');
-                addLine('topHS', 'HS반 30%', [4, 2], '#e67e22');
-                addLine('topGreen', '그린 30%', [4, 2], '#2ecc71');
-                addLine('topBlue', '블루 30%', [4, 2], '#3498db');
-                addLine('topMed', '의치대 30%', [4, 2], '#c0392b');
-                addLine('topSKY', '연고대 30%', [4, 2], '#2980b9');
-            }
+            const addLine = (key, label, dashPattern, color) => {
+                if (toggles[key]) {
+                    datasets.push({ 
+                        label: `${sbj.name} (${label})`, 
+                        data: scores.map(s => getTop30(s.exam_label, sbj.id, valKey, key, s)), 
+                        borderColor: color || colors[sbj.id], 
+                        borderDash: dashPattern, 
+                        borderWidth: 1.5, 
+                        pointRadius: rPt, 
+                        pointStyle: 'rect', 
+                        fill: false,
+                        yAxisID: yAxisID
+                    });
+                }
+            };
+            
+            addLine('topTotal', '전체상위30%', [5, 5], colors[sbj.id]);
+            addLine('topChoice', '선택상위30%', [3, 3], '#9b59b6');
+            addLine('topClass', '반별상위30%', [2, 4], '#1abc9c');
+            addLine('topHS', 'HS반 30%', [4, 2], '#e67e22');
+            addLine('topGreen', '그린 30%', [4, 2], '#2ecc71');
+            addLine('topBlue', '블루 30%', [4, 2], '#3498db');
+            addLine('topMed', '의치대 30%', [4, 2], '#c0392b');
+            addLine('topSKY', '연고대 30%', [4, 2], '#2980b9');
         });
 
         Chart.defaults.color = '#7f8c8d';
+        
+        // 💡 [핵심] Y축 설정 (왼쪽은 기본 점수/백분위, 오른쪽은 영어 전용 등급축)
+        const chartScales = { 
+            x: { grid: { display: false } },
+            y: { 
+                type: 'linear', display: true, position: 'left',
+                beginAtZero: mode==='pct', max: mode==='pct'?100:null, 
+                grid: { color: '#f1f2f6' } 
+            } 
+        };
+
+        if (window.__subjectToggles['eng'] && mode === 'pct') {
+            chartScales.yGrade = {
+                type: 'linear', display: true, position: 'right',
+                reverse: true, // 1등급이 맨 위로 가도록 뒤집기!
+                min: 1, max: 9,
+                ticks: { stepSize: 1, callback: function(value) { return value + '등급'; } },
+                grid: { drawOnChartArea: false } // 메인 눈금과 겹치지 않게 숨김
+            };
+        }
+
         new Chart(ctx, {
             type: 'line', data: { labels, datasets },
             options: {
                 responsive: true, maintainAspectRatio: false,
-                scales: { y: { beginAtZero: mode==='pct', max: mode==='pct'?100:null, grid: { color: '#f1f2f6' } }, x: { grid: { display: false } } },
+                scales: chartScales,
                 plugins: { 
                     legend: { display: false }, 
-                    tooltip: { mode: 'index', intersect: false, backgroundColor: 'rgba(0,0,0,0.8)', titleColor: '#fff', bodyColor: '#fff' } 
+                    tooltip: { 
+                        mode: 'index', intersect: false, 
+                        backgroundColor: 'rgba(0,0,0,0.8)', titleColor: '#fff', bodyColor: '#fff',
+                        callbacks: {
+                            label: function(context) {
+                                let label = context.dataset.label || '';
+                                if (label) label += ': ';
+                                if (context.parsed.y !== null) {
+                                    label += context.parsed.y;
+                                    // 영어 등급축에 매핑된 데이터면 툴팁에 '등급' 글자 붙이기
+                                    if (context.dataset.yAxisID === 'yGrade') label += '등급';
+                                }
+                                return label;
+                            }
+                        }
+                    } 
                 }
             }
         });
 
     } else {
         const v = (val) => val === null || val === undefined ? '-' : val;
-        const formatCell = (s, subj) => {
-            const val = getVal(s, subj);
-            const grade = s[`${subj}_exp_grade`] || '-';
-            const unit = mode === 'pct' ? '%' : '점';
-            return `<b>${val}${unit}</b><br><span style="color:#7f8c8d; font-size:11px;">(${grade}등급)</span>`;
-        };
-
+        
         let h = `
         <div style="overflow-x:auto; border-radius:8px; border:1px solid #2f3542;">
             <style>
