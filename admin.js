@@ -474,11 +474,11 @@ window.__renderGradeDisplay = function() {
         return s[`${subj}_raw_total`] !== undefined ? (s[`${subj}_raw_total`] || 0) : (s[`${subj}_raw`] || 0);
     };
 
-    // 💡 [핵심 수정] 탐구 1/2 구분 없이 과목명이 일치하면 점수를 통합하는 로직
+    // 💡 [완벽 픽스] 탐구는 1, 2 구분 없이 과목명이 같으면 무조건 한 바구니에 모읍니다!
     const getTop30 = (examLabel, subj, valKey, filterMode, myScore) => {
         let pool = window.__allMockScores.filter(s => s.exam_label === examLabel);
         
-        // 1. 그룹 필터링 적용 (선택과목 컷오프가 아닐 때만 풀을 줄임)
+        // 1. 그룹 필터링 (반별, HS반, 그린반 등)
         if (filterMode === 'topClass') {
             pool = pool.filter(s => s.class_name === window.__currentStudentClass);
         } else if (filterMode === 'topHS') {
@@ -495,35 +495,34 @@ window.__renderGradeDisplay = function() {
         
         let vals = [];
 
-        // 2. 점수 추출 로직
-        if (filterMode === 'topChoice') {
-            if (subj === 'kor' || subj === 'math') {
-                // 국어, 수학은 자기들끼리만
+        // 2. 과목별 점수 추출
+        if (subj === 'kor' || subj === 'math') {
+            // 국어, 수학
+            if (filterMode === 'topChoice') {
                 const choiceKey = subj === 'kor' ? 'kor_choice' : 'math_choice';
-                pool = pool.filter(s => s[choiceKey] === myScore[choiceKey]);
-                vals = pool.map(s => Number(s[valKey]) || 0);
-            } else if (subj === 'tam1' || subj === 'tam2') {
-                // 💡 [핵심] 탐구는 1, 2 구분 없이 과목명이 같으면 양쪽 칸에서 모두 끌어모음!
-                const myTamName = subj === 'tam1' ? myScore.tam1_name : myScore.tam2_name;
-                if (!myTamName) return null;
-
-                // "_exp_pct", "_raw" 등 현재 모드에 맞는 꼬리표 찾기
-                const suffix = valKey.replace(subj, "");
-
-                pool.forEach(s => {
-                    // 탐구1 칸에 쓴 사람 점수 줍기
-                    if (s.tam1_name === myTamName) vals.push(Number(s["tam1" + suffix]) || 0);
-                    // 탐구2 칸에 쓴 사람 점수 줍기
-                    if (s.tam2_name === myTamName) vals.push(Number(s["tam2" + suffix]) || 0);
-                });
+                const myChoice = myScore[choiceKey];
+                if (!myChoice) return null;
+                pool = pool.filter(s => s[choiceKey] === myChoice);
             }
-        } else {
-            // 전체 30%나 반별 30% 등은 원래 컬럼에서 그대로 점수 추출
             vals = pool.map(s => Number(s[valKey]) || 0);
+            
+        } else if (subj === 'tam1' || subj === 'tam2') {
+            // 탐구 (어떤 필터든 무조건 과목명이 같은 학생만 긁어모음)
+            const myTamName = subj === 'tam1' ? myScore.tam1_name : myScore.tam2_name;
+            if (!myTamName) return null;
+
+            const suffix = valKey.replace(subj, ""); // ex: "_exp_pct", "_raw"
+
+            pool.forEach(s => {
+                // 탐구 1칸에 같은 과목을 쓴 학생 점수 담기
+                if (s.tam1_name === myTamName) vals.push(Number(s["tam1" + suffix]) || 0);
+                // 탐구 2칸에 같은 과목을 쓴 학생 점수 담기
+                if (s.tam2_name === myTamName) vals.push(Number(s["tam2" + suffix]) || 0);
+            });
         }
         
-        // 3. 0점 제외하고 정렬 후 상위 30% 커트라인 추출
-        vals = vals.filter(v => v > 0).sort((a,b) => b-a);
+        // 3. 0점 제외하고 정렬 후 상위 30% 컷오프 계산
+        vals = vals.filter(v => v > 0).sort((a, b) => b - a);
         if (vals.length === 0) return null;
         
         let idx = Math.floor(vals.length * 0.3);
