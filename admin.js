@@ -387,11 +387,11 @@ window.__loadGradeTrend = async function(student) {
 window.__renderGradeTrendUI = function() {
     const container = document.getElementById('grade-trend-container');
     
-    // 버튼 디자인: 활성화 시 파란색, 비활성화 시 연한 회색
+    // 버튼 스타일 (활성화/비활성화)
     const btnSty = (isActive, bg, fg) => `border:1px solid #dee2e6; padding:5px 12px; border-radius:4px; cursor:pointer; font-size:11px; font-weight:bold; background:${isActive ? bg : 'transparent'}; color:${isActive ? '#fff' : fg}; transition:0.2s;`;
     const tglBtn = (key, label) => {
         const isOn = window.__toggles[key];
-        return `<button onclick="window.__toggleCutoff('${key}')" style="border:1px solid ${isOn ? '#3498db' : '#dee2e6'}; padding:5px 12px; border-radius:20px; cursor:pointer; font-size:11px; font-weight:bold; background:${isOn ? '#e8f4f8' : '#fff'}; color:${isOn ? '#2980b9' : '#7f8c8d'}; transition:0.2s;">${label}</button>`;
+        return `<button onclick="window.__toggleCutoff('${key}')" style="border:1px solid ${isOn ? '#3498db' : '#dee2e6'}; padding:5px 12px; border-radius:20px; cursor:pointer; font-size:11px; font-weight:bold; background:${isOn ? '#e8f4f8' : '#fff'}; color:${isOn ? '#2980b9' : '#7f8c8d'}; transition:0.2s;">${label} ${isOn ? 'ON' : 'OFF'}</button>`;
     };
 
     container.innerHTML = `
@@ -413,14 +413,14 @@ window.__renderGradeTrendUI = function() {
             </div>
             
             <div style="display:flex; flex-wrap:wrap; gap:8px; margin-bottom:15px; ${window.__currentViewMode==='table' ? 'display:none;' : ''}">
-                ${tglBtn('topTotal', '전체 상위 30% ' + (window.__toggles.topTotal?'ON':'OFF'))}
-                ${tglBtn('topChoice', '선택 상위 30% ' + (window.__toggles.topChoice?'ON':'OFF'))}
-                ${tglBtn('topClass', '반별 상위 30% ' + (window.__toggles.topClass?'ON':'OFF'))}
-                ${tglBtn('topHS', 'HS반 30% ' + (window.__toggles.topHS?'ON':'OFF'))}
-                ${tglBtn('topGreen', '그린 30% ' + (window.__toggles.topGreen?'ON':'OFF'))}
-                ${tglBtn('topBlue', '블루 30% ' + (window.__toggles.topBlue?'ON':'OFF'))}
-                ${tglBtn('topMed', '서/의치대 30% ' + (window.__toggles.topMed?'ON':'OFF'))}
-                ${tglBtn('topSKY', '연고대 30% ' + (window.__toggles.topSKY?'ON':'OFF'))}
+                ${tglBtn('topTotal', '전체 상위 30%')}
+                ${tglBtn('topChoice', '선택 상위 30%')}
+                ${tglBtn('topClass', '반별 상위 30%')}
+                ${tglBtn('topHS', 'HS반 30%')}
+                ${tglBtn('topGreen', '그린 30%')}
+                ${tglBtn('topBlue', '블루 30%')}
+                ${tglBtn('topMed', '서/의치대 30%')}
+                ${tglBtn('topSKY', '연고대 30%')}
             </div>
 
             <div style="display:flex; gap:8px; margin-bottom:15px; ${window.__currentViewMode==='table' ? 'display:none;' : ''}">
@@ -454,7 +454,7 @@ window.__renderGradeDisplay = function() {
         return s[`${subj}_raw_total`] !== undefined ? (s[`${subj}_raw_total`] || 0) : (s[`${subj}_raw`] || 0);
     };
 
-    // 💡 각종 반 필터링 로직 (프론트엔드에서 즉석 계산)
+    // 💡 각종 필터링 로직 (프론트엔드에서 즉석 계산)
     const getTop30 = (examLabel, subj, valKey, filterMode, myScore) => {
         let pool = window.__allMockScores.filter(s => s.exam_label === examLabel);
         
@@ -495,8 +495,11 @@ window.__renderGradeDisplay = function() {
             {id:'tam1', name:'탐구1'}, {id:'tam2', name:'탐구2'}, {id:'eng', name:'영어'}
         ];
 
+        // 💡 [핵심 픽스] 데이터가 1개일 때는 점선 대신 네모난 '점(Point)'으로 표시
+        const rPt = scores.length === 1 ? 5 : 0;
+
         subjs.forEach(sbj => {
-            if(sbj.id === 'eng' && mode !== 'raw') return; // 영어는 원점수(등급)만
+            if(sbj.id === 'eng' && mode !== 'raw') return; 
             
             const valKey = mode === 'pct' ? `${sbj.id}_exp_pct` : (sbj.id.startsWith('tam') || sbj.id==='eng' ? `${sbj.id}_raw` : `${sbj.id}_raw_total`);
             
@@ -508,26 +511,31 @@ window.__renderGradeDisplay = function() {
                 tension: 0.1, borderWidth: 2, pointRadius: 4, fill: false
             });
 
-            // 2. 컷오프 성적 (점선) 추가 로직
+            // 2. 각종 컷오프 성적 (점선 or 네모점)
             if (sbj.id !== 'eng') {
-                const addLine = (key, label) => {
+                const addLine = (key, label, dashPattern, color) => {
                     if (toggles[key]) {
                         datasets.push({ 
                             label: `${sbj.name} (${label})`, 
                             data: scores.map(s => getTop30(s.exam_label, sbj.id, valKey, key, s)), 
-                            borderColor: colors[sbj.id], borderDash: [4, 4], borderWidth: 1.5, pointRadius: 0, fill: false 
+                            borderColor: color || colors[sbj.id], 
+                            borderDash: dashPattern, 
+                            borderWidth: 1.5, 
+                            pointRadius: rPt, 
+                            pointStyle: 'rect', // 네모 모양
+                            fill: false 
                         });
                     }
                 };
                 
-                addLine('topTotal', '전체상위30%');
-                addLine('topChoice', '선택상위30%');
-                addLine('topClass', '반별상위30%');
-                addLine('topHS', 'HS반 30%');
-                addLine('topGreen', '그린 30%');
-                addLine('topBlue', '블루 30%');
-                addLine('topMed', '의치대 30%');
-                addLine('topSKY', '연고대 30%');
+                addLine('topTotal', '전체상위30%', [5, 5], colors[sbj.id]);
+                addLine('topChoice', '선택상위30%', [3, 3], '#9b59b6');
+                addLine('topClass', '반별상위30%', [2, 4], '#1abc9c');
+                addLine('topHS', 'HS반 30%', [4, 2], '#e67e22');
+                addLine('topGreen', '그린 30%', [4, 2], '#2ecc71');
+                addLine('topBlue', '블루 30%', [4, 2], '#3498db');
+                addLine('topMed', '의치대 30%', [4, 2], '#c0392b');
+                addLine('topSKY', '연고대 30%', [4, 2], '#2980b9');
             }
         });
 
@@ -537,12 +545,12 @@ window.__renderGradeDisplay = function() {
             options: {
                 responsive: true, maintainAspectRatio: false,
                 scales: { y: { beginAtZero: mode==='pct', max: mode==='pct'?100:null, grid: { color: '#f1f2f6' } }, x: { grid: { display: false } } },
-                plugins: { legend: { display: false } } // 커스텀 뱃지를 위에서 렌더링했으므로 기본 레전드 숨김
+                plugins: { legend: { display: false } } 
             }
         });
 
     } else {
-        // 💡 표(Table) 형식 다크테마 스타일 렌더링 (이미지 2번 완벽 구현)
+        // 💡 표(Table) 형식 다크테마 스타일 렌더링
         const v = (val) => val === null || val === undefined ? '-' : val;
         const formatCell = (s, subj) => {
             const val = getVal(s, subj);
