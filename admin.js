@@ -785,6 +785,43 @@ window.__openUnivSimulation = async function() {
 };
 
 // =========================================================
+// 💡 [버그 수정 & 업그레이드] 드롭다운 시험 변경 마스터 컨트롤러
+// =========================================================
+window.__changeSummaryExam = function(examLabel) {
+    // 1. 전역 상태(현재 선택된 시험명) 업데이트
+    window.__currentSummaryExam = examLabel;
+    
+    // 2. 첫 번째 구역: [성적 요약 테이블] 즉시 변경
+    if (typeof window.__renderGradeSummaryTable === 'function') {
+        window.__renderGradeSummaryTable();
+    }
+
+    // 3. 두 번째 & 세 번째 구역: [취약 영역 레이더 차트] & [정오표 상세 분석] 업데이트
+    // 사용자가 멈춘 것으로 오해하지 않도록 로딩 UI 즉시 표출
+    const vulnArea = document.getElementById('vulnerability-area');
+    if (vulnArea) {
+        vulnArea.innerHTML = '<div style="text-align:center; padding:40px; color:#3498db; font-weight:bold;">⏳ 새로운 시험의 취약 영역을 분석 중입니다...</div>';
+    }
+    const errataArea = document.getElementById('grade-errata-area');
+    if (errataArea) {
+        errataArea.innerHTML = '<div style="text-align:center; padding:40px; color:#3498db; font-weight:bold;">⏳ 해당 시험의 정오표 데이터를 불러오는 중입니다...</div>';
+    }
+
+    // 수퍼베이스에서 바뀐 시험의 정오표/취약영역 데이터를 다시 끌어오기
+    if (typeof window.__loadGradeErrata === 'function') {
+        window.__loadGradeErrata(examLabel);
+    }
+
+    // 4. 🌟 [강력 추가] 정시 시뮬레이션 보드 자동 동기화
+    // 만약 시뮬레이션 보드가 화면에 열려있는 상태라면? -> 바뀐 점수로 즉시 자동 재계산!
+    const simArea = document.getElementById('univ-simulation-area');
+    if (simArea && simArea.style.display === 'block') {
+        simArea.style.display = 'none'; // 잠깐 숨겼다가
+        window.__openUnivSimulation();  // 새로운 점수로 시뮬레이터 즉시 재가동!
+    }
+};
+
+// =========================================================
 // 💡 [최종 표준화] 성적 요약 테이블 (과목명 표준화 및 디자인 통일)
 // =========================================================
 window.__renderGradeSummaryTable = function() {
