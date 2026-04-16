@@ -492,7 +492,7 @@ window.__renderGradeSummaryTable = function() {
 };
 
 // =========================================================
-// 💡 [NEW] 정오표 데이터 호출 & 취약 영역 분석 (레이더 차트)
+// 💡 [NEW] 정오표 데이터 호출 & 취약 영역 데이터 집계 (unit_key 기반)
 // =========================================================
 window.__loadGradeErrata = async function(examLabel) {
     const container = document.getElementById('grade-errata-area');
@@ -517,29 +517,17 @@ window.__loadGradeErrata = async function(examLabel) {
         const limitSize = 1000;
 
         while (fetchMore) {
-            const { data, error } = await _supabase
-                .from('mock_errata')
-                .select('*')
-                .eq('exam_label', examLabel)
-                .range(startIdx, startIdx + limitSize - 1);
-            
+            const { data, error } = await _supabase.from('mock_errata').select('*').eq('exam_label', examLabel).range(startIdx, startIdx + limitSize - 1);
             if (error) break;
-            
             if (data && data.length > 0) {
                 allErrata = allErrata.concat(data);
                 startIdx += limitSize;
                 if (data.length < limitSize) fetchMore = false; 
-            } else {
-                fetchMore = false;
-            }
+            } else fetchMore = false;
         }
 
-        const { data: qInfos, error: qError } = await _supabase
-            .from('mock_question_info')
-            .select('*')
-            .eq('exam_label', examLabel);
-
-        // 💡 여기에 아래 2줄을 추가하세요!
+        // 💡 문항 정보와 unit_map(정렬키)을 함께 가져옵니다.
+        const { data: qInfos } = await _supabase.from('mock_question_info').select('*').eq('exam_label', examLabel);
         const { data: unitMapData } = await _supabase.from('unit_map').select('*');
         window.__unitMap = unitMapData || [];
 
@@ -548,11 +536,7 @@ window.__loadGradeErrata = async function(examLabel) {
             return;
         }
 
-        const myErrata = allErrata.filter(e => {
-            const isMatchColumn = String(e.student_id || "").trim() === studentId;
-            const isMatchAnywhere = Object.values(e).some(val => String(val).trim() === studentId);
-            return isMatchColumn || isMatchAnywhere;
-        });
+        const myErrata = allErrata.filter(e => String(e.student_id || "").trim() === studentId || Object.values(e).some(val => String(val).trim() === studentId));
 
         if (myErrata.length === 0) {
             const msg = '<div style="text-align:center; padding:30px; color:#95a5a6; border:1px solid #f1f2f6; border-radius:8px;">이 시험의 정오표(O/X) 데이터가 아직 등록되지 않았습니다.</div>';
@@ -564,7 +548,6 @@ window.__loadGradeErrata = async function(examLabel) {
         const normalizeSubj = (name) => {
             let s = String(name || "").trim().replace(/\s+/g, '').replace(/·/g, '').replace(/과학/g, '');
             s = s.replace(/II/g, '2').replace(/I/g, '1').replace(/Ⅱ/g, '2').replace(/Ⅰ/g, '1');
-
             if (s.includes('화법') || s.includes('화작')) return '화법과작문';
             if (s.includes('언어') || s.includes('언매')) return '언어와매체';
             if (s.includes('미적')) return '미적분';
@@ -579,20 +562,16 @@ window.__loadGradeErrata = async function(examLabel) {
             if (s.includes('정치') || s.includes('정법')) return '정치와법';
             if (s.includes('경제')) return '경제';
             if ((s.includes('사회') && s.includes('문화')) || s.includes('사문')) return '사회문화';
-            
             if (s.match(/물리.*1/) || s === '물1') return '물리1';
             if (s.match(/화학.*1/) || s === '화1') return '화학1';
             if (s.match(/생명.*1/) || s === '생1') return '생명1';
             if (s.match(/지구.*1/) || s.match(/지학.*1/) || s === '지1') return '지구1';
-            
             if (s.match(/물리.*2/) || s === '물2') return '물리2';
             if (s.match(/화학.*2/) || s === '화2') return '화학2';
             if (s.match(/생명.*2/) || s === '생2') return '생명2';
             if (s.match(/지구.*2/) || s.match(/지학.*2/) || s === '지2') return '지구2';
-            
             if (s === '수학1' || s === '수1') return '수학1';
             if (s === '수학2' || s === '수2') return '수학2';
-
             if (s.includes('영어')) return '영어';
             if (s.includes('국어')) return '국어';
             if (s.includes('수학')) return '수학';
@@ -615,14 +594,12 @@ window.__loadGradeErrata = async function(examLabel) {
         allErrata.forEach(row => {
             const normSubj = normalizeSubj(row.subject);
             addToStats(normSubj, row);
-
             if (['화법과작문', '언어와매체', '국어'].includes(normSubj)) addToStats('국어공통', row);
             if (['미적분', '기하', '확률과통계', '수학', '수학1', '수학2'].includes(normSubj)) addToStats('수학공통', row);
         });
 
-        // 💡 단원 정보 맵핑 (레이더 차트용 Raw Data 포함)
         const qInfoMap = {}; 
-        const qInfoRawMap = {}; // 레이더 차트용 순수 텍스트
+        const qInfoRawMap = {}; 
         
         (qInfos || []).forEach(q => {
             const normSubj = normalizeSubj(q.subject);
@@ -636,30 +613,41 @@ window.__loadGradeErrata = async function(examLabel) {
             const subUnit = String(q.sub_unit || q.subunit || '').trim();
             const beh = String(q.behavior_domain || '').trim();
             
-            // Raw Data 저장 (레이더 차트용: 숫자 떼고 깔끔하게)
+            // 💡 [핵심 픽스 1] unit_key 추출! (모의고사 DB에 없으면 unit_map을 뒤져서라도 순서키를 찾아옵니다)
+            let uKey = q.unit_key ?? q.unit_code ?? q.chapter_num ?? q.unit_num;
+            if (uKey === undefined || uKey === null) {
+                if (window.__unitMap && window.__unitMap.length > 0) {
+                    const cleanTarget = unit.replace(/\s+/g, '');
+                    const found = window.__unitMap.find(u => {
+                        const uName = String(u.unit_name || u.unit || u.name || u.title || '').replace(/\s+/g, '');
+                        return uName === cleanTarget || uName.includes(cleanTarget);
+                    });
+                    if (found) uKey = found.unit_key ?? found.unit_code ?? found.chapter_num ?? found.unit_num;
+                }
+            }
+            uKey = parseFloat(uKey);
+
             let cleanUnit = unit.replace(/^\d+\.?\s*/, '');
             if (!cleanUnit || cleanUnit === '-' || cleanUnit === 'null') cleanUnit = '기타';
             let cleanBeh = beh;
             if (!cleanBeh || cleanBeh === '-' || cleanBeh === 'null') cleanBeh = '기타';
-            qInfoRawMap[normSubj][qNum] = { unit: cleanUnit, beh: cleanBeh };
-
-            // HTML 라벨 생성 (정오표 표시용)
-            let labelHtml = '';
             
+            // 💡 [핵심 픽스 2] 레이더 차트에 넘겨주기 위해 원본 과목명(qSubj)과 순서키(unitKey)를 저장!
+            qInfoRawMap[normSubj][qNum] = { 
+                unit: cleanUnit, 
+                beh: cleanBeh, 
+                unitKey: isNaN(uKey) ? 9999 : uKey, 
+                qSubj: normSubj 
+            };
+
+            let labelHtml = '';
             if (normSubj === '수학' || normSubj === '수학공통') {
                 const uStr = unit.replace(/\s+/g, '');
-                if (uStr.includes('지수') || uStr.includes('로그') || uStr.includes('삼각') || uStr.includes('수열')) {
-                    labelHtml += `<span style="color:#2980b9; font-weight:900; margin-right:6px;">[수학I]</span>`;
-                } else if (uStr.includes('극한') || uStr.includes('연속') || uStr.includes('미분') || uStr.includes('적분')) {
-                    labelHtml += `<span style="color:#8e44ad; font-weight:900; margin-right:6px;">[수학II]</span>`;
-                } else if (uStr.includes('다항식') || uStr.includes('방정식') || uStr.includes('부등식') || uStr.includes('도형') || uStr.includes('함수') || uStr.includes('경우')) {
-                    labelHtml += `<span style="color:#27ae60; font-weight:900; margin-right:6px;">[고1수학]</span>`;
-                }
-            } else if (normSubj === '수학1') {
-                labelHtml += `<span style="color:#2980b9; font-weight:900; margin-right:6px;">[수학I]</span>`;
-            } else if (normSubj === '수학2') {
-                labelHtml += `<span style="color:#8e44ad; font-weight:900; margin-right:6px;">[수학II]</span>`;
-            }
+                if (uStr.includes('지수') || uStr.includes('로그') || uStr.includes('삼각') || uStr.includes('수열')) labelHtml += `<span style="color:#2980b9; font-weight:900; margin-right:6px;">[수학I]</span>`;
+                else if (uStr.includes('극한') || uStr.includes('연속') || uStr.includes('미분') || uStr.includes('적분')) labelHtml += `<span style="color:#8e44ad; font-weight:900; margin-right:6px;">[수학II]</span>`;
+                else if (uStr.includes('다항식') || uStr.includes('방정식') || uStr.includes('부등식') || uStr.includes('도형') || uStr.includes('함수') || uStr.includes('경우')) labelHtml += `<span style="color:#27ae60; font-weight:900; margin-right:6px;">[고1수학]</span>`;
+            } else if (normSubj === '수학1') labelHtml += `<span style="color:#2980b9; font-weight:900; margin-right:6px;">[수학I]</span>`;
+            else if (normSubj === '수학2') labelHtml += `<span style="color:#8e44ad; font-weight:900; margin-right:6px;">[수학II]</span>`;
             
             const isTamgu = !['국어', '국어공통', '화법과작문', '언어와매체', '수학', '수학공통', '미적분', '기하', '확률과통계', '영어', '수학1', '수학2'].includes(normSubj);
             
@@ -689,11 +677,9 @@ window.__loadGradeErrata = async function(examLabel) {
             if (cleanBeh !== '기타') {
                 labelHtml += ` <span style="font-size:11px; color:#95a5a6; border:1px solid #ecf0f1; padding:2px 6px; border-radius:4px; margin-left:6px; background:#f8f9fa;">${cleanBeh}</span>`;
             }
-            
             qInfoMap[normSubj][qNum] = labelHtml;
         });
 
-        // 💡 [레이더 차트용] 취약 영역 데이터 집계
         const radarStats = {};
         const getMajorCategory = (normS) => {
             if (['국어', '국어공통', '화법과작문', '언어와매체'].includes(normS) || normS === normalizeSubj(scoreInfo.kor_choice)) return '국어';
@@ -716,30 +702,21 @@ window.__loadGradeErrata = async function(examLabel) {
                 if (!ox || !['O','X','○','×','o','x'].includes(ox)) continue;
                 
                 const isO = ['O','○','o'].includes(ox);
+                let unitInfo = { unit: '분류없음', beh: '분류없음', unitKey: 9999, qSubj: normS };
                 
-                let unitInfo = { unit: '분류없음', beh: '분류없음' };
                 if (majorCat === '수학') {
-                    unitInfo = (qInfoRawMap['수학1'] && qInfoRawMap['수학1'][i]) || 
-                               (qInfoRawMap['수학2'] && qInfoRawMap['수학2'][i]) || 
-                               (qInfoRawMap['수학'] && qInfoRawMap['수학'][i]) || 
-                               (qInfoRawMap['수학공통'] && qInfoRawMap['수학공통'][i]) || 
-                               (qInfoRawMap['공통'] && qInfoRawMap['공통'][i]) || 
-                               (qInfoRawMap[normS] && qInfoRawMap[normS][i]) || unitInfo;
+                    unitInfo = (qInfoRawMap['수학1']?.[i]) || (qInfoRawMap['수학2']?.[i]) || (qInfoRawMap['미적분']?.[i]) || (qInfoRawMap['기하']?.[i]) || (qInfoRawMap['확률과통계']?.[i]) || (qInfoRawMap['수학']?.[i]) || (qInfoRawMap['수학공통']?.[i]) || (qInfoRawMap['공통']?.[i]) || (qInfoRawMap[normS]?.[i]) || unitInfo;
                 } else if (majorCat === '국어') {
-                    unitInfo = (qInfoRawMap['국어'] && qInfoRawMap['국어'][i]) || 
-                               (qInfoRawMap['국어공통'] && qInfoRawMap['국어공통'][i]) || 
-                               (qInfoRawMap['공통'] && qInfoRawMap['공통'][i]) || 
-                               (qInfoRawMap[normS] && qInfoRawMap[normS][i]) || unitInfo;
+                    unitInfo = (qInfoRawMap['국어']?.[i]) || (qInfoRawMap['화법과작문']?.[i]) || (qInfoRawMap['언어와매체']?.[i]) || (qInfoRawMap['국어공통']?.[i]) || (qInfoRawMap['공통']?.[i]) || (qInfoRawMap[normS]?.[i]) || unitInfo;
                 } else {
-                    unitInfo = (qInfoRawMap[normS] && qInfoRawMap[normS][i]) || unitInfo;
+                    unitInfo = qInfoRawMap[normS]?.[i] || unitInfo;
                 }
 
                 const u = unitInfo.unit;
                 const b = unitInfo.beh;
 
-                // 💡 [수정됨] originalSubj(원래 과목명)를 꼬리표로 달아줍니다! (수학 선택과목 분류용)
-                if (!radarStats[majorCat].units[u]) radarStats[majorCat].units[u] = { o: 0, total: 0, originalSubj: normS };
-                if (!radarStats[majorCat].behaviors[b]) radarStats[majorCat].behaviors[b] = { o: 0, total: 0, originalSubj: normS };
+                if (!radarStats[majorCat].units[u]) radarStats[majorCat].units[u] = { o: 0, total: 0, qSubj: unitInfo.qSubj, unitKey: unitInfo.unitKey };
+                if (!radarStats[majorCat].behaviors[b]) radarStats[majorCat].behaviors[b] = { o: 0, total: 0, qSubj: unitInfo.qSubj, unitKey: unitInfo.unitKey };
 
                 radarStats[majorCat].units[u].total++;
                 if (isO) radarStats[majorCat].units[u].o++;
@@ -749,12 +726,9 @@ window.__loadGradeErrata = async function(examLabel) {
             }
         });
 
-        // 글로벌 변수에 저장 후 레이더 차트 그리기
         window.__radarStats = radarStats;
         window.__renderRadarChartUI();
 
-
-        // 💡 기존 정오표 렌더링 로직
         const findRowStrict = (targetName) => {
             if (!targetName) return null;
             const target = normalizeSubj(targetName);
@@ -769,116 +743,47 @@ window.__loadGradeErrata = async function(examLabel) {
 
         const renderSection = (title, subtitle, qStart, qEnd, errataRow, statKey, infoKey) => {
             if (!errataRow) return '';
-            
             let hasData = false;
-            for (let i = qStart; i <= qEnd; i++) {
-                if (errataRow[`q${i}`]) { hasData = true; break; }
-            }
+            for (let i = qStart; i <= qEnd; i++) { if (errataRow[`q${i}`]) { hasData = true; break; } }
             if (!hasData) return '';
 
             let rowsHtml = '';
             for (let i = qStart; i <= qEnd; i++) {
                 const ox = String(errataRow[`q${i}`] || "").trim();
                 if (!ox) continue;
-                
                 const isO = (ox === 'O' || ox === '○' || ox === 'o');
                 const oxColor = isO ? '#3498db' : '#e74c3c';
                 const oxBg = isO ? '#fff' : '#fdf3f2';
-                
                 const stat = (stats[statKey] && stats[statKey][i]) ? stats[statKey][i] : { o: 0, total: 0 };
                 const rate = stat.total > 0 ? Math.round((stat.o / stat.total) * 1000) / 10 : 0;
                 const barColor = rate >= 80 ? '#2ecc71' : (rate >= 50 ? '#f1c40f' : '#e74c3c');
                 
                 let qInfo = '-';
                 if (infoKey === '수학공통') {
-                    qInfo = (qInfoMap['수학1'] && qInfoMap['수학1'][i]) || 
-                            (qInfoMap['수학2'] && qInfoMap['수학2'][i]) || 
-                            (qInfoMap['수학'] && qInfoMap['수학'][i]) || 
-                            (qInfoMap['수학공통'] && qInfoMap['수학공통'][i]) || 
-                            (qInfoMap['공통'] && qInfoMap['공통'][i]) || '-';
+                    qInfo = (qInfoMap['수학1']?.[i]) || (qInfoMap['수학2']?.[i]) || (qInfoMap['수학']?.[i]) || (qInfoMap['수학공통']?.[i]) || (qInfoMap['공통']?.[i]) || '-';
                 } else if (infoKey === '국어공통') {
-                    qInfo = (qInfoMap['국어'] && qInfoMap['국어'][i]) || 
-                            (qInfoMap['국어공통'] && qInfoMap['국어공통'][i]) || 
-                            (qInfoMap['공통'] && qInfoMap['공통'][i]) || '-';
+                    qInfo = (qInfoMap['국어']?.[i]) || (qInfoMap['국어공통']?.[i]) || (qInfoMap['공통']?.[i]) || '-';
                 } else {
                     qInfo = (qInfoMap[infoKey] && qInfoMap[infoKey][i]) || '-';
                 }
 
-                rowsHtml += `
-                    <tr style="background:${oxBg}; border-bottom: 1px solid #f1f2f6;">
-                        <td style="padding:8px 5px; text-align:center; font-weight:bold; color:#7f8c8d; width:50px;">${i}</td>
-                        <td style="padding:8px 5px; text-align:center; font-weight:900; color:${oxColor}; font-size:15px; width:60px;">${isO?'O':'X'}</td>
-                        <td style="padding:8px 10px; text-align:left; color:#34495e; font-size:12px;">${qInfo}</td>
-                        <td style="padding:8px 10px; text-align:right; font-size:12px; color:#2c3e50; width:120px;">
-                            <div style="display:flex; align-items:center; justify-content:flex-end; gap:8px;">
-                                <span style="width:35px; text-align:right;">${rate}%</span>
-                                <div style="width:50px; height:6px; background:#ecf0f1; border-radius:3px; overflow:hidden;">
-                                    <div style="width:${rate}%; height:100%; background:${barColor};"></div>
-                                </div>
-                            </div>
-                        </td>
-                        <td style="padding:8px 10px; text-align:right; font-size:11px; color:#95a5a6; width:70px;">${stat.o}/${stat.total}</td>
-                    </tr>
-                `;
+                rowsHtml += `<tr style="background:${oxBg}; border-bottom: 1px solid #f1f2f6;"><td style="padding:8px 5px; text-align:center; font-weight:bold; color:#7f8c8d; width:50px;">${i}</td><td style="padding:8px 5px; text-align:center; font-weight:900; color:${oxColor}; font-size:15px; width:60px;">${isO?'O':'X'}</td><td style="padding:8px 10px; text-align:left; color:#34495e; font-size:12px;">${qInfo}</td><td style="padding:8px 10px; text-align:right; font-size:12px; color:#2c3e50; width:120px;"><div style="display:flex; align-items:center; justify-content:flex-end; gap:8px;"><span style="width:35px; text-align:right;">${rate}%</span><div style="width:50px; height:6px; background:#ecf0f1; border-radius:3px; overflow:hidden;"><div style="width:${rate}%; height:100%; background:${barColor};"></div></div></div></td><td style="padding:8px 10px; text-align:right; font-size:11px; color:#95a5a6; width:70px;">${stat.o}/${stat.total}</td></tr>`;
             }
             
             const sectionId = 'errata-' + Math.random().toString(36).substr(2, 9);
-            
-            const infoHeader = (infoKey === '수학공통' || infoKey === '국어공통' || infoKey === '영어' || infoKey === '미적분' || infoKey === '기하' || infoKey === '확률과통계' || infoKey === '화법과작문' || infoKey === '언어와매체') 
-                             ? '출제 영역 (과목 / 대단원)' 
-                             : '출제 영역 (대단원 - 소단원)';
+            const infoHeader = (infoKey === '수학공통' || infoKey === '국어공통' || infoKey === '영어' || infoKey === '미적분' || infoKey === '기하' || infoKey === '확률과통계' || infoKey === '화법과작문' || infoKey === '언어와매체') ? '출제 영역 (과목 / 대단원)' : '출제 영역 (대단원 - 소단원)';
 
-            return `
-                <div style="border: 1px solid #dee2e6; border-radius: 8px; margin-bottom: 10px; overflow:hidden; background:#fff;">
-                    <div onclick="const el = document.getElementById('${sectionId}'); el.style.display = el.style.display === 'none' ? 'block' : 'none';" 
-                         style="padding: 12px 15px; background: #fbfbfc; cursor: pointer; display: flex; justify-content: space-between; align-items: center; transition: background 0.2s;">
-                        <div style="font-weight: bold; color: #2c3e50; font-size: 14px;">${title}</div>
-                        <div style="font-size: 11px; color: #7f8c8d;">${subtitle}</div>
-                    </div>
-                    <div id="${sectionId}" style="display: none; padding: 0;">
-                        <table style="width: 100%; border-collapse: collapse; margin-bottom: 0;">
-                            <thead>
-                                <tr style="border-bottom: 2px solid #dee2e6; background: #fff;">
-                                    <th style="padding: 10px 5px; text-align:center; color:#95a5a6; font-size:11px;">문항</th>
-                                    <th style="padding: 10px 5px; text-align:center; color:#95a5a6; font-size:11px;">O/X</th>
-                                    <th style="padding: 10px; text-align:left; color:#95a5a6; font-size:11px;">${infoHeader}</th>
-                                    <th style="padding: 10px; text-align:right; color:#95a5a6; font-size:11px;">정답률</th>
-                                    <th style="padding: 10px; text-align:right; color:#95a5a6; font-size:11px;">O/응시</th>
-                                </tr>
-                            </thead>
-                            <tbody>
-                                ${rowsHtml}
-                            </tbody>
-                        </table>
-                    </div>
-                </div>
-            `;
+            return `<div style="border: 1px solid #dee2e6; border-radius: 8px; margin-bottom: 10px; overflow:hidden; background:#fff;"><div onclick="const el = document.getElementById('${sectionId}'); el.style.display = el.style.display === 'none' ? 'block' : 'none';" style="padding: 12px 15px; background: #fbfbfc; cursor: pointer; display: flex; justify-content: space-between; align-items: center; transition: background 0.2s;"><div style="font-weight: bold; color: #2c3e50; font-size: 14px;">${title}</div><div style="font-size: 11px; color: #7f8c8d;">${subtitle}</div></div><div id="${sectionId}" style="display: none; padding: 0;"><table style="width: 100%; border-collapse: collapse; margin-bottom: 0;"><thead><tr style="border-bottom: 2px solid #dee2e6; background: #fff;"><th style="padding: 10px 5px; text-align:center; color:#95a5a6; font-size:11px;">문항</th><th style="padding: 10px 5px; text-align:center; color:#95a5a6; font-size:11px;">O/X</th><th style="padding: 10px; text-align:left; color:#95a5a6; font-size:11px;">${infoHeader}</th><th style="padding: 10px; text-align:right; color:#95a5a6; font-size:11px;">정답률</th><th style="padding: 10px; text-align:right; color:#95a5a6; font-size:11px;">O/응시</th></tr></thead><tbody>${rowsHtml}</tbody></table></div></div>`;
         };
 
         let html = '';
         html += renderSection('국어 공통', '문항 1~34 ▼', 1, 34, korRow, '국어공통', '국어공통');
-        if (scoreInfo.kor_choice) {
-            const normChoice = normalizeSubj(scoreInfo.kor_choice);
-            html += renderSection('국어 선택', `문항 35~45 · ${scoreInfo.kor_choice} ▼`, 35, 45, korRow, normChoice, normChoice);
-        }
-        
+        if (scoreInfo.kor_choice) html += renderSection('국어 선택', `문항 35~45 · ${scoreInfo.kor_choice} ▼`, 35, 45, korRow, normalizeSubj(scoreInfo.kor_choice), normalizeSubj(scoreInfo.kor_choice));
         html += renderSection('수학 공통', '문항 1~22 ▼', 1, 22, mathRow, '수학공통', '수학공통');
-        if (scoreInfo.math_choice) {
-            const normChoice = normalizeSubj(scoreInfo.math_choice);
-            html += renderSection('수학 선택', `문항 23~30 · ${scoreInfo.math_choice} ▼`, 23, 30, mathRow, normChoice, normChoice);
-        }
-        
+        if (scoreInfo.math_choice) html += renderSection('수학 선택', `문항 23~30 · ${scoreInfo.math_choice} ▼`, 23, 30, mathRow, normalizeSubj(scoreInfo.math_choice), normalizeSubj(scoreInfo.math_choice));
         html += renderSection('영어', '문항 1~45 ▼', 1, 45, engRow, '영어', '영어');
-        
-        if (scoreInfo.tam1_name) {
-            const normTam1 = normalizeSubj(scoreInfo.tam1_name);
-            html += renderSection(`탐구 (${scoreInfo.tam1_name})`, '문항 1~20 ▼', 1, 20, tam1Row, normTam1, normTam1);
-        }
-        if (scoreInfo.tam2_name) {
-            const normTam2 = normalizeSubj(scoreInfo.tam2_name);
-            html += renderSection(`탐구 (${scoreInfo.tam2_name})`, '문항 1~20 ▼', 1, 20, tam2Row, normTam2, normTam2);
-        }
-        
+        if (scoreInfo.tam1_name) html += renderSection(`탐구 (${scoreInfo.tam1_name})`, '문항 1~20 ▼', 1, 20, tam1Row, normalizeSubj(scoreInfo.tam1_name), normalizeSubj(scoreInfo.tam1_name));
+        if (scoreInfo.tam2_name) html += renderSection(`탐구 (${scoreInfo.tam2_name})`, '문항 1~20 ▼', 1, 20, tam2Row, normalizeSubj(scoreInfo.tam2_name), normalizeSubj(scoreInfo.tam2_name));
         container.innerHTML = html || '<div style="text-align:center; padding:20px; color:#7f8c8d;">해당 시험의 정오표 데이터가 없습니다.</div>';
 
     } catch (err) {
@@ -931,7 +836,7 @@ window.__renderRadarChartUI = function() {
 };
 
 // =========================================================
-// 💡 [레이더 차트] 방사형 그래프 렌더러 (국어 정렬 완벽 패치)
+// 💡 [레이더 차트] 방사형 그래프 렌더러 (정렬, 색상, 중복 방지 툴팁 완벽 패치)
 // =========================================================
 window.__renderRadarChartCanvas = function() {
     const ctx = document.getElementById('radarChartCanvas');
@@ -939,96 +844,18 @@ window.__renderRadarChartCanvas = function() {
 
     const subj = window.__radarCurrentSubj;
     const type = window.__radarCurrentType || 'unit';
-    const dataObj = window.__radarStats[subj][type === 'unit' ? 'units' : 'behaviors'];
+    const dataObj = window.__radarStats[subj]?.[type === 'unit' ? 'units' : 'behaviors'] || {};
 
     let labels = Object.keys(dataObj).filter(k => k !== '분류없음' && k !== '기타' && k !== '');
     if (labels.length === 0) labels = ['데이터 없음'];
 
-    // 💡 [핵심 픽스] 단원명 텍스트를 정밀 분석하여 정렬 순서(code)와 색상(color)을 부여합니다!
-    const getLabelInfo = (label, subject) => {
-        const n = label.replace(/\s+/g, '');
-        let code = 9999;
-        let color = '#3498db'; // 기본 파랑
-
-        if (subject === '국어') {
-            // 💡 국어 정렬 안전망 추가! (독서 -> 문학 -> 선택)
-            if (n.includes('독서이론')) { code = 1.1; color = '#3498db'; }
-            else if (n.includes('인문')) { code = 1.2; color = '#3498db'; }
-            else if (n.includes('사회')) { code = 1.3; color = '#3498db'; }
-            else if (n.includes('과학')) { code = 1.4; color = '#3498db'; }
-            else if (n.includes('기술')) { code = 1.5; color = '#3498db'; }
-            else if (n.includes('예술')) { code = 1.6; color = '#3498db'; }
-            else if (n.includes('독서')) { code = 1.9; color = '#3498db'; }
-            
-            else if (n.includes('현대시')) { code = 2.1; color = '#2ecc71'; }
-            else if (n.includes('고전시가')) { code = 2.2; color = '#2ecc71'; }
-            else if (n.includes('현대소설')) { code = 2.3; color = '#2ecc71'; }
-            else if (n.includes('고전소설')) { code = 2.4; color = '#2ecc71'; }
-            else if (n.includes('극')) { code = 2.5; color = '#2ecc71'; }
-            else if (n.includes('수필')) { code = 2.6; color = '#2ecc71'; }
-            else if (n.includes('갈래복합')) { code = 2.7; color = '#2ecc71'; }
-            else if (n.includes('문학') || n.includes('갈래')) { code = 2.9; color = '#2ecc71'; }
-            
-            else if (n.includes('화법')) { code = 3.1; color = '#f39c12'; }
-            else if (n.includes('작문')) { code = 3.2; color = '#f39c12'; }
-            else if (n.includes('언어')) { code = 3.3; color = '#f39c12'; }
-            else if (n.includes('매체')) { code = 3.4; color = '#f39c12'; }
-        } 
-        else if (subject === '수학') {
-            if (n.includes('지수') || n.includes('로그')) { code = 1.1; color = '#3498db'; }
-            else if (n.includes('삼각')) { code = 1.2; color = '#3498db'; }
-            else if (n.includes('수열') && !n.includes('극한')) { code = 1.3; color = '#3498db'; }
-            else if (n.includes('함수의극한') || n.includes('연속')) { code = 2.1; color = '#8e44ad'; }
-            else if (n === '미분') { code = 2.2; color = '#8e44ad'; }
-            else if (n === '적분') { code = 2.3; color = '#8e44ad'; }
-            else if (n.includes('수열의극한')) { code = 3.1; color = '#f39c12'; }
-            else if (n.includes('미분법')) { code = 3.2; color = '#f39c12'; }
-            else if (n.includes('적분법')) { code = 3.3; color = '#f39c12'; }
-            else if (n.includes('확률') || n.includes('통계') || n.includes('경우') || n.includes('이차곡선') || n.includes('벡터') || n.includes('공간') || n.includes('미적분') || n.includes('기하')) { code = 3.4; color = '#f39c12'; }
-        } 
-        else if (subject.includes('사회문화') || subject.includes('사문')) {
-            if (n.includes('탐구')) code = 1;
-            else if (n.includes('개인') || n.includes('구조')) code = 2;
-            else if (n.includes('문화') || n.includes('일상')) code = 3;
-            else if (n.includes('계층') || n.includes('불평등')) code = 4;
-            else if (n.includes('변동')) code = 5;
-        }
-        else if (subject === '지구1' || subject.includes('지학1') || subject.includes('지구과학')) {
-            if (n.includes('지권') || n.includes('고체')) code = 1;
-            else if (n.includes('지구의역사') || n.includes('지질')) code = 2;
-            else if (n.includes('대기와해양의변화') || n.includes('날씨')) code = 3;
-            else if (n.includes('상호작용') || n.includes('해류')) code = 4;
-            else if (n.includes('별과외계') || n.includes('항성')) code = 5;
-            else if (n.includes('우주') || n.includes('은하') || n.includes('팽창')) code = 6;
-        }
-        else {
-            const match = n.match(/^(\d+)/);
-            if (match) code = parseInt(match[1], 10);
-        }
-        return { code, color };
-    };
-
-    // 💡 정렬 로직 (DB unit_map 체크 후, 실패 시 위의 하드코딩 순서 적용)
+    // 💡 [해결 1] unitKey를 사용해 완벽하게 순서를 정렬합니다. (DB에 적어주신 순서 100% 반영)
     labels.sort((a, b) => {
-        const getDbCode = (name) => {
-            if (!window.__unitMap || window.__unitMap.length === 0) return null;
-            const targetName = name.replace(/[^가-힣a-zA-Z0-9]/g, '');
-            const found = window.__unitMap.find(u => {
-                const uSubj = String(u.subject || '').replace(/[^가-힣a-zA-Z0-9]/g, '');
-                if (uSubj && !uSubj.includes(subj.replace(/[^가-힣a-zA-Z0-9]/g, '')) && !subj.replace(/[^가-힣a-zA-Z0-9]/g, '').includes(uSubj)) return false;
-                const uName = String(u.unit_name || u.unit || u.name || u.title || '').replace(/[^가-힣a-zA-Z0-9]/g, '');
-                return uName && (uName === targetName || uName.includes(targetName) || targetName.includes(uName));
-            });
-            return found ? (parseInt(found.unit_code || found.unit_num || found.chapter, 10)) : null;
-        };
-        
-        let codeA = getDbCode(a);
-        if (codeA === null || isNaN(codeA)) codeA = getLabelInfo(a, subj).code;
-        
-        let codeB = getDbCode(b);
-        if (codeB === null || isNaN(codeB)) codeB = getLabelInfo(b, subj).code;
-        
-        return codeA - codeB;
+        let keyA = dataObj[a]?.unitKey;
+        let keyB = dataObj[b]?.unitKey;
+        keyA = (keyA !== undefined && keyA !== null) ? keyA : 9999;
+        keyB = (keyB !== undefined && keyB !== null) ? keyB : 9999;
+        return keyA - keyB;
     });
 
     const dataPoints = labels.map(l => {
@@ -1036,7 +863,25 @@ window.__renderRadarChartCanvas = function() {
         return stat && stat.total > 0 ? Math.round((stat.o / stat.total) * 100) : 0;
     });
 
-    const pointColors = labels.map(l => type === 'unit' ? getLabelInfo(l, subj).color : '#8e44ad');
+    // 💡 [해결 2] 꼬리표(qSubj)를 이용해 헷갈림 없이 색상을 정확히 분배합니다.
+    const getLabelColor = (label, subject) => {
+        const stat = dataObj[label];
+        const qSubj = stat ? stat.qSubj : subject; // 원본 과목명 (예: 미적분, 언어와매체)
+
+        if (subject === '국어') {
+            if (['화법과작문', '언어와매체'].includes(qSubj)) return '#f39c12'; // 선택(주황)
+            if (/(시|소설|극|수필|문학|갈래)/.test(label)) return '#2ecc71'; // 문학(초록)
+            return '#3498db'; // 독서(파랑)
+        } else if (subject === '수학') {
+            if (['미적분', '기하', '확률과통계'].includes(qSubj)) return '#f39c12'; // 선택(주황)
+            if (qSubj === '수학2' || /(극한|연속|미분|적분)/.test(label)) return '#8e44ad'; // 수2(보라)
+            if (qSubj === '수학1' || /(지수|로그|삼각|수열)/.test(label)) return '#3498db'; // 수1(파랑)
+            return '#27ae60'; // 기타(초록)
+        }
+        return '#3498db'; // 탐구는 무조건 파랑
+    };
+
+    const pointColors = labels.map(l => type === 'unit' ? getLabelColor(l, subj) : '#8e44ad');
 
     if (window.__radarChartInstance) window.__radarChartInstance.destroy();
 
@@ -1070,9 +915,7 @@ window.__renderRadarChartCanvas = function() {
                     grid: { color: '#ecf0f1' },
                     angleLines: { color: '#ecf0f1' },
                     pointLabels: {
-                        color: function(context) {
-                            return type === 'unit' ? getLabelInfo(context.label, subj).color : '#2c3e50'; 
-                        },
+                        color: function(context) { return type === 'unit' ? getLabelColor(context.label, subj) : '#2c3e50'; },
                         font: { size: 12, weight: 'bold' }
                     }
                 }
@@ -1080,18 +923,34 @@ window.__renderRadarChartCanvas = function() {
             plugins: {
                 legend: { display: false },
                 tooltip: {
+                    // 💡 [해결 3] 0% 중복 4개 표시 방지 필터! (똑같은 값이 겹치면 하나만 남기고 숨김)
+                    filter: function(tooltipItem, index, tooltipItems, data) {
+                        if (tooltipItem.raw === 0) {
+                            const firstZero = tooltipItems.find(t => t.raw === 0);
+                            return tooltipItem.dataIndex === firstZero.dataIndex; 
+                        }
+                        return true;
+                    },
                     callbacks: {
                         title: function(tooltipItems) {
                             const val = tooltipItems[0].raw;
-                            if (val === 0 && tooltipItems.length > 1) {
-                                return `🚨 취약 영역 (0%) - 총 ${tooltipItems.length}개`;
+                            const dataset = tooltipItems[0].dataset;
+                            const chartLabels = tooltipItems[0].chart.data.labels;
+                            const sameValLabels = chartLabels.filter((l, i) => dataset.data[i] === val);
+                            
+                            if (val === 0 && sameValLabels.length > 1) {
+                                return `🚨 취약 영역 (0%) - 총 ${sameValLabels.length}개`;
                             }
                             return tooltipItems[0].label;
                         },
                         label: function(context) {
                             const val = context.raw;
-                            if (val === 0) {
-                                return ` • ${context.label}`;
+                            const dataset = context.dataset;
+                            const chartLabels = context.chart.data.labels;
+                            const sameValLabels = chartLabels.filter((l, i) => dataset.data[i] === val);
+                            
+                            if (val === 0 && sameValLabels.length > 1) {
+                                return sameValLabels.map(l => ` • ${l}`);
                             }
                             return ` ${val}%`;
                         }
