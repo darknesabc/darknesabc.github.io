@@ -478,7 +478,7 @@ window.__renderGradeSummaryTable = function() {
 };
 
 // =========================================================
-// 💡 [NEW] 정오표 데이터 호출 (단원명 초간단 직관적 표시 패치)
+// 💡 [NEW] 정오표 데이터 호출 (수1/수2 태그 및 탐구 단원 완벽 매칭 패치)
 // =========================================================
 window.__loadGradeErrata = async function(examLabel) {
     const container = document.getElementById('grade-errata-area');
@@ -500,7 +500,6 @@ window.__loadGradeErrata = async function(examLabel) {
         let startIdx = 0;
         const limitSize = 1000;
 
-        // 1000개 제한 돌파 페이징
         while (fetchMore) {
             const { data, error } = await _supabase
                 .from('mock_errata')
@@ -540,7 +539,6 @@ window.__loadGradeErrata = async function(examLabel) {
             return;
         }
 
-        // 과목명 정규화 (로마자 버그 완벽 차단)
         const normalizeSubj = (name) => {
             let s = String(name || "").trim().replace(/\s+/g, '').replace(/·/g, '').replace(/과학/g, '');
             s = s.replace(/II/g, '2').replace(/I/g, '1').replace(/Ⅱ/g, '2').replace(/Ⅰ/g, '1');
@@ -600,31 +598,35 @@ window.__loadGradeErrata = async function(examLabel) {
             if (['미적분', '기하', '확률과통계', '수학', '수학1', '수학2'].includes(normSubj)) addToStats('수학공통', row);
         });
 
-        // 💡 [초간단 단원명 생성 로직] 1, 2, 3, 4 등 DB에 있는 내용을 군더더기 없이 출력!
+        // 💡 [핵심 픽스 1] 단원 맵핑 강화 (문항번호에 "1번" 처럼 글자가 있어도 숫자만 추출!)
         const qInfoMap = {}; 
         (qInfos || []).forEach(q => {
             const normSubj = normalizeSubj(q.subject);
             if (!qInfoMap[normSubj]) qInfoMap[normSubj] = {};
             
+            // 💡 DB에 "1번", " 1 " 등으로 들어있어도 완벽하게 숫자로 변환
+            const qNum = parseInt(String(q.question_num).replace(/[^0-9]/g, ''), 10);
+            if (isNaN(qNum)) return; // 숫자가 아니면 패스
+
             const unit = String(q.unit_name || '').trim();
             const subUnit = String(q.sub_unit || q.subunit || '').trim();
             const beh = String(q.behavior_domain || '').trim();
             
             let labelHtml = '';
             
-            // 수1/수2 전용 파란색/보라색 예쁜 태그
+            // 💡 [요청사항] 수학 공통일 경우 앞에 [수1], [수2] 태그 부착!
             if (normSubj === '수학1') {
-                labelHtml += `<span style="color:#2980b9; font-weight:900; margin-right:6px;">[수학I]</span>`;
+                labelHtml += `<span style="color:#2980b9; font-weight:900; margin-right:6px;">[수1]</span>`;
             } else if (normSubj === '수학2') {
-                labelHtml += `<span style="color:#8e44ad; font-weight:900; margin-right:6px;">[수학II]</span>`;
+                labelHtml += `<span style="color:#8e44ad; font-weight:900; margin-right:6px;">[수2]</span>`;
             }
             
             let labelArr = [];
             if (unit && unit !== '-' && unit !== 'null') labelArr.push(unit);
             
-            // 탐구과목일 경우 소단원이 존재하면 하이픈으로 묶기 (DB에 1, 2, 3만 있으면 그대로 1, 2, 3만 출력됨)
             const isTamgu = !['국어', '국어공통', '화법과작문', '언어와매체', '수학', '수학공통', '미적분', '기하', '확률과통계', '영어', '수학1', '수학2'].includes(normSubj);
             
+            // 탐구과목일 경우에만 소단원(-) 추가 (DB에 숫자로 있으면 숫자 그대로 표시됨)
             if (isTamgu && subUnit && subUnit !== '-' && subUnit !== 'null') {
                 labelArr.push(subUnit);
             }
@@ -634,12 +636,16 @@ window.__loadGradeErrata = async function(examLabel) {
             
             labelHtml += joinedUnit;
             
-            // 행동영역은 보기 편하게 회색 뱃지로 유지
             if (beh && beh !== '기타' && beh !== '-' && beh !== 'null') {
                 labelHtml += ` <span style="font-size:11px; color:#95a5a6; border:1px solid #ecf0f1; padding:2px 6px; border-radius:4px; margin-left:6px; background:#f8f9fa;">${beh}</span>`;
             }
-            qInfoMap[normSubj][q.question_num] = labelHtml;
+            
+            // 정확하게 추출된 숫자에 맵핑
+            qInfoMap[normSubj][qNum] = labelHtml;
         });
+
+        // 💡 [디버깅] F12를 누르시면 출제영역 데이터가 제대로 맵핑되었는지 확인할 수 있습니다!
+        console.log("🗺️ 단원 맵핑 결과(qInfoMap):", qInfoMap);
 
         const findRowStrict = (targetName) => {
             if (!targetName) return null;
@@ -676,13 +682,18 @@ window.__loadGradeErrata = async function(examLabel) {
                 const barColor = rate >= 80 ? '#2ecc71' : (rate >= 50 ? '#f1c40f' : '#e74c3c');
                 
                 let qInfo = '-';
+                
+                // 💡 [핵심 픽스 2] 공통 과목의 경우, 더 유연하게 탐색해서 기필코 찾아냅니다.
                 if (infoKey === '수학공통') {
-                    // 수학 공통은 수학1, 수학2를 우선적으로 찾아서 꽂아줍니다!
                     qInfo = (qInfoMap['수학1'] && qInfoMap['수학1'][i]) || 
                             (qInfoMap['수학2'] && qInfoMap['수학2'][i]) || 
-                            (qInfoMap['수학'] && qInfoMap['수학'][i]) || '-';
+                            (qInfoMap['수학'] && qInfoMap['수학'][i]) || 
+                            (qInfoMap['수학공통'] && qInfoMap['수학공통'][i]) || 
+                            (qInfoMap['공통'] && qInfoMap['공통'][i]) || '-';
                 } else if (infoKey === '국어공통') {
-                    qInfo = (qInfoMap['국어'] && qInfoMap['국어'][i]) || '-';
+                    qInfo = (qInfoMap['국어'] && qInfoMap['국어'][i]) || 
+                            (qInfoMap['국어공통'] && qInfoMap['국어공통'][i]) || 
+                            (qInfoMap['공통'] && qInfoMap['공통'][i]) || '-';
                 } else {
                     qInfo = (qInfoMap[infoKey] && qInfoMap[infoKey][i]) || '-';
                 }
@@ -706,6 +717,10 @@ window.__loadGradeErrata = async function(examLabel) {
             }
             
             const sectionId = 'errata-' + Math.random().toString(36).substr(2, 9);
+            
+            const infoHeader = (infoKey === '수학공통' || infoKey === '국어공통' || infoKey === '영어' || infoKey === '미적분' || infoKey === '기하' || infoKey === '확률과통계' || infoKey === '화법과작문' || infoKey === '언어와매체') 
+                             ? '출제 영역 (과목 / 대단원)' 
+                             : '출제 영역 (대단원 - 소단원)';
 
             return `
                 <div style="border: 1px solid #dee2e6; border-radius: 8px; margin-bottom: 10px; overflow:hidden; background:#fff;">
@@ -720,7 +735,7 @@ window.__loadGradeErrata = async function(examLabel) {
                                 <tr style="border-bottom: 2px solid #dee2e6; background: #fff;">
                                     <th style="padding: 10px 5px; text-align:center; color:#95a5a6; font-size:11px;">문항</th>
                                     <th style="padding: 10px 5px; text-align:center; color:#95a5a6; font-size:11px;">O/X</th>
-                                    <th style="padding: 10px; text-align:left; color:#95a5a6; font-size:11px;">출제 영역 (단원)</th>
+                                    <th style="padding: 10px; text-align:left; color:#95a5a6; font-size:11px;">${infoHeader}</th>
                                     <th style="padding: 10px; text-align:right; color:#95a5a6; font-size:11px;">정답률</th>
                                     <th style="padding: 10px; text-align:right; color:#95a5a6; font-size:11px;">O/응시</th>
                                 </tr>
