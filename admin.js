@@ -10,6 +10,19 @@ window.__currentSortMode = 'seat'; // 기본값: 자리순
 window.__radarCurrentType = 'unit'; // 레이더 차트 (단원별/행동영역별)
 window.__radarCurrentSubj = null;   // 레이더 차트 (선택된 과목)
 
+// 1. 숫자 추출 도구 및 수퍼베이스 차단 대비용 '강제 순서표' 내장
+const getSafeNum = (val) => {
+    if (typeof val === 'number') return val;
+    const match = String(val || "").match(/\d+/); 
+    return match ? parseInt(match[0], 10) : 9999;
+};
+
+const KOR_UNIT_ORDER = {
+    '인문': 1, '사회': 2, '과학': 3, '기술': 4, '예술': 5, '독서이론': 6, '융합': 7,
+    '현대시': 8, '현대소설': 9, '고전시가': 10, '고전소설': 11, '수필': 12, '극': 13, '갈래복합': 14,
+    '화법': 15, '작문': 16, '언어': 15, '매체': 16
+};
+
 const EDU_SCORE_MAP = {
     "전자기기 부정사용": 10, "핸드폰 무단사용": 7, "해드폰 미제출": 7, "무단결석": 7, "무단이탈": 7,
     "타층/타관 무단출입": 5, "원내대화": 5, "무단지각": 5, "모의고사 무단 1회 미응시": 5,
@@ -544,7 +557,6 @@ window.__loadGradeErrata = async function(examLabel) {
             return;
         }
 
-        // 💡 [버그수정] 지학1, 지구과학1 등 탐구과목 매칭 정확도 향상
         const normalizeSubj = (name) => {
             let s = String(name || "").trim().replace(/\s+/g, '').replace(/·/g, '');
             s = s.replace(/II/g, '2').replace(/I/g, '1').replace(/Ⅱ/g, '2').replace(/Ⅰ/g, '1');
@@ -609,15 +621,16 @@ window.__loadGradeErrata = async function(examLabel) {
             const qNum = parseInt(String(q.question_num).replace(/[^0-9]/g, ''), 10);
             if (isNaN(qNum)) return;
 
-            let unit = String(q.unit_name || '').trim();
+            // 💡 [수정됨] 단원명 앞의 숫자("1. 인문" 등)를 잘라내서 매칭률을 높입니다.
+            let unit = String(q.unit_name || '').replace(/^\d+\.?\s*/, '').trim(); 
             const subUnit = String(q.sub_unit || q.subunit || '').trim();
             const beh = String(q.behavior_domain || '').trim();
             
-            let uKey = parseFloat(q.unit_key ?? q.unit_code ?? q.chapter_num ?? q.unit_num);
+            let uKey = 9999;
+            const cleanTarget = unit.replace(/\s+/g, '');
             
-            // 💡 [핵심] unit_map에서 unit_name과 unit_key를 1순위로 무조건 덮어씁니다!
+            // 💡 [1순위] 수퍼베이스 unit_map 매칭
             if (window.__unitMap && window.__unitMap.length > 0) {
-                const cleanTarget = unit.replace(/\s+/g, '');
                 const found = window.__unitMap.find(u => {
                     const mapName = String(u.unit_name || u.unit || u.name || u.title || '').replace(/\s+/g, '');
                     const mapSubj = String(u.subject || '').replace(/\s+/g, '');
@@ -630,13 +643,24 @@ window.__loadGradeErrata = async function(examLabel) {
                     return subjMatch && mapName && (mapName === cleanTarget || mapName.includes(cleanTarget) || cleanTarget.includes(mapName));
                 });
                 if (found) {
-                    unit = found.unit_name || found.unit || found.name || unit; // 선생님 요청: unit_name 통일
-                    const mappedKey = parseFloat(found.unit_key ?? found.unit_code ?? found.chapter_num ?? found.unit_num);
-                    if (!isNaN(mappedKey)) uKey = mappedKey; // 선생님 요청: unit_key 절대 덮어쓰기
+                    unit = found.unit_name || found.unit || found.name || unit; 
+                    const mappedKey = getSafeNum(found.unit_key ?? found.unit_code ?? found.chapter_num ?? found.unit_num);
+                    if (mappedKey !== 9999) uKey = mappedKey;
                 }
             }
 
-            let cleanUnit = unit.replace(/^\d+\.?\s*/, '');
+            // 💡 [2순위] 매칭 실패 시, 하드코딩된 국어 강제 순서표 적용
+            if (uKey === 9999 && KOR_UNIT_ORDER[cleanTarget]) {
+                uKey = KOR_UNIT_ORDER[cleanTarget];
+            }
+
+            // 💡 [3순위] 그래도 없으면 원래 데이터에서 숫자 추출
+            if (uKey === 9999) {
+                const rawKey = getSafeNum(q.unit_key ?? q.unit_code ?? q.chapter_num ?? q.unit_num);
+                if (rawKey !== 9999) uKey = rawKey;
+            }
+
+            let cleanUnit = unit;
             if (!cleanUnit || cleanUnit === '-' || cleanUnit === 'null') cleanUnit = '기타';
             let cleanBeh = beh;
             if (!cleanBeh || cleanBeh === '-' || cleanBeh === 'null') cleanBeh = '기타';
@@ -644,10 +668,11 @@ window.__loadGradeErrata = async function(examLabel) {
             qInfoRawMap[normSubj][qNum] = { 
                 unit: cleanUnit, 
                 beh: cleanBeh, 
-                unitKey: isNaN(uKey) ? 9999 : uKey, 
+                unitKey: uKey, 
                 qSubj: normSubj 
             };
 
+            // 기존 라벨 HTML 생성 코드 유지
             let labelHtml = '';
             if (normSubj === '수학' || normSubj === '수학공통') {
                 const uStr = cleanUnit.replace(/\s+/g, '');
@@ -659,7 +684,7 @@ window.__loadGradeErrata = async function(examLabel) {
             
             const isTamgu = !['국어', '국어공통', '화법과작문', '언어와매체', '수학', '수학공통', '미적분', '기하', '확률과통계', '영어', '수학1', '수학2'].includes(normSubj);
             
-            if (isTamgu && !isNaN(uKey) && uKey !== 9999) {
+            if (isTamgu && uKey !== 9999) {
                 labelHtml += `<span style="display:inline-flex; align-items:center; justify-content:center; width:18px; height:18px; background:#8e44ad; color:#fff; border-radius:4px; font-size:11px; font-weight:bold; margin-right:8px; vertical-align:middle;">${uKey}</span>`;
             }
             
@@ -844,63 +869,48 @@ window.__renderRadarChartUI = function() {
 };
 
 // =========================================================
-// 💡 [수정됨] 방사형 레이더 그래프 렌더러 (글씨 색상, 순서 완벽 고정)
+// 💡 [수정됨] 방사형 레이더 그래프 렌더러 (순서 완벽 고정)
 // =========================================================
 window.__renderRadarChartCanvas = function() {
     const ctx = document.getElementById('radarChartCanvas');
-    if (!ctx) return;
+    if (!ctx || !window.__radarStats) return;
 
     const subj = window.__radarCurrentSubj;
     const type = window.__radarCurrentType || 'unit';
-    const dataObj = window.__radarStats[subj]?.[type === 'unit' ? 'units' : 'behaviors'] || {};
+    const dataObj = window.__radarStats[subj]?.units || {};
 
-    let labels = Object.keys(dataObj).filter(k => k !== '분류없음' && k !== '기타' && k !== '');
-    if (labels.length === 0) labels = ['데이터 없음'];
-
-    // 💡 [핵심] unit_map의 키를 활용한 절대 정렬 + 수학 1/2/선택 꼬임 방지
+    let labels = Object.keys(dataObj).filter(k => k !== '기타' && k !== '분류없음' && k !== '');
+    
+    // 💡 저장된 고유 순서(unitKey)를 바탕으로 오름차순 강제 정렬
     labels.sort((a, b) => {
         const keyA = dataObj[a]?.unitKey ?? 9999;
         const keyB = dataObj[b]?.unitKey ?? 9999;
-        
-        if (keyA !== keyB) return keyA - keyB;
-        
-        // 키가 같거나 없을 때를 대비한 하드코딩 정렬 안전장치 (수1 -> 수2 -> 선택 순서 고정)
-        if (subj === '수학') {
-            const order = (l) => {
-                const qs = dataObj[l]?.qSubj || '';
-                if (['미적분', '기하', '확률과통계'].includes(qs)) return 3;
-                if (qs === '수학2' || /(극한|연속|미분|적분)/.test(l)) return 2;
-                return 1;
-            };
-            return order(a) - order(b);
-        }
-        return 0;
+        if (keyA === keyB) return a.localeCompare(b, 'ko'); 
+        return keyA - keyB;
     });
 
     const dataPoints = labels.map(l => {
-        const stat = dataObj[l];
-        return stat && stat.total > 0 ? Math.round((stat.o / stat.total) * 100) : 0;
+        return dataObj[l].total > 0 ? Math.round((dataObj[l].o / dataObj[l].total) * 100) : 0;
     });
 
-    // 💡 [핵심] 글씨 색상 및 포인트 색상 분리 (국어: 독서/문학/선택, 수학: 수1/수2/선택)
-    const getLabelColor = (label, subject) => {
-        const stat = dataObj[label];
-        const qSubj = stat ? stat.qSubj : subject; 
+    const getLabelColor = (label, majorSubj) => {
+        const info = dataObj[label];
+        const qSubj = info?.qSubj || majorSubj; 
 
-        if (subject === '국어') {
+        if (majorSubj === '국어') {
             if (['화법과작문', '언어와매체'].includes(qSubj)) return '#f39c12'; // 선택(주황)
             if (/(시|소설|극|수필|문학|갈래)/.test(label)) return '#2ecc71'; // 문학(초록)
             return '#3498db'; // 독서(파랑)
-        } else if (subject === '수학') {
-            if (['미적분', '기하', '확률과통계'].includes(qSubj)) return '#f39c12'; // 선택(주황)
-            if (qSubj === '수학2' || /(극한|연속|미분|적분)/.test(label)) return '#2ecc71'; // 수2(초록)
-            if (qSubj === '수학1' || /(지수|로그|삼각|수열)/.test(label)) return '#3498db'; // 수1(파랑)
-            return '#27ae60'; // 기타
+        } else if (majorSubj === '수학') {
+            if (['미적분', '기하', '확률과통계'].includes(qSubj)) return '#f39c12'; 
+            if (qSubj === '수학2' || /(극한|연속|미분|적분)/.test(label)) return '#2ecc71'; 
+            if (qSubj === '수학1' || /(지수|로그|삼각|수열)/.test(label)) return '#3498db'; 
+            return '#27ae60'; 
         }
-        return '#3498db'; // 탐구는 기본 파랑
+        return '#3498db'; 
     };
 
-    const pointColors = labels.map(l => type === 'unit' ? getLabelColor(l, subj) : '#8e44ad');
+    const pointColors = labels.map(l => getLabelColor(l, subj));
 
     if (window.__radarChartInstance) window.__radarChartInstance.destroy();
 
@@ -911,8 +921,8 @@ window.__renderRadarChartCanvas = function() {
             datasets: [{
                 label: `${subj} 성취도(%)`,
                 data: dataPoints,
-                backgroundColor: type === 'unit' ? 'rgba(52, 152, 219, 0.1)' : 'rgba(142, 68, 173, 0.1)',
-                borderColor: type === 'unit' ? 'rgba(52, 152, 219, 0.5)' : '#8e44ad',
+                backgroundColor: 'rgba(52, 152, 219, 0.1)',
+                borderColor: 'rgba(52, 152, 219, 0.5)',
                 pointBackgroundColor: pointColors,
                 pointBorderColor: '#fff',
                 pointHoverBackgroundColor: '#fff',
@@ -927,30 +937,22 @@ window.__renderRadarChartCanvas = function() {
             maintainAspectRatio: false,
             scales: {
                 r: {
-                    beginAtZero: true,
-                    max: 100,
-                    min: 0,
+                    beginAtZero: true, max: 100, min: 0,
                     ticks: { stepSize: 20, display: false },
                     grid: { color: '#ecf0f1' },
                     angleLines: { color: '#ecf0f1' },
                     pointLabels: {
-                        // 💡 여기서 글씨 색상이 반환되어 차트에 칠해집니다.
-                        color: function(context) { return type === 'unit' ? getLabelColor(context.label, subj) : '#2c3e50'; },
+                        color: (context) => getLabelColor(context.label, subj),
                         font: { size: 12, weight: 'bold' }
                     }
                 }
             },
             plugins: {
                 legend: { display: false },
-                // 💡 [버그수정] 툴팁이 2개씩 중복으로 총 4줄씩 나오던 버그 수정 (심플한 차트 기본 툴팁으로 교체)
                 tooltip: {
                     callbacks: {
-                        title: function(tooltipItems) {
-                            return tooltipItems[0].label;
-                        },
-                        label: function(context) {
-                            return ` 성취도: ${context.raw}%`;
-                        }
+                        title: (tooltipItems) => tooltipItems[0].label,
+                        label: (context) => ` 성취도: ${context.raw}%`
                     }
                 }
             }
