@@ -130,6 +130,9 @@ async function init() {
 // =========================================================
 // 3. 학생 상세 페이지 로드 (요약 카드 + 상세 내역 리스트)
 // =========================================================
+// =========================================================
+// 3. 학생 상세 페이지 로드 (요약 카드 + 성적 요약 + 성적 추이)
+// =========================================================
 window.__loadStudentDetail = async function(student) {
     if (!student || !student.studentId) return;
 
@@ -153,7 +156,6 @@ window.__loadStudentDetail = async function(student) {
             _supabase.from('survey_log').select('*').eq('student_id', student.studentId)
         ]);
 
-        // 한국 시간대(로컬 시간)에 맞춰 상세 페이지 날짜 계산
         const now = new Date();
         const todayIso = new Date(now.getTime() - (now.getTimezoneOffset() * 60000)).toISOString().split('T')[0];
         
@@ -336,11 +338,12 @@ window.__loadStudentDetail = async function(student) {
 
             </div>
 
-            <div id="grade-trend-container" style="margin-top:20px;"></div>
+            <div id="grade-summary-container"></div>
+
+            <div id="grade-trend-container"></div>
         `;
         detailSection.innerHTML = html;
         
-        // 💡 HTML 세팅 후 성적 불러오기 실행 (학생 정보를 그대로 넘깁니다)
         window.__loadGradeTrend(student);
 
     } catch (err) {
@@ -349,7 +352,7 @@ window.__loadStudentDetail = async function(student) {
 };
 
 // =========================================================
-// 💡 4. 성적 추이 (백분위/원점수 & 클래스그룹 컷오프 & 다크 표)
+// 💡 4. 성적 (요약 & 추이 통합)
 // =========================================================
 window.__loadGradeTrend = async function(student) {
     const trendContainer = document.getElementById('grade-trend-container');
@@ -362,7 +365,7 @@ window.__loadGradeTrend = async function(student) {
             .order('created_at', { ascending: true });
 
         if (error || !allScores || allScores.length === 0) {
-            trendContainer.innerHTML = '<div style="text-align:center; padding:40px; color:#95a5a6; background:#fff; border-radius:12px; border:1px solid #dee2e6;">등록된 성적 데이터가 없습니다.</div>';
+            trendContainer.innerHTML = '<div style="text-align:center; padding:40px; color:#95a5a6; background:#fff; border-radius:12px; border:1px solid #dee2e6; margin-top:20px;">등록된 성적 데이터가 없습니다.</div>';
             return;
         }
 
@@ -371,21 +374,140 @@ window.__loadGradeTrend = async function(student) {
         window.__currentStudentClass = student.className || ''; 
 
         if (window.__currentStudentScores.length === 0) {
-            trendContainer.innerHTML = '<div style="text-align:center; padding:40px; color:#95a5a6; background:#fff; border-radius:12px; border:1px solid #dee2e6;">등록된 성적 데이터가 없습니다.</div>';
+            trendContainer.innerHTML = '<div style="text-align:center; padding:40px; color:#95a5a6; background:#fff; border-radius:12px; border:1px solid #dee2e6; margin-top:20px;">등록된 성적 데이터가 없습니다.</div>';
             return;
         }
 
+        // 💡 [추가] 성적 요약 컴포넌트 초기화
+        window.__currentSummaryExam = window.__currentStudentScores[window.__currentStudentScores.length - 1].exam_label;
+        window.__renderGradeSummaryUI();
+
+        // 기존 추이 초기화
         window.__currentGradeMode = 'pct'; 
         window.__currentViewMode = 'graph'; 
-        
-        // 💡 [수정] 반별(topClass) 제거, 그룹별 스위치 활성화
-        window.__toggles = { topTotal: false, topChoice: false, topHS: false, topGreen: false, topBlue: false, topMed: false, topSKY: false };
+        window.__toggles = { topTotal: false, topChoice: false, topClass: false, topHS: false, topGreen: false, topBlue: false, topMed: false, topSKY: false };
         window.__subjectToggles = { kor: true, math: true, tam1: true, tam2: true, eng: true }; 
 
         window.__renderGradeTrendUI();
     } catch (err) { console.error("성적 로드 에러:", err); }
 };
 
+// 💡 [추가] 성적 요약 껍데기(드롭다운 포함) 렌더링
+window.__renderGradeSummaryUI = function() {
+    const container = document.getElementById('grade-summary-container');
+    if (!container) return;
+
+    const scores = window.__currentStudentScores;
+    const optionsHtml = scores.map(s => `<option value="${s.exam_label}" ${s.exam_label === window.__currentSummaryExam ? 'selected' : ''}>${s.exam_label} 성적</option>`).join('');
+
+    container.innerHTML = `
+        <div style="background:#fff; padding:25px; border-radius:12px; border:1px solid #dee2e6; box-shadow:0 4px 6px rgba(0,0,0,0.02); margin-top:20px;">
+            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:15px;">
+                <div style="display:flex; align-items:center; gap:15px;">
+                    <h4 style="margin:0; color:#2c3e50; display:flex; align-items:center; gap:8px;">📊 성적 요약</h4>
+                    <select onchange="window.__changeSummaryExam(this.value)" style="padding:6px 12px; border-radius:6px; border:1px solid #dee2e6; background:#f8f9fa; font-size:13px; font-weight:bold; color:#2c3e50; outline:none; cursor:pointer;">
+                        ${optionsHtml}
+                    </select>
+                </div>
+            </div>
+            <div id="grade-summary-table-area"></div>
+        </div>
+    `;
+    window.__renderGradeSummaryTable();
+};
+
+window.__changeSummaryExam = function(examLabel) {
+    window.__currentSummaryExam = examLabel;
+    window.__renderGradeSummaryTable();
+};
+
+// 💡 [추가] 선택된 시험의 데이터로 표(Table) 렌더링 (화이트 테마)
+window.__renderGradeSummaryTable = function() {
+    const area = document.getElementById('grade-summary-table-area');
+    const score = window.__currentStudentScores.find(s => s.exam_label === window.__currentSummaryExam) || {};
+
+    const v = (val) => val === null || val === undefined || val === "" ? '-' : val;
+
+    area.innerHTML = `
+        <div style="overflow-x:auto; border-radius:8px; border:1px solid #dee2e6;">
+            <style>
+                .sum-table { width:100%; border-collapse:collapse; font-size:13px; text-align:center; color:#2c3e50; min-width:700px; background:#fff; }
+                .sum-table th, .sum-table td { border-bottom:1px solid #ecf0f1; padding:12px 10px; }
+                .sum-table th { color:#7f8c8d; font-weight:normal; background:#fbfbfc; border-bottom:2px solid #dee2e6; }
+                .sum-table td.header-col { font-weight:bold; color:#7f8c8d; background:#fbfbfc; border-right:1px solid #ecf0f1; width:100px; text-align:left; padding-left:20px; }
+                .sum-table td { font-weight:bold; color:#2c3e50; }
+                .sum-table tbody tr:hover { background-color:#f8f9fa; transition:0.2s; }
+                .sum-table tr:last-child td { border-bottom:none; }
+                .sum-kor { color:#3498db; }
+                .sum-math { color:#e74c3c; }
+                .sum-tam1 { color:#27ae60; }
+                .sum-tam2 { color:#f39c12; }
+            </style>
+            <table class="sum-table">
+                <thead>
+                    <tr>
+                        <th style="width:100px; border-right:1px solid #ecf0f1;">과목</th>
+                        <th>국어</th>
+                        <th>수학</th>
+                        <th>영어</th>
+                        <th>한국사</th>
+                        <th>탐구1</th>
+                        <th>탐구2</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <tr>
+                        <td class="header-col">선택과목</td>
+                        <td class="sum-kor">${v(score.kor_choice)}</td>
+                        <td class="sum-math">${v(score.math_choice)}</td>
+                        <td>-</td>
+                        <td>-</td>
+                        <td class="sum-tam1">${v(score.tam1_name)}</td>
+                        <td class="sum-tam2">${v(score.tam2_name)}</td>
+                    </tr>
+                    <tr>
+                        <td class="header-col">원점수</td>
+                        <td>${v(score.kor_raw_total)}</td>
+                        <td>${v(score.math_raw_total)}</td>
+                        <td>${v(score.eng_raw)}</td>
+                        <td>${v(score.hist_raw)}</td>
+                        <td>${v(score.tam1_raw)}</td>
+                        <td>${v(score.tam2_raw)}</td>
+                    </tr>
+                    <tr>
+                        <td class="header-col">표준점수</td>
+                        <td>${v(score.kor_exp_std)}</td>
+                        <td>${v(score.math_exp_std)}</td>
+                        <td>-</td>
+                        <td>-</td>
+                        <td>${v(score.tam1_exp_std)}</td>
+                        <td>${v(score.tam2_exp_std)}</td>
+                    </tr>
+                    <tr>
+                        <td class="header-col">백분위</td>
+                        <td class="sum-kor">${v(score.kor_exp_pct)}</td>
+                        <td class="sum-math">${v(score.math_exp_pct)}</td>
+                        <td>-</td>
+                        <td>-</td>
+                        <td class="sum-tam1">${v(score.tam1_exp_pct)}</td>
+                        <td class="sum-tam2">${v(score.tam2_exp_pct)}</td>
+                    </tr>
+                    <tr>
+                        <td class="header-col">등급</td>
+                        <td>${v(score.kor_exp_grade)}</td>
+                        <td>${v(score.math_exp_grade)}</td>
+                        <td style="color:#9b59b6;">${v(score.eng_grade)}</td>
+                        <td>${v(score.hist_grade || score.hist_exp_grade)}</td>
+                        <td>${v(score.tam1_exp_grade)}</td>
+                        <td>${v(score.tam2_exp_grade)}</td>
+                    </tr>
+                </tbody>
+            </table>
+        </div>
+    `;
+};
+
+// 💡 추이 UI 렌더링
 window.__renderGradeTrendUI = function() {
     const container = document.getElementById('grade-trend-container');
     
@@ -393,7 +515,7 @@ window.__renderGradeTrendUI = function() {
     
     const tglBtn = (key, label) => {
         const isOn = window.__toggles[key];
-        return `<button onclick="window.__toggleCutoff('${key}')" style="border:1px solid ${isOn ? '#3498db' : '#dee2e6'}; padding:5px 12px; border-radius:20px; cursor:pointer; font-size:11px; font-weight:bold; background:${isOn ? '#e8f4f8' : '#fff'}; color:${isOn ? '#2980b9' : '#7f8c8d'}; transition:0.2s;">${label} ${isOn ? 'ON' : 'OFF'}</button>`;
+        return `<button onclick="window.__toggleCutoff('${key}')" style="border:1px solid ${isOn ? '#3498db' : '#dee2e6'}; padding:5px 12px; border-radius:20px; cursor:pointer; font-size:11px; font-weight:bold; background:${isOn ? '#e8f4f8' : '#fff'}; color:${isOn ? '#2980b9' : '#7f8c8d'}; transition:0.2s;">${label}</button>`;
     };
 
     const latestScore = window.__currentStudentScores[window.__currentStudentScores.length - 1] || {};
@@ -469,7 +591,6 @@ window.__renderGradeDisplay = function() {
     const view = window.__currentViewMode; 
     const toggles = window.__toggles;
 
-    // 💡 [수정] 영어는 백분위 모드일 때 '등급(grade)'을 반환
     const getVal = (s, subj) => {
         if (subj === 'eng' && mode === 'pct') return s.eng_grade ? Number(s.eng_grade) : null;
         if (mode === 'pct') return s[`${subj}_exp_pct`] ? Number(s[`${subj}_exp_pct`]) : null;
@@ -516,7 +637,6 @@ window.__renderGradeDisplay = function() {
             vals = pool.map(s => Number(s[valKey]) || 0);
         }
         
-        // 💡 [핵심] 영어 등급은 '작은 숫자(1)'가 높은 성적이므로 오름차순(a-b)으로 정렬하여 30% 컷 계산
         if (subj === 'eng' && valKey === 'eng_grade') {
             vals = vals.filter(v => v > 0).sort((a, b) => a - b);
         } else {
@@ -535,7 +655,7 @@ window.__renderGradeDisplay = function() {
         
         const labels = scores.map(s => s.exam_label);
         const datasets = [];
-        const colors = { kor:'#3498db', math:'#e74c3c', tam1:'#2ecc71', tam2:'#f1c40f', eng:'#9b59b6' };
+        const colors = { kor:'#3498db', math:'#e74c3c', tam1:'#27ae60', tam2:'#f39c12', eng:'#9b59b6' }; // 💡 탐구 색상 화이트 테마 맞춤 보정
         
         const subjs = [
             {id:'kor', name:'국어'}, {id:'math', name:'수학'}, 
@@ -547,7 +667,6 @@ window.__renderGradeDisplay = function() {
         subjs.forEach(sbj => {
             if (!window.__subjectToggles[sbj.id]) return;
             
-            // 💡 [핵심] 영어는 백분위 모드에서 '등급' 컬럼을 사용
             let valKey;
             if (sbj.id === 'eng') {
                 valKey = mode === 'pct' ? 'eng_grade' : 'eng_raw';
@@ -555,7 +674,6 @@ window.__renderGradeDisplay = function() {
                 valKey = mode === 'pct' ? `${sbj.id}_exp_pct` : (sbj.id.startsWith('tam') ? `${sbj.id}_raw` : `${sbj.id}_raw_total`);
             }
             
-            // 💡 [핵심] 영어가 '백분위 모드'일 때만 전용 오른쪽 Y축(yGrade) 사용
             const isEngGrade = (sbj.id === 'eng' && mode === 'pct');
             const yAxisID = isEngGrade ? 'yGrade' : 'y';
             
@@ -585,7 +703,6 @@ window.__renderGradeDisplay = function() {
             
             addLine('topTotal', '전체상위30%', [5, 5], colors[sbj.id]);
             addLine('topChoice', '선택상위30%', [3, 3], '#9b59b6');
-            addLine('topClass', '반별상위30%', [2, 4], '#1abc9c');
             addLine('topHS', 'HS반 30%', [4, 2], '#e67e22');
             addLine('topGreen', '그린 30%', [4, 2], '#2ecc71');
             addLine('topBlue', '블루 30%', [4, 2], '#3498db');
@@ -595,23 +712,22 @@ window.__renderGradeDisplay = function() {
 
         Chart.defaults.color = '#7f8c8d';
         
-        // 💡 [핵심] Y축 설정 (왼쪽은 기본 점수/백분위, 오른쪽은 영어 전용 등급축)
         const chartScales = { 
             x: { grid: { display: false } },
             y: { 
                 type: 'linear', display: true, position: 'left',
                 beginAtZero: mode==='pct', max: mode==='pct'?100:null, 
-                grid: { color: '#f1f2f6' } 
+                grid: { color: '#ecf0f1' } 
             } 
         };
 
         if (window.__subjectToggles['eng'] && mode === 'pct') {
             chartScales.yGrade = {
                 type: 'linear', display: true, position: 'right',
-                reverse: true, // 1등급이 맨 위로 가도록 뒤집기!
+                reverse: true,
                 min: 1, max: 9,
                 ticks: { stepSize: 1, callback: function(value) { return value + '등급'; } },
-                grid: { drawOnChartArea: false } // 메인 눈금과 겹치지 않게 숨김
+                grid: { drawOnChartArea: false } 
             };
         }
 
@@ -631,7 +747,6 @@ window.__renderGradeDisplay = function() {
                                 if (label) label += ': ';
                                 if (context.parsed.y !== null) {
                                     label += context.parsed.y;
-                                    // 영어 등급축에 매핑된 데이터면 툴팁에 '등급' 글자 붙이기
                                     if (context.dataset.yAxisID === 'yGrade') label += '등급';
                                 }
                                 return label;
@@ -648,12 +763,10 @@ window.__renderGradeDisplay = function() {
         let h = `
         <div style="overflow-x:auto; border-radius:8px; border:1px solid #dee2e6; box-shadow: 0 2px 4px rgba(0,0,0,0.02);">
             <style>
-                /* 💡 [수정] 다크테마 -> 화이트(라이트) 테마로 완벽 교체 */
                 .dt-table { width:100%; border-collapse:collapse; font-size:12px; text-align:center; color:#2c3e50; min-width:800px; background:#fff; }
                 .dt-table th, .dt-table td { border:1px solid #dee2e6; padding:10px 5px; }
                 .dt-table th { background:#f8f9fa; font-weight:bold; color:#34495e; }
-                .dt-table tbody tr:hover { background-color:#f1f2f6; transition:0.2s; } /* 마우스 올렸을 때 효과 */
-                /* 흰 배경에 잘 보이도록 탐구 색상 채도 조절 */
+                .dt-table tbody tr:hover { background-color:#f1f2f6; transition:0.2s; }
                 .c-kor { color:#3498db; } .c-math { color:#e74c3c; } .c-eng { color:#9b59b6; } .c-tam { color:#27ae60; } .c-tam2 { color:#f39c12; }
             </style>
             <table class="dt-table">
@@ -766,7 +879,6 @@ window.__openDetailModal = async function(type, studentId, studentName) {
                 return;
             }
 
-            // 👇 한국 시간에 맞춘 오늘 날짜로 교체
             const now = new Date();
             const todayIso = new Date(now.getTime() - (now.getTimezoneOffset() * 60000)).toISOString().split('T')[0];
             const currentP = parseInt(getCurrentPeriod(), 10) || 0;
@@ -894,16 +1006,13 @@ window.__openDetailModal = async function(type, studentId, studentName) {
                         const isFuture = dateStr > todayIso || (dateStr === todayIso && p > currentP);
                         const cellData = (weekMap[mon][dateStr] && weekMap[mon][dateStr][p]) ? weekMap[mon][dateStr][p] : null;
                         
-                        // 💡 1. 스케줄(메모)은 과거나 미래 상관없이 데이터가 있으면 무조건 가져오기!
                         const baseMemo = cellData && cellData.memo ? cellData.memo.trim() : '';
                         const extraMemo = schedMap[dateStr]?.[p] || '';
                         let memo = extraMemo || baseMemo || '-';
                         
                         let statusHtml = '-';
 
-                        // 💡 2. 출결 상태 표시 로직
                         if (isFuture) {
-                            // 미래 시간은 출결 칸만 하이픈 처리
                             statusHtml = '<span style="color:#bdc3c7;">-</span>'; 
                         } else {
                             if (!cellData) {
@@ -917,9 +1026,8 @@ window.__openDetailModal = async function(type, studentId, studentName) {
                                 } else if (cellData.status === '1') {
                                     statusHtml = `<div class="st-1">출석</div>`;
                                 } else if (isUnexcusedAbs) {
-                                    statusHtml = `<div class="st-3">결석</div>`; // 진짜 무단결석 (빨간색)
+                                    statusHtml = `<div class="st-3">결석</div>`; 
                                 } else if (cellData.status === '3') {
-                                    // 사유가 있는 결석은 회색 '공결' 처리
                                     statusHtml = `<div style="background:#f1f2f6; color:#7f8c8d; font-weight:bold; border-radius:3px; padding:2px 0;">공결</div>`;
                                 } else {
                                     statusHtml = cellData.status;
@@ -927,7 +1035,6 @@ window.__openDetailModal = async function(type, studentId, studentName) {
                             }
                         }
 
-                        // 💡 3. 미래 스케줄이 있다면 눈에 띄게 파란색으로 표시
                         const memoStyle = (isFuture && memo !== '-') ? 'color:#3498db; font-weight:900;' : '';
                         contentHtml += `<td class="st-memo" style="${memoStyle}">${memo}</td><td>${statusHtml}</td>`;
                     });
@@ -980,7 +1087,6 @@ window.__openDetailModal = async function(type, studentId, studentName) {
                     }
                 });
 
-                // 👇 한국 시간에 맞춰 n일 전 날짜를 정확히 구하도록 교체
                 const now = new Date();
                 const targetDate = new Date(now);
                 targetDate.setDate(now.getDate() - (days - 1));
