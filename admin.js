@@ -874,7 +874,7 @@ window.__renderRadarChartUI = function() {
 };
 
 // =========================================================
-// 💡 [최종 통합] 캔버스 및 클릭 이벤트 (하단 진행바 렌더링)
+// 💡 [최종 수정본] 캔버스 및 클릭 이벤트 (선택된 점 하이라이트 기능 추가)
 // =========================================================
 window.__renderRadarChartCanvas = function() {
     const ctx = document.getElementById('radarChartCanvas');
@@ -917,13 +917,25 @@ window.__renderRadarChartCanvas = function() {
 
     if (window.__radarChartInstance) window.__radarChartInstance.destroy();
 
+    // 💡 차트 라벨/점 클릭 시 실행되는 진행바 렌더링 & 하이라이트 함수
     const renderDetails = (unitName) => {
         const panel = document.getElementById('radar-detail-panel');
+        
+        // 1. 차트 시각적 하이라이트 업데이트 (선택된 점 크기/테두리 변경)
+        if (window.__radarChartInstance) {
+            const dataset = window.__radarChartInstance.data.datasets[0];
+            dataset.pointRadius = labels.map(l => l === unitName ? 8 : 5); // 선택된 점은 크기 8, 나머진 5
+            dataset.pointBorderWidth = labels.map(l => l === unitName ? 4 : 2); // 테두리 굵게
+            dataset.pointBorderColor = labels.map(l => l === unitName ? '#2c3e50' : '#fff'); // 선택된 점 테두리를 진남색으로
+            window.__radarChartInstance.update();
+        }
+
         if (!unitName || !dataObj[unitName]) {
             panel.style.display = 'none';
             return;
         }
         
+        // 2. 하단 세부 패널 업데이트
         panel.style.display = 'block';
         const details = dataObj[unitName].details || {};
         const detailKeys = Object.keys(details).filter(k => k !== '기타' && k !== '분류없음' && k !== '');
@@ -967,24 +979,23 @@ window.__renderRadarChartCanvas = function() {
                 backgroundColor: 'rgba(52, 152, 219, 0.1)',
                 borderColor: 'rgba(52, 152, 219, 0.5)',
                 pointBackgroundColor: pointColors,
-                pointBorderColor: '#fff',
+                pointBorderColor: labels.map(() => '#fff'), // 초기 테두리는 흰색
                 pointHoverBackgroundColor: '#fff',
                 pointHoverBorderColor: pointColors,
                 borderWidth: 2,
-                pointRadius: 5,
+                pointRadius: labels.map(() => 5), // 초기 크기는 5
+                pointBorderWidth: labels.map(() => 2), // 초기 굵기는 2
                 pointHoverRadius: 7
             }]
         },
         options: {
             responsive: true,
             maintainAspectRatio: false,
-            // 💡 차트 위의 점을 클릭하면 작동합니다!
             onClick: (event, elements) => {
                 if (elements && elements.length > 0) {
                     renderDetails(labels[elements[0].index]);
                 }
             },
-            // 💡 마우스를 올리면 손가락 모양으로 바뀌어 클릭을 유도합니다!
             onHover: (event, chartElement) => {
                 event.native.target.style.cursor = chartElement[0] ? 'pointer' : 'default';
             },
