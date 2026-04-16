@@ -10,6 +10,17 @@ window.__currentSortMode = 'seat'; // 기본값: 자리순
 window.__radarCurrentType = 'unit'; // 레이더 차트 (단원별/행동영역별)
 window.__radarCurrentSubj = null;   // 레이더 차트 (선택된 과목)
 
+// =========================================================
+// 💡 [신규 기능] 전체(누적) 보기 토글 함수
+// =========================================================
+window.__isCumulativeRadar = false; // 기본값은 '해당 시험만 보기'
+
+window.__toggleCumulativeRadar = function() {
+    window.__isCumulativeRadar = !window.__isCumulativeRadar;
+    // 토글 후 현재 보고 있는 시험 기준으로 다시 데이터 로드 (내부적으로 누적 합산)
+    window.__loadGradeErrata(window.__currentSummaryExam); 
+};
+
 // 💡 숫자 추출 도구 및 강제 순서표
 const getSafeNum = (val) => {
     if (typeof val === 'number') return val;
@@ -568,9 +579,8 @@ window.__renderGradeSummaryTable = function() {
     `;
 };
 
-
 // =========================================================
-// 💡 [최종 완성] 정오표 데이터 호출 (eval_key 문자열 맵핑 완벽 적용)
+// 💡 [최종 진화] 정오표 데이터 호출 (누적 데이터 완벽 병합 로직)
 // =========================================================
 window.__loadGradeErrata = async function(examLabel) {
     const container = document.getElementById('grade-errata-area');
@@ -579,7 +589,11 @@ window.__loadGradeErrata = async function(examLabel) {
     
     container.innerHTML = '<div style="text-align:center; padding:30px; color:#95a5a6;"><span style="font-size:24px; display:block; margin-bottom:10px;">⏳</span>상세 데이터를 모아 분석하는 중입니다...</div>';
 
-    const scoreInfo = window.__currentStudentScores.find(s => s.exam_label === examLabel);
+    // 학생의 모든 성적 기록을 exam_label 기준으로 맵핑해둠 (시험마다 선택과목이 바뀔 수 있으므로)
+    const studentScoresMap = {};
+    window.__currentStudentScores.forEach(s => studentScoresMap[s.exam_label] = s);
+    const scoreInfo = studentScoresMap[examLabel];
+    
     if (!scoreInfo) {
         container.innerHTML = '<div style="text-align:center; padding:20px; color:#7f8c8d;">데이터가 없습니다.</div>';
         if (vulnArea) vulnArea.innerHTML = '<div style="text-align:center; padding:20px; color:#7f8c8d;">데이터가 없습니다.</div>';
@@ -588,35 +602,48 @@ window.__loadGradeErrata = async function(examLabel) {
     
     const studentId = String(scoreInfo.student_id || "").trim();
 
+    // 💡 누적 모드일 경우 학생이 치른 모든 시험(exam_label) 목록을, 아닐 경우 현재 시험만 타겟팅
+    const targetExams = window.__isCumulativeRadar ? window.__currentStudentScores.map(s => s.exam_label) : [examLabel];
+
     try {
-        let allErrata = [];
-        let fetchMore = true;
-        let startIdx = 0;
-        const limitSize = 1000;
-
-        while (fetchMore) {
-            const { data, error } = await _supabase.from('mock_errata').select('*').eq('exam_label', examLabel).range(startIdx, startIdx + limitSize - 1);
-            if (error) break;
-            if (data && data.length > 0) {
-                allErrata = allErrata.concat(data);
-                startIdx += limitSize;
-                if (data.length < limitSize) fetchMore = false; 
-            } else fetchMore = false;
-        }
-
-        const { data: qInfos } = await _supabase.from('mock_question_info').select('*').eq('exam_label', examLabel);
         const { data: unitMapData } = await _supabase.from('unit_map').select('*');
         window.__unitMap = unitMapData || [];
 
-        if (allErrata.length === 0) {
+        let allMyErrata = [];
+        let allQInfos = [];
+        let currentExamAllErrata = []; // 하단 표(전체 정답률) 계산을 위한 현재 시험 전체 데이터
+
+        // 💡 선택된 시험들의 데이터를 병렬(동시)로 고속 호출
+        const fetchExamData = async (ex) => {
+            let allExErrata = [];
+            let fetchMore = true; let startIdx = 0;
+            while(fetchMore) {
+                const {data, error} = await _supabase.from('mock_errata').select('*').eq('exam_label', ex).range(startIdx, startIdx + 999);
+                if (error) break;
+                if (data && data.length > 0) { allExErrata = allExErrata.concat(data); startIdx += 1000; if(data.length < 1000) fetchMore = false; } else fetchMore = false;
+            }
+            const studentExErrata = allExErrata.filter(e => String(e.student_id || "").trim() === studentId || Object.values(e).some(val => String(val).trim() === studentId));
+            const { data: qData } = await _supabase.from('mock_question_info').select('*').eq('exam_label', ex);
+            
+            return { ex, allExErrata, studentExErrata, qInfos: qData || [] };
+        };
+
+        const results = await Promise.all(targetExams.map(ex => fetchExamData(ex)));
+        
+        results.forEach(res => {
+            if (res.ex === examLabel) currentExamAllErrata = res.allExErrata;
+            allMyErrata = allMyErrata.concat(res.studentExErrata);
+            allQInfos = allQInfos.concat(res.qInfos);
+        });
+
+        if (currentExamAllErrata.length === 0) {
             container.innerHTML = '<div style="text-align:center; padding:30px; color:#e74c3c;">DB에서 데이터를 가져오지 못했습니다.</div>';
             return;
         }
 
-        const myErrata = allErrata.filter(e => String(e.student_id || "").trim() === studentId || Object.values(e).some(val => String(val).trim() === studentId));
-
-        if (myErrata.length === 0) {
-            const msg = '<div style="text-align:center; padding:30px; color:#95a5a6; border:1px solid #f1f2f6; border-radius:8px;">이 시험의 정오표(O/X) 데이터가 아직 등록되지 않았습니다.</div>';
+        const myCurrentErrata = allMyErrata.filter(e => e.exam_label === examLabel);
+        if (myCurrentErrata.length === 0) {
+            const msg = '<div style="text-align:center; padding:30px; color:#95a5a6; border:1px solid #f1f2f6; border-radius:8px;">이 시험의 정오표 데이터가 아직 등록되지 않았습니다.</div>';
             container.innerHTML = msg;
             if (vulnArea) vulnArea.innerHTML = msg;
             return;
@@ -655,6 +682,7 @@ window.__loadGradeErrata = async function(examLabel) {
             return s;
         };
 
+        // 하단 테이블용 전체 정답률 집계 (현재 시험 기준)
         const stats = {}; 
         const addToStats = (targetKey, rowData) => {
             if (!stats[targetKey]) stats[targetKey] = {};
@@ -668,7 +696,7 @@ window.__loadGradeErrata = async function(examLabel) {
             }
         };
 
-        allErrata.forEach(row => {
+        currentExamAllErrata.forEach(row => {
             const normSubj = normalizeSubj(row.subject);
             addToStats(normSubj, row);
             if (['화법과작문', '언어와매체', '국어'].includes(normSubj)) addToStats('국어공통', row);
@@ -676,141 +704,112 @@ window.__loadGradeErrata = async function(examLabel) {
         });
 
         const qInfoMap = {}; 
-        const qInfoRawMap = {}; 
+        const qInfoRawMap = {}; // { examLabel: { subj: { qNum: { ... } } } }
         
-        (qInfos || []).forEach(q => {
+        allQInfos.forEach(q => {
+            const exLabel = q.exam_label;
             const normSubj = normalizeSubj(q.subject);
             if (!qInfoMap[normSubj]) qInfoMap[normSubj] = {};
-            if (!qInfoRawMap[normSubj]) qInfoRawMap[normSubj] = {};
+            if (!qInfoRawMap[exLabel]) qInfoRawMap[exLabel] = {};
+            if (!qInfoRawMap[exLabel][normSubj]) qInfoRawMap[exLabel][normSubj] = {};
             
             const qNum = parseInt(String(q.question_num).replace(/[^0-9]/g, ''), 10);
             if (isNaN(qNum)) return;
 
-            let unitName = String(q.unit_name || '').replace(/^\d+\.?\s*/, '').trim(); 
+            let rawUnit = String(q.unit_name || '').replace(/^\d+\.?\s*/, '').trim(); 
             const subUnitName = String(q.sub_unit || q.subunit || '').replace(/^\d+\.?\s*/, '').trim();
+            let rawBeh = String(q.behavior_domain || q.eval_name || '').replace(/^\d+\.?\s*/, '').trim();
             
-            // 💡 행동영역 이름과 코드(키)를 명확히 분리 추출
-            let behName = String(q.behavior_domain || q.eval_name || '').replace(/^\d+\.?\s*/, '').trim();
-            let behKeyStr = String(q.eval_key || q.behavior_key || q.eval_code || '').trim();
-            
-            let uKeyNum = 9999;
-            const cleanUnit = unitName.replace(/\s+/g, '');
-            const cleanBeh = behName.replace(/\s+/g, ''); 
+            let uKey = 9999;
+            let bKey = 'Z'; 
+            const cleanU = rawUnit.replace(/\s+/g, '');
+            const cleanB = rawBeh.replace(/\s+/g, ''); 
             
             if (window.__unitMap && window.__unitMap.length > 0) {
-                // 1. 단원명 매칭
                 const foundUnit = window.__unitMap.find(u => {
-                    const mapName = String(u.unit_name || u.unit || '').replace(/\s+/g, '');
-                    if (!mapName) return false;
-                    const mapSubj = String(u.subject || '').replace(/\s+/g, '');
-                    const baseNorm = normSubj.replace(/[12ⅠⅡIIV]/g, '').replace(/과학/g, '').replace(/학/g, '');
-                    const baseMap = mapSubj.replace(/[12ⅠⅡIIV]/g, '').replace(/과학/g, '').replace(/학/g, '');
-                    const isTamguMatch = baseNorm && baseMap && (baseNorm.includes(baseMap) || baseMap.includes(baseNorm)) && (normSubj.slice(-1) === mapSubj.slice(-1));
-                    const subjMatch = !mapSubj || mapSubj.includes(normSubj) || normSubj.includes(mapSubj) || isTamguMatch;
-                    
-                    return subjMatch && (mapName === cleanUnit || mapName.includes(cleanUnit) || cleanUnit.includes(mapName));
+                    const mName = String(u.unit_name || u.unit || '').replace(/\s+/g, '');
+                    return mName && (mName === cleanU || mName.includes(cleanU) || cleanU.includes(mName));
                 });
                 if (foundUnit) {
-                    unitName = foundUnit.unit_name || foundUnit.unit || unitName; 
-                    const mappedKey = getSafeNum(foundUnit.unit_key ?? foundUnit.unit_code);
-                    if (mappedKey !== 9999) uKeyNum = mappedKey;
+                    rawUnit = foundUnit.unit_name || rawUnit;
+                    uKey = getSafeNum(foundUnit.unit_key);
                 }
 
-                // 💡 2. 행동영역(eval_key, eval_name) 완벽 맵핑 로직 (국어A, 수학B 등)
-                const foundBeh = window.__unitMap.find(u => {
-                    const mapEvalKey = String(u.eval_key || u.eval_code || '').trim();
-                    const mapEvalName = String(u.eval_name || u.eval || '').replace(/\s+/g, '');
-                    if (!mapEvalKey && !mapEvalName) return false;
-                    
-                    // 우선순위 1: eval_key(예: '국어A')가 정확히 일치하면 무조건 채택
-                    if (behKeyStr && mapEvalKey && behKeyStr === mapEvalKey) return true;
-
-                    // 우선순위 2: eval_name(예: '사실적이해') 문자열 비교
-                    const mapSubj = String(u.subject || '').replace(/\s+/g, '');
-                    const baseNorm = normSubj.replace(/[12ⅠⅡIIV]/g, '').replace(/과학/g, '').replace(/학/g, '');
-                    const baseMap = mapSubj.replace(/[12ⅠⅡIIV]/g, '').replace(/과학/g, '').replace(/학/g, '');
-                    const isTamguMatch = baseNorm && baseMap && (baseNorm.includes(baseMap) || baseMap.includes(baseNorm)) && (normSubj.slice(-1) === mapSubj.slice(-1));
-                    const subjMatch = !mapSubj || mapSubj.includes(normSubj) || normSubj.includes(mapSubj) || isTamguMatch;
-                    
-                    if (cleanBeh && cleanBeh !== '-' && subjMatch && mapEvalName) {
-                        return mapEvalName === cleanBeh || mapEvalName.includes(cleanBeh) || cleanBeh.includes(mapEvalName);
+                if (cleanB && cleanB !== '-') {
+                    const foundBeh = window.__unitMap.find(u => {
+                        const mBehName = String(u.eval_name || u.eval || '').replace(/\s+/g, '');
+                        const mBehKey = String(u.eval_key || u.eval_code || '').trim();
+                        return (mBehName && (mBehName === cleanB || mBehName.includes(cleanB))) || (q.eval_key && q.eval_key === mBehKey);
+                    });
+                    if (foundBeh) {
+                        rawBeh = foundBeh.eval_name || rawBeh;
+                        bKey = String(foundBeh.eval_key || foundBeh.eval_code || 'Z');
                     }
-                    return false;
-                });
-                
-                if (foundBeh) {
-                    behName = foundBeh.eval_name || foundBeh.eval || behName;
-                    behKeyStr = foundBeh.eval_key || foundBeh.eval_code || behKeyStr;
                 }
             }
 
-            if (uKeyNum === 9999 && typeof KOR_UNIT_ORDER !== 'undefined' && KOR_UNIT_ORDER[cleanUnit]) {
-                uKeyNum = KOR_UNIT_ORDER[cleanUnit];
-            }
-
-            if (uKeyNum === 9999) {
-                const rawKey = getSafeNum(q.unit_key ?? q.unit_code ?? q.chapter_num ?? q.unit_num);
-                if (rawKey !== 9999) uKeyNum = rawKey;
-            }
-
-            if (!unitName || unitName === '-' || unitName === 'null') unitName = '기타';
-            if (!behName || behName === '-' || behName === 'null') behName = '기타';
-            if (!behKeyStr) behKeyStr = 'Z'; // 키가 없으면 맨 뒤로
-            
-            // 💡 최종적으로 저장되는 정보 (행동영역은 문자열 키(behKeyStr) 그대로 보관)
-            qInfoRawMap[normSubj][qNum] = { 
-                unit: unitName, 
+            qInfoRawMap[exLabel][normSubj][qNum] = { 
+                unit: rawUnit, 
                 subUnit: subUnitName,
-                beh: behName, 
-                unitKey: uKeyNum, 
-                behKey: behKeyStr, 
+                beh: rawBeh, 
+                unitKey: uKey, 
+                behKey: bKey, 
                 qSubj: normSubj 
             };
 
-            let labelHtml = '';
-            if (normSubj === '수학' || normSubj === '수학공통') {
-                const uStr = unitName.replace(/\s+/g, '');
-                if (uStr.includes('지수') || uStr.includes('로그') || uStr.includes('삼각') || uStr.includes('수열')) labelHtml += `<span style="color:#2980b9; font-weight:900; margin-right:6px;">[수학I]</span>`;
-                else if (uStr.includes('극한') || uStr.includes('연속') || uStr.includes('미분') || uStr.includes('적분')) labelHtml += `<span style="color:#2ecc71; font-weight:900; margin-right:6px;">[수학II]</span>`;
-                else if (uStr.includes('다항식') || uStr.includes('방정식') || uStr.includes('부등식') || uStr.includes('도형') || uStr.includes('함수') || uStr.includes('경우')) labelHtml += `<span style="color:#27ae60; font-weight:900; margin-right:6px;">[고1수학]</span>`;
-            } else if (normSubj === '수학1') labelHtml += `<span style="color:#2980b9; font-weight:900; margin-right:6px;">[수학I]</span>`;
-            else if (normSubj === '수학2') labelHtml += `<span style="color:#2ecc71; font-weight:900; margin-right:6px;">[수학II]</span>`;
-            
-            const isTamgu = !['국어', '국어공통', '화법과작문', '언어와매체', '수학', '수학공통', '미적분', '기하', '확률과통계', '영어', '수학1', '수학2'].includes(normSubj);
-            
-            if (isTamgu && uKeyNum !== 9999) {
-                labelHtml += `<span style="display:inline-flex; align-items:center; justify-content:center; width:18px; height:18px; background:#8e44ad; color:#fff; border-radius:4px; font-size:11px; font-weight:bold; margin-right:8px; vertical-align:middle;">${uKeyNum}</span>`;
+            // 하단 테이블에 띄울 라벨은 '현재 선택된 시험' 정보만 적용
+            if (exLabel === examLabel) {
+                let labelHtml = '';
+                if (normSubj === '수학' || normSubj === '수학공통') {
+                    const uStr = rawUnit.replace(/\s+/g, '');
+                    if (uStr.includes('지수') || uStr.includes('로그') || uStr.includes('삼각') || uStr.includes('수열')) labelHtml += `<span style="color:#2980b9; font-weight:900; margin-right:6px;">[수학I]</span>`;
+                    else if (uStr.includes('극한') || uStr.includes('연속') || uStr.includes('미분') || uStr.includes('적분')) labelHtml += `<span style="color:#2ecc71; font-weight:900; margin-right:6px;">[수학II]</span>`;
+                    else if (uStr.includes('다항식') || uStr.includes('방정식') || uStr.includes('부등식') || uStr.includes('도형') || uStr.includes('함수') || uStr.includes('경우')) labelHtml += `<span style="color:#27ae60; font-weight:900; margin-right:6px;">[고1수학]</span>`;
+                } else if (normSubj === '수학1') labelHtml += `<span style="color:#2980b9; font-weight:900; margin-right:6px;">[수학I]</span>`;
+                else if (normSubj === '수학2') labelHtml += `<span style="color:#2ecc71; font-weight:900; margin-right:6px;">[수학II]</span>`;
+                
+                const isTamgu = !['국어', '국어공통', '화법과작문', '언어와매체', '수학', '수학공통', '미적분', '기하', '확률과통계', '영어', '수학1', '수학2'].includes(normSubj);
+                
+                if (isTamgu && uKey !== 9999) {
+                    labelHtml += `<span style="display:inline-flex; align-items:center; justify-content:center; width:18px; height:18px; background:#8e44ad; color:#fff; border-radius:4px; font-size:11px; font-weight:bold; margin-right:8px; vertical-align:middle;">${uKey}</span>`;
+                }
+                
+                let labelArr = [];
+                if (rawUnit !== '기타') labelArr.push(rawUnit);
+                if (isTamgu && subUnitName && subUnitName !== '-' && subUnitName !== 'null') labelArr.push(subUnitName.replace(/^\d+\.?\s*/, ''));
+                
+                let joinedUnit = labelArr.join(' - ');
+                if (!joinedUnit) joinedUnit = '단원 정보 없음';
+                labelHtml += joinedUnit;
+                
+                if (rawBeh !== '기타') {
+                    labelHtml += ` <span style="font-size:11px; color:#95a5a6; border:1px solid #ecf0f1; padding:2px 6px; border-radius:4px; margin-left:6px; background:#f8f9fa;">${rawBeh}</span>`;
+                }
+                qInfoMap[normSubj][qNum] = labelHtml;
             }
-            
-            let labelArr = [];
-            if (unitName !== '기타') labelArr.push(unitName);
-            if (isTamgu && subUnitName && subUnitName !== '-' && subUnitName !== 'null') labelArr.push(subUnitName.replace(/^\d+\.?\s*/, ''));
-            
-            let joinedUnit = labelArr.join(' - ');
-            if (!joinedUnit) joinedUnit = '단원 정보 없음';
-            labelHtml += joinedUnit;
-            
-            if (behName !== '기타') {
-                labelHtml += ` <span style="font-size:11px; color:#95a5a6; border:1px solid #ecf0f1; padding:2px 6px; border-radius:4px; margin-left:6px; background:#f8f9fa;">${behName}</span>`;
-            }
-            qInfoMap[normSubj][qNum] = labelHtml;
         });
 
+        // 💡 모든 시험의 데이터를 누적하여 레이더 차트 통계 생성
         const radarStats = {};
-        const getMajorCategory = (normS) => {
-            if (['국어', '국어공통', '화법과작문', '언어와매체'].includes(normS) || normS === normalizeSubj(scoreInfo.kor_choice)) return '국어';
-            if (['수학', '수학공통', '수학1', '수학2', '미적분', '기하', '확률과통계'].includes(normS) || normS === normalizeSubj(scoreInfo.math_choice)) return '수학';
-            if (normS === '영어') return '영어';
-            if (normS === normalizeSubj(scoreInfo.tam1_name)) return scoreInfo.tam1_name;
-            if (normS === normalizeSubj(scoreInfo.tam2_name)) return scoreInfo.tam2_name;
-            return null;
-        };
 
-        const myKorChoice = normalizeSubj(scoreInfo.kor_choice);
-        const myMathChoice = normalizeSubj(scoreInfo.math_choice);
-
-        myErrata.forEach(row => {
+        allMyErrata.forEach(row => {
+            const exLabel = row.exam_label;
             const normS = normalizeSubj(row.subject);
+            
+            // 해당 시험 기준 학생의 선택과목 추적
+            const exScoreInfo = studentScoresMap[exLabel] || scoreInfo;
+            const myKorChoice = normalizeSubj(exScoreInfo.kor_choice);
+            const myMathChoice = normalizeSubj(exScoreInfo.math_choice);
+            
+            const getMajorCategory = (s) => {
+                if (['국어', '국어공통', '화법과작문', '언어와매체'].includes(s) || s === myKorChoice) return '국어';
+                if (['수학', '수학공통', '수학1', '수학2', '미적분', '기하', '확률과통계'].includes(s) || s === myMathChoice) return '수학';
+                if (s === '영어') return '영어';
+                if (s === normalizeSubj(exScoreInfo.tam1_name)) return exScoreInfo.tam1_name;
+                if (s === normalizeSubj(exScoreInfo.tam2_name)) return exScoreInfo.tam2_name;
+                return null;
+            };
+
             const majorCat = getMajorCategory(normS);
             if (!majorCat) return;
 
@@ -818,48 +817,43 @@ window.__loadGradeErrata = async function(examLabel) {
 
             for (let i = 1; i <= 45; i++) {
                 const ox = String(row[`q${i}`] || "").trim();
-                if (!ox || !['O','X','○','×','o','x'].includes(ox)) continue;
+                if (!['O','X','○','×','o','x'].includes(ox)) continue;
                 
                 const isO = ['O','○','o'].includes(ox);
-                let unitInfo = null;
+                let info = null;
                 
                 if (majorCat === '국어') {
-                    if (i >= 35) unitInfo = qInfoRawMap[myKorChoice]?.[i];
-                    if (!unitInfo) unitInfo = qInfoRawMap['국어공통']?.[i] || qInfoRawMap['국어']?.[i] || qInfoRawMap['공통']?.[i];
+                    if (i >= 35) info = qInfoRawMap[exLabel]?.[myKorChoice]?.[i];
+                    if (!info) info = qInfoRawMap[exLabel]?.['국어공통']?.[i] || qInfoRawMap[exLabel]?.['국어']?.[i] || qInfoRawMap[exLabel]?.['공통']?.[i];
                 } else if (majorCat === '수학') {
-                    if (i >= 23) unitInfo = qInfoRawMap[myMathChoice]?.[i];
-                    if (!unitInfo) unitInfo = qInfoRawMap['수학1']?.[i] || qInfoRawMap['수학2']?.[i] || qInfoRawMap['수학공통']?.[i] || qInfoRawMap['수학']?.[i];
+                    if (i >= 23) info = qInfoRawMap[exLabel]?.[myMathChoice]?.[i];
+                    if (!info) info = qInfoRawMap[exLabel]?.['수학공통']?.[i] || qInfoRawMap[exLabel]?.['수학']?.[i] || qInfoRawMap[exLabel]?.['수학1']?.[i] || qInfoRawMap[exLabel]?.['수학2']?.[i];
                 } else {
-                    unitInfo = qInfoRawMap[normS]?.[i];
+                    info = qInfoRawMap[exLabel]?.[normS]?.[i];
                 }
 
-                if (!unitInfo) unitInfo = { unit: '분류없음', subUnit: '분류없음', beh: '분류없음', unitKey: 9999, behKey: 'Z', qSubj: normS };
+                if (!info) info = { unit: '분류없음', subUnit: '분류없음', beh: '분류없음', unitKey: 9999, behKey: 'Z', qSubj: normS };
 
-                const u = unitInfo.unit;
-                const b = unitInfo.beh;
+                const u = info.unit;
+                const b = info.beh;
 
-                // 1. 단원별(units) 누적
-                if (!radarStats[majorCat].units[u]) radarStats[majorCat].units[u] = { o: 0, total: 0, qSubj: unitInfo.qSubj, unitKey: unitInfo.unitKey, details: {} };
+                if (!radarStats[majorCat].units[u]) radarStats[majorCat].units[u] = { o: 0, total: 0, unitKey: info.unitKey, details: {} };
                 radarStats[majorCat].units[u].total++;
                 if (isO) radarStats[majorCat].units[u].o++;
 
                 const isTamgu = !['국어', '수학', '영어'].includes(majorCat);
-                let detailKeyUnitView = isTamgu ? unitInfo.subUnit : unitInfo.beh;
+                let detailKeyUnitView = isTamgu ? info.subUnit : info.beh;
                 if (!detailKeyUnitView || detailKeyUnitView === '-' || detailKeyUnitView === 'null') detailKeyUnitView = '분류없음';
 
                 if (!radarStats[majorCat].units[u].details[detailKeyUnitView]) radarStats[majorCat].units[u].details[detailKeyUnitView] = { o: 0, total: 0 };
                 radarStats[majorCat].units[u].details[detailKeyUnitView].total++;
                 if (isO) radarStats[majorCat].units[u].details[detailKeyUnitView].o++;
 
-                // 2. 행동영역별(behaviors) 누적
                 if (b && b !== '-' && b !== 'null' && b !== '기타' && b !== '분류없음') {
-                    if (!radarStats[majorCat].behaviors[b]) {
-                        radarStats[majorCat].behaviors[b] = { o: 0, total: 0, behKey: unitInfo.behKey, details: {} };
-                    }
+                    if (!radarStats[majorCat].behaviors[b]) radarStats[majorCat].behaviors[b] = { o: 0, total: 0, behKey: info.behKey, details: {} };
                     radarStats[majorCat].behaviors[b].total++;
                     if (isO) radarStats[majorCat].behaviors[b].o++;
-
-                    // 행동영역의 하위 데이터는 '단원명'
+                    
                     if (!radarStats[majorCat].behaviors[b].details[u]) radarStats[majorCat].behaviors[b].details[u] = { o: 0, total: 0 };
                     radarStats[majorCat].behaviors[b].details[u].total++;
                     if (isO) radarStats[majorCat].behaviors[b].details[u].o++;
@@ -870,15 +864,15 @@ window.__loadGradeErrata = async function(examLabel) {
         window.__radarStats = radarStats;
         window.__renderRadarChartUI();
 
-        // 테이블 렌더링 유지
+        // 💡 하단 테이블은 혼동을 막기 위해 현재 선택한 시험(examLabel) 데이터만 출력
         const findRowStrict = (targetName) => {
             if (!targetName) return null;
             const target = normalizeSubj(targetName);
-            return myErrata.find(e => normalizeSubj(e.subject) === target);
+            return myCurrentErrata.find(e => normalizeSubj(e.subject) === target);
         };
         
-        const korRow = findRowStrict(scoreInfo.kor_choice) || myErrata.find(e => ['화법과작문', '언어와매체'].includes(normalizeSubj(e.subject))) || findRowStrict('국어');
-        const mathRow = findRowStrict(scoreInfo.math_choice) || myErrata.find(e => ['미적분', '기하', '확률과통계'].includes(normalizeSubj(e.subject))) || findRowStrict('수학');
+        const korRow = findRowStrict(scoreInfo.kor_choice) || myCurrentErrata.find(e => ['화법과작문', '언어와매체'].includes(normalizeSubj(e.subject))) || findRowStrict('국어');
+        const mathRow = findRowStrict(scoreInfo.math_choice) || myCurrentErrata.find(e => ['미적분', '기하', '확률과통계'].includes(normalizeSubj(e.subject))) || findRowStrict('수학');
         const engRow = findRowStrict('영어');
         const tam1Row = findRowStrict(scoreInfo.tam1_name);
         const tam2Row = findRowStrict(scoreInfo.tam2_name);
@@ -924,13 +918,11 @@ window.__loadGradeErrata = async function(examLabel) {
         if (scoreInfo.tam2_name) html += renderSection(`탐구 (${scoreInfo.tam2_name})`, '문항 1~20 ▼', 1, 20, tam2Row, normalizeSubj(scoreInfo.tam2_name), normalizeSubj(scoreInfo.tam2_name));
         container.innerHTML = html || '<div style="text-align:center; padding:20px; color:#7f8c8d;">해당 시험의 정오표 데이터가 없습니다.</div>';
 
-    } catch (err) {
-        container.innerHTML = `<div style="text-align:center; padding:20px; color:#e74c3c;">에러 발생: ${err.message}</div>`;
-    }
+    } catch (err) { console.error(err); }
 };
 
 // =========================================================
-// 💡 [최종 완성] UI 렌더링 (단원/행동영역 스위치)
+// 💡 [UI 렌더링] 누적 토글 스위치버튼 추가
 // =========================================================
 window.__switchRadarType = function(type) { window.__radarCurrentType = type; window.__renderRadarChartUI(); };
 window.__switchRadarSubj = function(subj) { window.__radarCurrentSubj = subj; window.__renderRadarChartUI(); };
@@ -951,8 +943,10 @@ window.__renderRadarChartUI = function() {
 
     const subj = window.__radarCurrentSubj;
     const type = window.__radarCurrentType || 'unit'; 
+    const isCumul = window.__isCumulativeRadar; // 누적 상태 확인
 
     const btnSty = (isActive, bg) => `padding:6px 15px; border-radius:20px; border:1px solid ${isActive?bg:'#dee2e6'}; cursor:pointer; font-size:12px; font-weight:bold; transition:0.2s; background:${isActive?bg:'#f8f9fa'}; color:${isActive?'#fff':'#7f8c8d'};`;
+    const cumulBtnSty = `padding:6px 16px; border-radius:8px; border:none; cursor:pointer; font-size:13px; font-weight:bold; transition:0.2s; background:${isCumul ? '#e74c3c' : '#f1f2f6'}; color:${isCumul ? '#fff' : '#7f8c8d'}; box-shadow:${isCumul ? '0 2px 4px rgba(231,76,60,0.2)' : 'none'};`;
 
     let tabsHtml = subjs.map(s => {
         const isActive = s === subj;
@@ -965,7 +959,13 @@ window.__renderRadarChartUI = function() {
     area.innerHTML = `
         <div style="background:#ffffff; border-radius:12px; padding:25px; color:#2c3e50; border: 1px solid #dee2e6;">
             <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:15px; margin-bottom:20px;">
-                <div>${tabsHtml}</div>
+                <div style="display:flex; align-items:center; gap:15px; flex-wrap:wrap;">
+                    <button onclick="window.__toggleCumulativeRadar()" style="${cumulBtnSty}">
+                        ${isCumul ? '📈 전체 시험 누적' : '📄 해당 시험만'}
+                    </button>
+                    <div style="width:1px; height:20px; background:#dee2e6; margin:0 5px;"></div>
+                    <div>${tabsHtml}</div>
+                </div>
                 <div style="display:flex; gap:5px;">
                     <button onclick="window.__switchRadarType('unit')" style="${btnSty(type==='unit', '#2980b9')}">단원별 성취도</button>
                     <button onclick="window.__switchRadarType('beh')" style="${btnSty(type==='beh', '#9b59b6')}">행동영역 보기</button>
@@ -985,7 +985,7 @@ window.__renderRadarChartUI = function() {
 };
 
 // =========================================================
-// 💡 [최종 완성] 캔버스 및 클릭 이벤트 (문자열 키 알파벳 정렬)
+// 💡 [최종 진화] 캔버스 및 클릭 이벤트 (누적에 맞춘 안내 문구 변경)
 // =========================================================
 window.__renderRadarChartCanvas = function() {
     const ctx = document.getElementById('radarChartCanvas');
@@ -993,7 +993,6 @@ window.__renderRadarChartCanvas = function() {
 
     const subj = window.__radarCurrentSubj;
     const type = window.__radarCurrentType || 'unit'; 
-    
     let dataObj = window.__radarStats[subj]?.[type === 'unit' ? 'units' : 'behaviors'] || {};
     
     if (Object.keys(dataObj).length === 0 && type === 'beh') {
@@ -1006,13 +1005,9 @@ window.__renderRadarChartCanvas = function() {
 
     let labels = Object.keys(dataObj).filter(k => k !== '기타' && k !== '분류없음' && k !== '');
     
-    // 💡 [핵심] 행동영역의 문자열 키('국어A', '수학B' 등)를 알파벳 순서대로 정렬
     labels.sort((a, b) => {
         if (type === 'unit') {
-            const keyA = dataObj[a]?.unitKey ?? 9999;
-            const keyB = dataObj[b]?.unitKey ?? 9999;
-            if (keyA === keyB) return a.localeCompare(b, 'ko'); 
-            return keyA - keyB;
+            return (dataObj[a]?.unitKey ?? 9999) - (dataObj[b]?.unitKey ?? 9999);
         } else {
             const keyA = String(dataObj[a]?.behKey || 'Z');
             const keyB = String(dataObj[b]?.behKey || 'Z');
@@ -1025,98 +1020,44 @@ window.__renderRadarChartCanvas = function() {
     });
 
     const BEH_COLORS = ['#9b59b6', '#e67e22', '#1abc9c', '#e74c3c', '#3498db', '#f1c40f'];
-
-    const getLabelColor = (label, majorSubj, index) => {
-        if (type === 'beh') return BEH_COLORS[index % BEH_COLORS.length]; 
-
-        const info = dataObj[label];
-        const qSubj = info?.qSubj || majorSubj; 
-
-        if (majorSubj === '국어') {
-            if (['화법과작문', '언어와매체'].includes(qSubj)) return '#f39c12'; 
-            if (/(시|소설|극|수필|문학|갈래)/.test(label)) return '#2ecc71'; 
-            return '#3498db'; 
-        } else if (majorSubj === '수학') {
-            if (['미적분', '기하', '확률과통계'].includes(qSubj)) return '#f39c12'; 
-            if (qSubj === '수학2' || /(극한|연속|미분|적분)/.test(label)) return '#2ecc71'; 
-            if (qSubj === '수학1' || /(지수|로그|삼각|수열)/.test(label)) return '#3498db'; 
-            return '#27ae60'; 
-        }
-        return '#3498db'; 
-    };
-
-    const pointColors = labels.map((l, i) => getLabelColor(l, subj, i));
+    const pointColors = labels.map((l, i) => type === 'beh' ? BEH_COLORS[i % BEH_COLORS.length] : '#3498db');
 
     if (window.__radarChartInstance) window.__radarChartInstance.destroy();
 
     window.__renderRadarDetails = (unitNamesArray, activeUnit) => {
         const panel = document.getElementById('radar-detail-panel');
-        if (!unitNamesArray || unitNamesArray.length === 0) {
-            panel.style.display = 'none';
-            return;
-        }
-        
+        if (!unitNamesArray || unitNamesArray.length === 0) { panel.style.display = 'none'; return; }
         panel.style.display = 'block';
-        const targetUnit = activeUnit || unitNamesArray[0];
+        const target = activeUnit || unitNamesArray[0];
 
         if (window.__radarChartInstance) {
-            const dataset = window.__radarChartInstance.data.datasets[0];
-            dataset.pointRadius = labels.map(l => l === targetUnit ? 8 : 5);
-            dataset.pointBorderWidth = labels.map(l => l === targetUnit ? 4 : 2);
-            dataset.pointBorderColor = labels.map(l => l === targetUnit ? '#2c3e50' : '#fff');
+            const ds = window.__radarChartInstance.data.datasets[0];
+            ds.pointRadius = labels.map(l => l === target ? 8 : 5);
+            ds.pointBorderColor = labels.map(l => l === target ? '#2c3e50' : '#fff');
             window.__radarChartInstance.update();
         }
         
         let html = '';
-
         if (unitNamesArray.length > 1) {
-            const arrayStr = JSON.stringify(unitNamesArray).replace(/"/g, '&quot;');
-            html += `<div style="margin-bottom:20px; padding:15px; background:#fdf3f2; border-radius:8px; border:1px dashed #e74c3c;">`;
-            html += `<div style="font-size:13px; color:#c0392b; margin-bottom:10px; font-weight:bold;">🚨 취약점(0%)이 여러 개 겹쳐 있습니다. 항목을 선택하세요:</div>`;
-            html += `<div style="display:flex; gap:8px; flex-wrap:wrap;">`;
+            html += `<div style="margin-bottom:15px; padding:10px; background:#fdf3f2; border-radius:8px; border:1px dashed #e74c3c;"><div style="font-size:12px; color:#e74c3c; font-weight:bold; margin-bottom:8px;">🚨 겹쳐있는 취약점(0%)을 선택하세요:</div><div style="display:flex; gap:5px; flex-wrap:wrap;">`;
             unitNamesArray.forEach(u => {
-                const isActive = (u === targetUnit);
-                const bg = isActive ? '#e74c3c' : '#fff';
-                const color = isActive ? '#fff' : '#e74c3c';
-                const border = isActive ? '1px solid #e74c3c' : '1px solid #e74c3c';
-                html += `<button onclick="window.__renderRadarDetails(${arrayStr}, '${u}')" style="padding:6px 14px; border-radius:20px; border:${border}; background:${bg}; color:${color}; font-size:12px; cursor:pointer; font-weight:bold; transition:0.2s;">${u}</button>`;
+                const isAct = (u === target);
+                html += `<button onclick="window.__renderRadarDetails(${JSON.stringify(unitNamesArray).replace(/"/g, '&quot;')}, '${u}')" style="padding:4px 10px; border-radius:15px; border:1px solid #e74c3c; background:${isAct?'#e74c3c':'#fff'}; color:${isAct?'#fff':'#e74c3c'}; font-size:11px; cursor:pointer;">${u}</button>`;
             });
             html += `</div></div>`;
         }
         
-        const detailTitle = type === 'unit' ? '세부 영역 분석' : '단원별 득점 비중';
-        const detailIcon = type === 'unit' ? '🔍' : '🧠';
-        const titleColor = type === 'beh' ? '#9b59b6' : '#3498db'; 
-
-        html += `<h4 style="margin:0 0 15px 0; color:${titleColor}; font-size:16px; display:flex; align-items:center; gap:8px;">${detailIcon} [${targetUnit}] ${detailTitle}</h4>`;
+        const dTitle = type === 'unit' ? '세부 영역 분석' : '단원별 득점 비중';
+        const isCumulText = window.__isCumulativeRadar ? '<span style="font-size:12px; color:#e74c3c; border:1px solid #e74c3c; padding:2px 6px; border-radius:4px; margin-left:8px;">누적</span>' : '';
+        html += `<h4 style="margin:0 0 15px 0; color:#3498db; font-size:15px; display:flex; align-items:center;">🔍 [${target}] ${dTitle} ${isCumulText}</h4>`;
         
-        const details = dataObj[targetUnit].details || {};
-        const detailKeys = Object.keys(details).filter(k => k !== '기타' && k !== '분류없음' && k !== '');
-        
-        if (detailKeys.length === 0) {
-            html += `<div style="color:#7f8c8d; font-size:13px; text-align:center; padding:10px;">세부 데이터가 없습니다.</div>`;
-        } else {
-            detailKeys.forEach(dk => {
-                const stat = details[dk];
-                const rate = stat.total > 0 ? Math.round((stat.o / stat.total) * 100) : 0;
-                
-                let barColor = '#2ecc71'; 
-                if (rate < 50) barColor = '#e74c3c'; 
-                else if (rate < 100) barColor = '#f1c40f'; 
-
-                html += `
-                    <div style="margin-bottom:15px;">
-                        <div style="display:flex; justify-content:space-between; font-size:13px; color:#34495e; margin-bottom:6px; font-weight:bold;">
-                            <span>${dk}</span>
-                            <span><b style="color:${barColor}; font-size:14px;">${rate}%</b> <span style="color:#7f8c8d; font-weight:normal;">(${stat.o}/${stat.total})</span></span>
-                        </div>
-                        <div style="width:100%; height:8px; background:#ecf0f1; border-radius:4px; overflow:hidden;">
-                            <div style="width:${rate}%; height:100%; background:${barColor}; border-radius:4px; transition: width 0.5s;"></div>
-                        </div>
-                    </div>
-                `;
-            });
-        }
+        const details = dataObj[target].details || {};
+        Object.keys(details).forEach(dk => {
+            const st = details[dk];
+            const rt = st.total > 0 ? Math.round((st.o / st.total) * 100) : 0;
+            let bc = rt < 50 ? '#e74c3c' : (rt < 100 ? '#f1c40f' : '#2ecc71');
+            html += `<div style="margin-bottom:10px;"><div style="display:flex; justify-content:space-between; font-size:12px; margin-bottom:4px;"><span>${dk}</span><b>${rt}% (${st.o}/${st.total})</b></div><div style="width:100%; height:6px; background:#eee; border-radius:3px; overflow:hidden;"><div style="width:${rt}%; height:100%; background:${bc}; transition:0.3s;"></div></div></div>`;
+        });
         panel.innerHTML = html;
     };
 
@@ -1125,71 +1066,34 @@ window.__renderRadarChartCanvas = function() {
         data: {
             labels: labels,
             datasets: [{
-                label: `${subj} 성취도(%)`,
                 data: dataPoints,
-                backgroundColor: type === 'beh' ? 'rgba(155, 89, 182, 0.1)' : 'rgba(52, 152, 219, 0.1)', 
-                borderColor: type === 'beh' ? 'rgba(155, 89, 182, 0.5)' : 'rgba(52, 152, 219, 0.5)',
+                backgroundColor: type==='beh'?'rgba(155, 89, 182, 0.1)':'rgba(52, 152, 219, 0.1)',
+                borderColor: type==='beh'?'#9b59b6':'#3498db',
                 pointBackgroundColor: pointColors,
                 pointBorderColor: '#fff',
-                pointHoverBackgroundColor: '#fff',
-                pointHoverBorderColor: pointColors,
-                borderWidth: 2,
-                pointRadius: labels.map(() => 5),
-                pointBorderWidth: labels.map(() => 2),
-                pointHoverRadius: 7
+                pointRadius: 5,
+                borderWidth: 2
             }]
         },
         options: {
-            responsive: true,
-            maintainAspectRatio: false,
-            onClick: (event, elements) => {
-                if (elements && elements.length > 0) {
-                    const clickedIdx = elements[0].index;
-                    const clickedValue = dataPoints[clickedIdx];
-                    
-                    let overlapUnits = [labels[clickedIdx]];
-                    if (clickedValue === 0) {
-                        overlapUnits = labels.filter((l, idx) => dataPoints[idx] === 0);
-                    }
-                    window.__renderRadarDetails(overlapUnits, labels[clickedIdx]);
+            responsive: true, maintainAspectRatio: false,
+            onClick: (e, el) => {
+                if (el && el.length > 0) {
+                    const idx = el[0].index;
+                    let overlaps = dataPoints[idx] === 0 ? labels.filter((l, i) => dataPoints[i] === 0) : [labels[idx]];
+                    window.__renderRadarDetails(overlaps, labels[idx]);
                 }
             },
-            onHover: (event, chartElement) => {
-                event.native.target.style.cursor = chartElement[0] ? 'pointer' : 'default';
-            },
-            scales: {
-                r: {
-                    beginAtZero: true, max: 100, min: 0,
-                    ticks: { stepSize: 20, display: false },
-                    grid: { color: '#ecf0f1' },
-                    angleLines: { color: '#ecf0f1' },
-                    pointLabels: {
-                        color: (context) => getLabelColor(context.label, subj, labels.indexOf(context.label)),
-                        font: { size: 12, weight: 'bold' }
-                    }
-                }
-            },
-            plugins: {
-                legend: { display: false },
-                tooltip: {
-                    displayColors: false, 
-                    callbacks: {
-                        title: () => '', 
-                        label: (context) => `${context.label} 성취도: ${context.raw}%`
-                    }
-                }
-            }
+            onHover: (e, el) => { e.native.target.style.cursor = el[0] ? 'pointer' : 'default'; },
+            scales: { r: { beginAtZero: true, max: 100, ticks: { display: false }, pointLabels: { font: { size: 11, weight: 'bold' } } } },
+            plugins: { legend: { display: false }, tooltip: { callbacks: { label: (c) => `${c.label}: ${c.raw}%` } } }
         }
     });
 
     if (labels.length > 0) {
-        let lowestScore = 101;
-        dataPoints.forEach(val => {
-            if (val < lowestScore) lowestScore = val;
-        });
-        
-        let lowestUnits = labels.filter((l, idx) => dataPoints[idx] === lowestScore);
-        window.__renderRadarDetails(lowestUnits, lowestUnits[0]);
+        let minV = Math.min(...dataPoints);
+        let minLabels = labels.filter((l, i) => dataPoints[i] === minV);
+        window.__renderRadarDetails(minLabels, minLabels[0]);
     }
 };
 
