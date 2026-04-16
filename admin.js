@@ -10,7 +10,7 @@ window.__currentSortMode = 'seat'; // 기본값: 자리순
 window.__radarCurrentType = 'unit'; // 레이더 차트 (단원별/행동영역별)
 window.__radarCurrentSubj = null;   // 레이더 차트 (선택된 과목)
 
-// 1. 숫자 추출 도구 및 강제 순서표 (코드 상단 유지)
+// 💡 숫자 추출 도구 및 강제 순서표
 const getSafeNum = (val) => {
     if (typeof val === 'number') return val;
     const match = String(val || "").match(/\d+/); 
@@ -201,7 +201,7 @@ window.__toggleDashboard = function() {
 };
 
 // =========================================================
-// 3. 학생 상세 페이지 로드 (지각 카운팅 3중 체크 로직 복구 완료)
+// 3. 학생 상세 페이지 로드
 // =========================================================
 window.__loadStudentDetail = async function(student) {
     if (!student || !student.studentId) return;
@@ -240,7 +240,6 @@ window.__loadStudentDetail = async function(student) {
             return `${d.getMonth()+1}/${d.getDate()}(${days[d.getDay()]})`;
         };
 
-        // 💡 [핵심 픽스] 교육점수(벌점)에서 지각 시간을 교시로 변환하는 헬퍼 함수
         const getPeriodFromTime = (timeStr) => {
             if (!timeStr) return 1;
             const [h, m] = timeStr.split(':').map(Number); const t = h * 60 + m;
@@ -249,7 +248,6 @@ window.__loadStudentDetail = async function(student) {
             if (t < 20*60+10) return 7; return 8;
         };
 
-        // 💡 교육점수 기록 중 '지각'인 항목을 날짜와 교시별로 맵핑
         const schedMap = {};
         resEdu.data.forEach(ed => {
             if (ed.reason.includes('지각')) {
@@ -270,7 +268,6 @@ window.__loadStudentDetail = async function(student) {
 
             const p = parseInt(a.period, 10);
             
-            // 💡 [핵심 픽스] 출결코드, 벌점내역, 선생님 메모 3가지를 모두 교차 검증하여 지각 판별
             const hasEduLate = schedMap[a.attendance_date]?.[p] === true;
             const hasMemoLate = a.memo ? a.memo.includes('지각') : false;
             
@@ -278,7 +275,6 @@ window.__loadStudentDetail = async function(student) {
             const isAtt = (a.status_code === '1');
             const isAbs = (a.status_code === '3');
 
-            // 판별 우선순위: 지각 > 결석 > 출석
             let finalType = '';
             if (isLate) finalType = 'late';
             else if (isAbs) finalType = 'abs';
@@ -447,7 +443,6 @@ window.__renderGradeSummaryUI = function() {
     const scores = window.__currentStudentScores;
     const optionsHtml = scores.map(s => `<option value="${s.exam_label}" ${s.exam_label === window.__currentSummaryExam ? 'selected' : ''}>${s.exam_label} 성적</option>`).join('');
     
-    // 💡 취약 영역 분석 컨테이너 추가
     container.innerHTML = `
         <div style="background:#fff; padding:25px; border-radius:12px; border:1px solid #dee2e6; box-shadow:0 4px 6px rgba(0,0,0,0.02); margin-top:20px;">
             <div style="display:flex; align-items:center; gap:15px; margin-bottom:15px;">
@@ -457,7 +452,7 @@ window.__renderGradeSummaryUI = function() {
             <div id="grade-summary-table-area"></div>
             
             <div style="margin-top:30px; padding-top:25px; border-top:1px dashed #dee2e6;">
-                <h4 style="margin:0 0 15px 0; color:#2c3e50;">🕸️ 취약 영역 분석 <span style="font-size:12px; color:#7f8c8d; font-weight:normal;">(단원별 / 행동영역별 성취도)</span></h4>
+                <h4 style="margin:0 0 15px 0; color:#2c3e50;">🕸️ 취약 영역 분석 <span style="font-size:12px; color:#7f8c8d; font-weight:normal;">(점 클릭 시 세부영역/행동영역 확인 가능)</span></h4>
                 <div id="vulnerability-area"><div style="text-align:center; color:#95a5a6; padding:20px;">데이터 분석 중...</div></div>
             </div>
 
@@ -504,8 +499,9 @@ window.__renderGradeSummaryTable = function() {
     `;
 };
 
+
 // =========================================================
-// 💡 [최종 수정본] 정오표 데이터 호출 (세부영역/행동영역 데이터 분리 수집)
+// 💡 [최종 통합] 정오표 데이터 호출 (세부영역 분리 수집 완벽 적용)
 // =========================================================
 window.__loadGradeErrata = async function(examLabel) {
     const container = document.getElementById('grade-errata-area');
@@ -622,7 +618,7 @@ window.__loadGradeErrata = async function(examLabel) {
             if (isNaN(qNum)) return;
 
             let unit = String(q.unit_name || '').replace(/^\d+\.?\s*/, '').trim(); 
-            // 💡 세부 영역(소단원)도 숫자 떼고 깔끔하게 확보
+            // 💡 세부 영역(소단원/행동영역) 데이터 확보
             const subUnit = String(q.sub_unit || q.subunit || '').replace(/^\d+\.?\s*/, '').trim();
             const beh = String(q.behavior_domain || '').trim();
             
@@ -662,7 +658,7 @@ window.__loadGradeErrata = async function(examLabel) {
             let cleanBeh = beh;
             if (!cleanBeh || cleanBeh === '-' || cleanBeh === 'null') cleanBeh = '기타';
             
-            // 💡 맵에 subUnit 포함해서 저장
+            // 💡 맵에 subUnit, beh 포함해서 저장
             qInfoRawMap[normSubj][qNum] = { 
                 unit: cleanUnit, 
                 subUnit: subUnit,
@@ -745,7 +741,7 @@ window.__loadGradeErrata = async function(examLabel) {
 
                 const u = unitInfo.unit;
 
-                // 💡 [핵심] 국영수 vs 탐구 분리 수집 로직
+                // 💡 [추가] 국영수 vs 탐구 분리 수집 로직
                 if (!radarStats[majorCat].units[u]) radarStats[majorCat].units[u] = { o: 0, total: 0, qSubj: unitInfo.qSubj, unitKey: unitInfo.unitKey, details: {} };
                 
                 radarStats[majorCat].units[u].total++;
@@ -831,7 +827,7 @@ window.__loadGradeErrata = async function(examLabel) {
 };
 
 // =========================================================
-// 💡 [최종 수정본] UI 생성 (하단 세부영역 패널 추가)
+// 💡 [최종 통합] UI 생성 (하단 세부영역 패널 추가)
 // =========================================================
 window.__switchRadarSubj = function(subj) { window.__radarCurrentSubj = subj; window.__renderRadarChartUI(); };
 
@@ -878,7 +874,7 @@ window.__renderRadarChartUI = function() {
 };
 
 // =========================================================
-// 💡 [최종 수정본] 캔버스 및 클릭 이벤트 (하단 진행바 렌더링)
+// 💡 [최종 통합] 캔버스 및 클릭 이벤트 (하단 진행바 렌더링)
 // =========================================================
 window.__renderRadarChartCanvas = function() {
     const ctx = document.getElementById('radarChartCanvas');
@@ -982,13 +978,13 @@ window.__renderRadarChartCanvas = function() {
         options: {
             responsive: true,
             maintainAspectRatio: false,
-            // 💡 [클릭 기능 보완] 차트 위의 점을 클릭하면 작동합니다!
+            // 💡 차트 위의 점을 클릭하면 작동합니다!
             onClick: (event, elements) => {
                 if (elements && elements.length > 0) {
                     renderDetails(labels[elements[0].index]);
                 }
             },
-            // 💡 [마우스 커서 추가] 마우스를 올리면 손가락 모양으로 바뀌어 클릭을 유도합니다!
+            // 💡 마우스를 올리면 손가락 모양으로 바뀌어 클릭을 유도합니다!
             onHover: (event, chartElement) => {
                 event.native.target.style.cursor = chartElement[0] ? 'pointer' : 'default';
             },
@@ -1028,143 +1024,6 @@ window.__renderRadarChartCanvas = function() {
         });
         renderDetails(labels[lowestIdx]);
     }
-};
-
-// =========================================================
-// 💡 취약 영역 분석 (레이더 차트 렌더러)
-// =========================================================
-window.__switchRadarType = function(type) { window.__radarCurrentType = type; window.__renderRadarChartUI(); };
-window.__switchRadarSubj = function(subj) { window.__radarCurrentSubj = subj; window.__renderRadarChartUI(); };
-
-window.__renderRadarChartUI = function() {
-    const area = document.getElementById('vulnerability-area');
-    if (!area || !window.__radarStats) return;
-
-    const subjs = Object.keys(window.__radarStats);
-    if (subjs.length === 0) {
-        area.innerHTML = '<div style="padding:20px; color:#95a5a6; text-align:center;">분석 가능한 데이터가 없습니다.</div>';
-        return;
-    }
-
-    if (!window.__radarCurrentSubj || !subjs.includes(window.__radarCurrentSubj)) {
-        window.__radarCurrentSubj = subjs[0];
-    }
-
-    const type = window.__radarCurrentType || 'unit';
-    const btnSty = (isActive, bg) => `padding:6px 15px; border-radius:20px; border:1px solid ${isActive?bg:'#dee2e6'}; cursor:pointer; font-size:12px; font-weight:bold; transition:0.2s; background:${isActive?bg:'#f8f9fa'}; color:${isActive?'#fff':'#7f8c8d'};`;
-
-    let tabsHtml = subjs.map(s => `<button onclick="window.__switchRadarSubj('${s}')" style="${btnSty(s === window.__radarCurrentSubj, '#2c3e50')}">${s}</button>`).join('');
-
-    area.innerHTML = `
-        <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:15px; margin-bottom:20px;">
-            <div style="display:flex; gap:5px; flex-wrap:wrap;">
-                ${tabsHtml}
-            </div>
-            <div style="display:flex; gap:5px;">
-                <button onclick="window.__switchRadarType('unit')" style="${btnSty(type==='unit', '#2980b9')}">단원별 성취도</button>
-                <button onclick="window.__switchRadarType('beh')" style="${btnSty(type==='beh', '#8e44ad')}">행동영역 보기</button>
-            </div>
-        </div>
-        <div style="position:relative; height:350px; width:100%; max-width:600px; margin:0 auto;">
-            <canvas id="radarChartCanvas"></canvas>
-        </div>
-    `;
-
-    // 캔버스 그리기 지연 실행 (DOM 렌더링 대기)
-    setTimeout(() => { window.__renderRadarChartCanvas(); }, 50);
-};
-
-// =========================================================
-// 💡 [수정됨] 방사형 레이더 그래프 렌더러 (순서 완벽 고정)
-// =========================================================
-window.__renderRadarChartCanvas = function() {
-    const ctx = document.getElementById('radarChartCanvas');
-    if (!ctx || !window.__radarStats) return;
-
-    const subj = window.__radarCurrentSubj;
-    const type = window.__radarCurrentType || 'unit';
-    const dataObj = window.__radarStats[subj]?.units || {};
-
-    let labels = Object.keys(dataObj).filter(k => k !== '기타' && k !== '분류없음' && k !== '');
-    
-    // 💡 저장된 고유 순서(unitKey)를 바탕으로 오름차순 강제 정렬
-    labels.sort((a, b) => {
-        const keyA = dataObj[a]?.unitKey ?? 9999;
-        const keyB = dataObj[b]?.unitKey ?? 9999;
-        if (keyA === keyB) return a.localeCompare(b, 'ko'); 
-        return keyA - keyB;
-    });
-
-    const dataPoints = labels.map(l => {
-        return dataObj[l].total > 0 ? Math.round((dataObj[l].o / dataObj[l].total) * 100) : 0;
-    });
-
-    const getLabelColor = (label, majorSubj) => {
-        const info = dataObj[label];
-        const qSubj = info?.qSubj || majorSubj; 
-
-        if (majorSubj === '국어') {
-            if (['화법과작문', '언어와매체'].includes(qSubj)) return '#f39c12'; // 선택(주황)
-            if (/(시|소설|극|수필|문학|갈래)/.test(label)) return '#2ecc71'; // 문학(초록)
-            return '#3498db'; // 독서(파랑)
-        } else if (majorSubj === '수학') {
-            if (['미적분', '기하', '확률과통계'].includes(qSubj)) return '#f39c12'; 
-            if (qSubj === '수학2' || /(극한|연속|미분|적분)/.test(label)) return '#2ecc71'; 
-            if (qSubj === '수학1' || /(지수|로그|삼각|수열)/.test(label)) return '#3498db'; 
-            return '#27ae60'; 
-        }
-        return '#3498db'; 
-    };
-
-    const pointColors = labels.map(l => getLabelColor(l, subj));
-
-    if (window.__radarChartInstance) window.__radarChartInstance.destroy();
-
-    window.__radarChartInstance = new Chart(ctx, {
-        type: 'radar',
-        data: {
-            labels: labels,
-            datasets: [{
-                label: `${subj} 성취도(%)`,
-                data: dataPoints,
-                backgroundColor: 'rgba(52, 152, 219, 0.1)',
-                borderColor: 'rgba(52, 152, 219, 0.5)',
-                pointBackgroundColor: pointColors,
-                pointBorderColor: '#fff',
-                pointHoverBackgroundColor: '#fff',
-                pointHoverBorderColor: pointColors,
-                borderWidth: 2,
-                pointRadius: 5,
-                pointHoverRadius: 7
-            }]
-        },
-        options: {
-            responsive: true,
-            maintainAspectRatio: false,
-            scales: {
-                r: {
-                    beginAtZero: true, max: 100, min: 0,
-                    ticks: { stepSize: 20, display: false },
-                    grid: { color: '#ecf0f1' },
-                    angleLines: { color: '#ecf0f1' },
-                    pointLabels: {
-                        color: (context) => getLabelColor(context.label, subj),
-                        font: { size: 12, weight: 'bold' }
-                    }
-                }
-            },
-            plugins: {
-                legend: { display: false },
-                tooltip: {
-                    displayColors: false, // 💡 앞에 붙는 네모난 색상 박스(🟦) 숨기기 (더 깔끔해짐)
-                    callbacks: {
-                        title: () => '', // 💡 겹칠 때 뜨는 대표 타이틀(엉뚱한 단원명) 아예 숨기기
-                        label: (context) => `${context.label} 성취도: ${context.raw}%` // 💡 원하시는 형식으로 출력
-                    }
-                }
-            }
-        }
-    });
 };
 
 // =========================================================
