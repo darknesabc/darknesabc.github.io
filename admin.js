@@ -478,7 +478,7 @@ window.__renderGradeSummaryTable = function() {
 };
 
 // =========================================================
-// 💡 [NEW] 정오표 데이터 호출 (지학1/2 버그 수정 & 과목별 단원명 차등 적용)
+// 💡 [NEW] 정오표 데이터 호출 (I vs II 로마자 버그 완벽 수정 & 단원명 차등 적용)
 // =========================================================
 window.__loadGradeErrata = async function(examLabel) {
     const container = document.getElementById('grade-errata-area');
@@ -539,9 +539,11 @@ window.__loadGradeErrata = async function(examLabel) {
             return;
         }
 
-        // 💡 [핵심 픽스 1] 지학1, 지학2 혼동을 원천 차단하는 강력한 정규화 사전
+        // 💡 [버그 완전 차단] 로마자 'II'를 무조건 숫자 '2'로 먼저 바꾸고, 'I'을 '1'로 바꿉니다. (순서 매우 중요!)
         const normalizeSubj = (name) => {
-            let s = String(name || "").trim().replace(/\s+/g, '').replace(/·/g, '');
+            let s = String(name || "").trim().replace(/\s+/g, '').replace(/·/g, '').replace(/과학/g, '');
+            s = s.replace(/II/g, '2').replace(/I/g, '1').replace(/Ⅱ/g, '2').replace(/Ⅰ/g, '1');
+
             if (s.includes('화법') || s.includes('화작')) return '화법과작문';
             if (s.includes('언어') || s.includes('언매')) return '언어와매체';
             if (s.includes('미적')) return '미적분';
@@ -557,18 +559,19 @@ window.__loadGradeErrata = async function(examLabel) {
             if (s.includes('경제')) return '경제';
             if ((s.includes('사회') && s.includes('문화')) || s.includes('사문')) return '사회문화';
             
-            // 과탐 (1과목)
-            if (s.match(/물리.*1/) || s.match(/물리학.*1/) || s === '물1' || s.includes('물리I') || s.includes('물리학I')) return '물리1';
-            if (s.match(/화학.*1/) || s === '화1' || s.includes('화학I')) return '화학1';
-            if (s.match(/생명.*1/) || s.match(/생명과학.*1/) || s === '생1' || s.includes('생명I') || s.includes('생명과학I')) return '생명1';
-            if (s.match(/지구.*1/) || s.match(/지구과학.*1/) || s.match(/지학.*1/) || s === '지1' || s.includes('지구I') || s.includes('지구과학I')) return '지구1';
+            if (s.match(/물리.*1/) || s === '물1') return '물리1';
+            if (s.match(/화학.*1/) || s === '화1') return '화학1';
+            if (s.match(/생명.*1/) || s === '생1') return '생명1';
+            if (s.match(/지구.*1/) || s.match(/지학.*1/) || s === '지1') return '지구1'; // 더 이상 지학2와 혼동하지 않음
             
-            // 과탐 (2과목)
-            if (s.match(/물리.*2/) || s.match(/물리학.*2/) || s === '물2' || s.includes('물리II') || s.includes('물리학II')) return '물리2';
-            if (s.match(/화학.*2/) || s === '화2' || s.includes('화학II')) return '화학2';
-            if (s.match(/생명.*2/) || s.match(/생명과학.*2/) || s === '생2' || s.includes('생명II') || s.includes('생명과학II')) return '생명2';
-            if (s.match(/지구.*2/) || s.match(/지구과학.*2/) || s.match(/지학.*2/) || s === '지2' || s.includes('지구II') || s.includes('지구과학II')) return '지구2';
+            if (s.match(/물리.*2/) || s === '물2') return '물리2';
+            if (s.match(/화학.*2/) || s === '화2') return '화학2';
+            if (s.match(/생명.*2/) || s === '생2') return '생명2';
+            if (s.match(/지구.*2/) || s.match(/지학.*2/) || s === '지2') return '지구2';
             
+            if (s === '수학1' || s === '수1') return '수학1';
+            if (s === '수학2' || s === '수2') return '수학2';
+
             if (s.includes('영어')) return '영어';
             if (s.includes('국어')) return '국어';
             if (s.includes('수학')) return '수학';
@@ -595,12 +598,12 @@ window.__loadGradeErrata = async function(examLabel) {
             if (['화법과작문', '언어와매체', '국어'].includes(normSubj)) {
                 addToStats('국어공통', row);
             }
-            if (['미적분', '기하', '확률과통계', '수학'].includes(normSubj)) {
+            if (['미적분', '기하', '확률과통계', '수학', '수학1', '수학2'].includes(normSubj)) {
                 addToStats('수학공통', row);
             }
         });
 
-        // 💡 [핵심 픽스 2] 국/수/영 vs 탐구 과목에 따른 단원 표시 차별화
+        // 💡 [핵심 픽스 2] 출제 영역 조합 로직 (국/수/영 vs 탐구 차등)
         const qInfoMap = {}; 
         (qInfos || []).forEach(q => {
             const normSubj = normalizeSubj(q.subject);
@@ -611,12 +614,16 @@ window.__loadGradeErrata = async function(examLabel) {
             const beh = String(q.behavior_domain || '').trim();
             
             let labelArr = [];
+            
+            // 수학 공통문항일 경우 수1/수2 앞에 붙여주기
+            if (normSubj === '수학1') labelArr.push('수학I');
+            else if (normSubj === '수학2') labelArr.push('수학II');
+            
             if (unit && unit !== '-' && unit !== 'null') labelArr.push(unit);
             
-            // 탐구 과목인지 판별 (국/수/영이 아니면 탐구)
-            const isTamgu = !['국어', '국어공통', '화법과작문', '언어와매체', '수학', '수학공통', '미적분', '기하', '확률과통계', '영어'].includes(normSubj);
+            // 국수영이 아니면 '탐구'로 간주 -> 탐구만 소단원 추가!
+            const isTamgu = !['국어', '국어공통', '화법과작문', '언어와매체', '수학', '수학공통', '미적분', '기하', '확률과통계', '영어', '수학1', '수학2'].includes(normSubj);
             
-            // 탐구일 때만 소단원 추가!
             if (isTamgu && subUnit && subUnit !== '-' && subUnit !== 'null') {
                 labelArr.push(subUnit);
             }
@@ -624,14 +631,14 @@ window.__loadGradeErrata = async function(examLabel) {
             let label = labelArr.join(' - ');
             if (!label) label = '단원 정보 없음';
             
-            // 행동영역은 우측에 회색 뱃지로
+            // 행동영역은 끝에 뱃지로 추가
             if (beh && beh !== '기타' && beh !== '-' && beh !== 'null') {
                 label += ` <span style="font-size:11px; color:#95a5a6; border:1px solid #ecf0f1; padding:2px 6px; border-radius:4px; margin-left:6px; background:#f8f9fa;">${beh}</span>`;
             }
             qInfoMap[normSubj][q.question_num] = label;
         });
 
-        // 💡 [핵심 픽스 3] 느슨한 includes 검색을 버리고 100% 일치(Strict) 검색만 사용
+        // 💡 [핵심 픽스 3] 엄격한 1:1 과목 매칭
         const findRowStrict = (targetName) => {
             if (!targetName) return null;
             const target = normalizeSubj(targetName);
@@ -666,13 +673,16 @@ window.__loadGradeErrata = async function(examLabel) {
                 const rate = stat.total > 0 ? Math.round((stat.o / stat.total) * 1000) / 10 : 0;
                 const barColor = rate >= 80 ? '#2ecc71' : (rate >= 50 ? '#f1c40f' : '#e74c3c');
                 
+                // 단원 매칭 (수학공통일 경우 수1/수2 테이블을 교차 스캔)
                 let qInfo = '-';
-                if (qInfoMap[infoKey] && qInfoMap[infoKey][i]) {
-                    qInfo = qInfoMap[infoKey][i];
-                } else if ((infoKey === '국어공통' || infoKey === '화법과작문' || infoKey === '언어와매체') && qInfoMap['국어'] && qInfoMap['국어'][i]) {
-                    qInfo = qInfoMap['국어'][i];
-                } else if ((infoKey === '수학공통' || infoKey === '미적분' || infoKey === '기하' || infoKey === '확률과통계') && qInfoMap['수학'] && qInfoMap['수학'][i]) {
-                    qInfo = qInfoMap['수학'][i];
+                if (infoKey === '수학공통') {
+                    qInfo = (qInfoMap['수학1'] && qInfoMap['수학1'][i]) || 
+                            (qInfoMap['수학2'] && qInfoMap['수학2'][i]) || 
+                            (qInfoMap['수학'] && qInfoMap['수학'][i]) || '-';
+                } else if (infoKey === '국어공통') {
+                    qInfo = (qInfoMap['국어'] && qInfoMap['국어'][i]) || '-';
+                } else {
+                    qInfo = (qInfoMap[infoKey] && qInfoMap[infoKey][i]) || '-';
                 }
 
                 rowsHtml += `
@@ -695,6 +705,11 @@ window.__loadGradeErrata = async function(examLabel) {
             
             const sectionId = 'errata-' + Math.random().toString(36).substr(2, 9);
             
+            // 표 헤더 텍스트 다르게 (국수영 vs 탐구)
+            const infoHeader = (infoKey === '수학공통' || infoKey === '국어공통' || infoKey === '영어' || infoKey === '미적분' || infoKey === '기하' || infoKey === '확률과통계' || infoKey === '화법과작문' || infoKey === '언어와매체') 
+                             ? '출제 영역 (대단원)' 
+                             : '출제 영역 (대단원 - 소단원)';
+
             return `
                 <div style="border: 1px solid #dee2e6; border-radius: 8px; margin-bottom: 10px; overflow:hidden; background:#fff;">
                     <div onclick="const el = document.getElementById('${sectionId}'); el.style.display = el.style.display === 'none' ? 'block' : 'none';" 
@@ -708,7 +723,7 @@ window.__loadGradeErrata = async function(examLabel) {
                                 <tr style="border-bottom: 2px solid #dee2e6; background: #fff;">
                                     <th style="padding: 10px 5px; text-align:center; color:#95a5a6; font-size:11px;">문항</th>
                                     <th style="padding: 10px 5px; text-align:center; color:#95a5a6; font-size:11px;">O/X</th>
-                                    <th style="padding: 10px; text-align:left; color:#95a5a6; font-size:11px;">출제 영역</th>
+                                    <th style="padding: 10px; text-align:left; color:#95a5a6; font-size:11px;">${infoHeader}</th>
                                     <th style="padding: 10px; text-align:right; color:#95a5a6; font-size:11px;">정답률</th>
                                     <th style="padding: 10px; text-align:right; color:#95a5a6; font-size:11px;">O/응시</th>
                                 </tr>
