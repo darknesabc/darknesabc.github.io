@@ -874,7 +874,7 @@ window.__renderRadarChartUI = function() {
 };
 
 // =========================================================
-// 💡 [최종 수정본] 캔버스 및 클릭 이벤트 (선택된 점 하이라이트 기능 추가)
+// 💡 [최종 픽스] 캔버스 & 겹친 데이터(0%) 선택 기능 추가
 // =========================================================
 window.__renderRadarChartCanvas = function() {
     const ctx = document.getElementById('radarChartCanvas');
@@ -917,30 +917,48 @@ window.__renderRadarChartCanvas = function() {
 
     if (window.__radarChartInstance) window.__radarChartInstance.destroy();
 
-    // 💡 차트 라벨/점 클릭 시 실행되는 진행바 렌더링 & 하이라이트 함수
-    const renderDetails = (unitName) => {
+    // 💡 [추가됨] 겹쳐있는 항목들을 처리하기 위해 배열로 받는 함수로 업그레이드
+    window.__renderRadarDetails = (unitNamesArray, activeUnit) => {
         const panel = document.getElementById('radar-detail-panel');
-        
-        // 1. 차트 시각적 하이라이트 업데이트 (선택된 점 크기/테두리 변경)
-        if (window.__radarChartInstance) {
-            const dataset = window.__radarChartInstance.data.datasets[0];
-            dataset.pointRadius = labels.map(l => l === unitName ? 8 : 5); // 선택된 점은 크기 8, 나머진 5
-            dataset.pointBorderWidth = labels.map(l => l === unitName ? 4 : 2); // 테두리 굵게
-            dataset.pointBorderColor = labels.map(l => l === unitName ? '#2c3e50' : '#fff'); // 선택된 점 테두리를 진남색으로
-            window.__radarChartInstance.update();
-        }
-
-        if (!unitName || !dataObj[unitName]) {
+        if (!unitNamesArray || unitNamesArray.length === 0) {
             panel.style.display = 'none';
             return;
         }
         
-        // 2. 하단 세부 패널 업데이트
         panel.style.display = 'block';
-        const details = dataObj[unitName].details || {};
-        const detailKeys = Object.keys(details).filter(k => k !== '기타' && k !== '분류없음' && k !== '');
+        const targetUnit = activeUnit || unitNamesArray[0];
+
+        // 차트 하이라이트 효과 (클릭된 점 굵어지게)
+        if (window.__radarChartInstance) {
+            const dataset = window.__radarChartInstance.data.datasets[0];
+            dataset.pointRadius = labels.map(l => l === targetUnit ? 8 : 5);
+            dataset.pointBorderWidth = labels.map(l => l === targetUnit ? 4 : 2);
+            dataset.pointBorderColor = labels.map(l => l === targetUnit ? '#2c3e50' : '#fff');
+            window.__radarChartInstance.update();
+        }
         
-        let html = `<h4 style="margin:0 0 15px 0; color:#3498db; font-size:16px; display:flex; align-items:center; gap:8px;">🔍 [${unitName}] 세부 영역 분석</h4>`;
+        let html = '';
+
+        // 💡 0% 등 항목이 여러 개 겹쳐있을 경우 "선택 버튼" UI 띄우기
+        if (unitNamesArray.length > 1) {
+            const arrayStr = JSON.stringify(unitNamesArray).replace(/"/g, '&quot;');
+            html += `<div style="margin-bottom:20px; padding:15px; background:#fdf3f2; border-radius:8px; border:1px dashed #e74c3c;">`;
+            html += `<div style="font-size:13px; color:#c0392b; margin-bottom:10px; font-weight:bold;">🚨 취약점(0%)이 여러 개 겹쳐 있습니다. 항목을 선택하세요:</div>`;
+            html += `<div style="display:flex; gap:8px; flex-wrap:wrap;">`;
+            unitNamesArray.forEach(u => {
+                const isActive = (u === targetUnit);
+                const bg = isActive ? '#e74c3c' : '#fff';
+                const color = isActive ? '#fff' : '#e74c3c';
+                const border = isActive ? '1px solid #e74c3c' : '1px solid #e74c3c';
+                html += `<button onclick="window.__renderRadarDetails(${arrayStr}, '${u}')" style="padding:6px 14px; border-radius:20px; border:${border}; background:${bg}; color:${color}; font-size:12px; cursor:pointer; font-weight:bold; transition:0.2s;">${u}</button>`;
+            });
+            html += `</div></div>`;
+        }
+        
+        html += `<h4 style="margin:0 0 15px 0; color:#3498db; font-size:16px; display:flex; align-items:center; gap:8px;">🔍 [${targetUnit}] 세부 영역 분석</h4>`;
+        
+        const details = dataObj[targetUnit].details || {};
+        const detailKeys = Object.keys(details).filter(k => k !== '기타' && k !== '분류없음' && k !== '');
         
         if (detailKeys.length === 0) {
             html += `<div style="color:#7f8c8d; font-size:13px; text-align:center; padding:10px;">세부 데이터가 없습니다.</div>`;
@@ -979,21 +997,31 @@ window.__renderRadarChartCanvas = function() {
                 backgroundColor: 'rgba(52, 152, 219, 0.1)',
                 borderColor: 'rgba(52, 152, 219, 0.5)',
                 pointBackgroundColor: pointColors,
-                pointBorderColor: labels.map(() => '#fff'), // 초기 테두리는 흰색
+                pointBorderColor: '#fff',
                 pointHoverBackgroundColor: '#fff',
                 pointHoverBorderColor: pointColors,
                 borderWidth: 2,
-                pointRadius: labels.map(() => 5), // 초기 크기는 5
-                pointBorderWidth: labels.map(() => 2), // 초기 굵기는 2
+                pointRadius: 5,
                 pointHoverRadius: 7
             }]
         },
         options: {
             responsive: true,
             maintainAspectRatio: false,
+            // 💡 정중앙을 클릭했을 때, 0%인 모든 항목을 수집해서 패널로 넘김
             onClick: (event, elements) => {
                 if (elements && elements.length > 0) {
-                    renderDetails(labels[elements[0].index]);
+                    const clickedIdx = elements[0].index;
+                    const clickedValue = dataPoints[clickedIdx];
+                    
+                    let overlapUnits = [labels[clickedIdx]];
+                    
+                    // 만약 클릭한 값이 0%라면, 차트 내의 모든 0% 항목을 싹 모아옵니다!
+                    if (clickedValue === 0) {
+                        overlapUnits = labels.filter((l, idx) => dataPoints[idx] === 0);
+                    }
+                    
+                    window.__renderRadarDetails(overlapUnits, labels[clickedIdx]);
                 }
             },
             onHover: (event, chartElement) => {
@@ -1024,16 +1052,16 @@ window.__renderRadarChartCanvas = function() {
         }
     });
 
+    // 💡 초기 로딩 시 자동 렌더링도, 최하점(0%)이 여러 개면 메뉴가 열리게 설정
     if (labels.length > 0) {
-        let lowestIdx = 0;
         let lowestScore = 101;
-        dataPoints.forEach((val, idx) => {
-            if (val < lowestScore) {
-                lowestScore = val;
-                lowestIdx = idx;
-            }
+        dataPoints.forEach(val => {
+            if (val < lowestScore) lowestScore = val;
         });
-        renderDetails(labels[lowestIdx]);
+        
+        // 최하점과 점수가 똑같은 모든 단원을 수집
+        let lowestUnits = labels.filter((l, idx) => dataPoints[idx] === lowestScore);
+        window.__renderRadarDetails(lowestUnits, lowestUnits[0]);
     }
 };
 
