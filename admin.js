@@ -10,7 +10,7 @@ window.__currentSortMode = 'seat'; // 기본값: 자리순
 window.__radarCurrentType = 'unit'; // 레이더 차트 (단원별/행동영역별)
 window.__radarCurrentSubj = null;   // 레이더 차트 (선택된 과목)
 
-// 1. 숫자 추출 도구 및 수퍼베이스 차단 대비용 '강제 순서표' 내장
+// 1. 숫자 추출 도구 및 강제 순서표 (코드 상단 유지)
 const getSafeNum = (val) => {
     if (typeof val === 'number') return val;
     const match = String(val || "").match(/\d+/); 
@@ -505,7 +505,7 @@ window.__renderGradeSummaryTable = function() {
 };
 
 // =========================================================
-// 💡 [수정됨] 정오표 데이터 호출 & 취약 영역 데이터 집계 (unit_map 완벽 적용)
+// 💡 [수정됨 1] 정오표 데이터 호출 (세부영역/행동영역 데이터 분리 수집)
 // =========================================================
 window.__loadGradeErrata = async function(examLabel) {
     const container = document.getElementById('grade-errata-area');
@@ -621,15 +621,14 @@ window.__loadGradeErrata = async function(examLabel) {
             const qNum = parseInt(String(q.question_num).replace(/[^0-9]/g, ''), 10);
             if (isNaN(qNum)) return;
 
-            // 💡 [수정됨] 단원명 앞의 숫자("1. 인문" 등)를 잘라내서 매칭률을 높입니다.
             let unit = String(q.unit_name || '').replace(/^\d+\.?\s*/, '').trim(); 
-            const subUnit = String(q.sub_unit || q.subunit || '').trim();
+            // 💡 세부 영역(소단원) 데이터 확보 (새로 추가)
+            const subUnit = String(q.sub_unit || q.subunit || '').replace(/^\d+\.?\s*/, '').trim();
             const beh = String(q.behavior_domain || '').trim();
             
             let uKey = 9999;
             const cleanTarget = unit.replace(/\s+/g, '');
             
-            // 💡 [1순위] 수퍼베이스 unit_map 매칭
             if (window.__unitMap && window.__unitMap.length > 0) {
                 const found = window.__unitMap.find(u => {
                     const mapName = String(u.unit_name || u.unit || u.name || u.title || '').replace(/\s+/g, '');
@@ -649,12 +648,10 @@ window.__loadGradeErrata = async function(examLabel) {
                 }
             }
 
-            // 💡 [2순위] 매칭 실패 시, 하드코딩된 국어 강제 순서표 적용
-            if (uKey === 9999 && KOR_UNIT_ORDER[cleanTarget]) {
+            if (uKey === 9999 && typeof KOR_UNIT_ORDER !== 'undefined' && KOR_UNIT_ORDER[cleanTarget]) {
                 uKey = KOR_UNIT_ORDER[cleanTarget];
             }
 
-            // 💡 [3순위] 그래도 없으면 원래 데이터에서 숫자 추출
             if (uKey === 9999) {
                 const rawKey = getSafeNum(q.unit_key ?? q.unit_code ?? q.chapter_num ?? q.unit_num);
                 if (rawKey !== 9999) uKey = rawKey;
@@ -665,14 +662,15 @@ window.__loadGradeErrata = async function(examLabel) {
             let cleanBeh = beh;
             if (!cleanBeh || cleanBeh === '-' || cleanBeh === 'null') cleanBeh = '기타';
             
+            // 💡 맵에 subUnit 포함해서 저장
             qInfoRawMap[normSubj][qNum] = { 
                 unit: cleanUnit, 
+                subUnit: subUnit,
                 beh: cleanBeh, 
                 unitKey: uKey, 
                 qSubj: normSubj 
             };
 
-            // 기존 라벨 HTML 생성 코드 유지
             let labelHtml = '';
             if (normSubj === '수학' || normSubj === '수학공통') {
                 const uStr = cleanUnit.replace(/\s+/g, '');
@@ -743,25 +741,33 @@ window.__loadGradeErrata = async function(examLabel) {
                     unitInfo = qInfoRawMap[normS]?.[i];
                 }
 
-                if (!unitInfo) unitInfo = { unit: '분류없음', beh: '분류없음', unitKey: 9999, qSubj: normS };
+                if (!unitInfo) unitInfo = { unit: '분류없음', subUnit: '분류없음', beh: '분류없음', unitKey: 9999, qSubj: normS };
 
                 const u = unitInfo.unit;
-                const b = unitInfo.beh;
 
-                if (!radarStats[majorCat].units[u]) radarStats[majorCat].units[u] = { o: 0, total: 0, qSubj: unitInfo.qSubj, unitKey: unitInfo.unitKey };
-                if (!radarStats[majorCat].behaviors[b]) radarStats[majorCat].behaviors[b] = { o: 0, total: 0, qSubj: unitInfo.qSubj, unitKey: unitInfo.unitKey };
-
+                // 💡 [추가] 국영수 vs 탐구 분리 수집 로직
+                if (!radarStats[majorCat].units[u]) radarStats[majorCat].units[u] = { o: 0, total: 0, qSubj: unitInfo.qSubj, unitKey: unitInfo.unitKey, details: {} };
+                
                 radarStats[majorCat].units[u].total++;
                 if (isO) radarStats[majorCat].units[u].o++;
 
-                radarStats[majorCat].behaviors[b].total++;
-                if (isO) radarStats[majorCat].behaviors[b].o++;
+                // 국/영/수면 행동영역(beh), 탐구면 소단원(subUnit) 추출
+                const isTamgu = !['국어', '수학', '영어'].includes(majorCat);
+                let detailKey = isTamgu ? unitInfo.subUnit : unitInfo.beh;
+                if (!detailKey || detailKey === '-' || detailKey === 'null') detailKey = '분류없음';
+
+                if (!radarStats[majorCat].units[u].details[detailKey]) {
+                    radarStats[majorCat].units[u].details[detailKey] = { o: 0, total: 0 };
+                }
+                radarStats[majorCat].units[u].details[detailKey].total++;
+                if (isO) radarStats[majorCat].units[u].details[detailKey].o++;
             }
         });
 
         window.__radarStats = radarStats;
         window.__renderRadarChartUI();
 
+        // 이하 하단 정오표 테이블 렌더링 (기존 코드 그대로 유지)
         const findRowStrict = (targetName) => {
             if (!targetName) return null;
             const target = normalizeSubj(targetName);
@@ -821,6 +827,205 @@ window.__loadGradeErrata = async function(examLabel) {
 
     } catch (err) {
         container.innerHTML = `<div style="text-align:center; padding:20px; color:#e74c3c;">에러 발생: ${err.message}</div>`;
+    }
+};
+
+// =========================================================
+// 💡 [수정됨 2] UI 생성 (하단 세부영역 패널 추가)
+// =========================================================
+window.__switchRadarType = function(type) { window.__radarCurrentType = type; window.__renderRadarChartUI(); };
+window.__switchRadarSubj = function(subj) { window.__radarCurrentSubj = subj; window.__renderRadarChartUI(); };
+
+window.__renderRadarChartUI = function() {
+    const area = document.getElementById('vulnerability-area');
+    if (!area || !window.__radarStats) return;
+
+    const subjs = Object.keys(window.__radarStats);
+    if (subjs.length === 0) {
+        area.innerHTML = '<div style="padding:20px; color:#95a5a6; text-align:center;">분석 가능한 데이터가 없습니다.</div>';
+        return;
+    }
+
+    if (!window.__radarCurrentSubj || !subjs.includes(window.__radarCurrentSubj)) {
+        window.__radarCurrentSubj = subjs[0];
+    }
+
+    const subj = window.__radarCurrentSubj;
+
+    let tabsHtml = subjs.map(s => {
+        const isActive = s === subj;
+        const bg = isActive ? '#3498db' : '#f8f9fa';
+        const color = isActive ? '#fff' : '#7f8c8d';
+        const border = isActive ? 'none' : '1px solid #dee2e6';
+        return `<button onclick="window.__switchRadarSubj('${s}')" style="padding:6px 18px; border-radius:20px; border:${border}; cursor:pointer; font-size:13px; font-weight:bold; transition:0.2s; background:${bg}; color:${color}; margin-right:8px;">${s}</button>`;
+    }).join('');
+
+    area.innerHTML = `
+        <div style="background:#ffffff; border-radius:12px; padding:25px; color:#2c3e50; border: 1px solid #dee2e6;">
+            <div style="display:flex; justify-content:flex-end; align-items:center; margin-bottom:20px;">
+                <div>${tabsHtml}</div>
+            </div>
+            
+            <div style="position:relative; height:350px; width:100%; max-width:650px; margin:0 auto;">
+                <canvas id="radarChartCanvas"></canvas>
+            </div>
+
+            <div id="radar-detail-panel" style="margin-top:30px; background:#fbfbfc; border-radius:10px; padding:20px; border:1px solid #dee2e6; display:none; box-shadow: 0 4px 6px rgba(0,0,0,0.02);">
+            </div>
+        </div>
+    `;
+
+    setTimeout(() => { window.__renderRadarChartCanvas(); }, 50);
+};
+
+// =========================================================
+// 💡 [수정됨 3] 캔버스 및 클릭 이벤트 (하단 진행바 렌더링)
+// =========================================================
+window.__renderRadarChartCanvas = function() {
+    const ctx = document.getElementById('radarChartCanvas');
+    if (!ctx || !window.__radarStats) return;
+
+    const subj = window.__radarCurrentSubj;
+    const dataObj = window.__radarStats[subj]?.units || {};
+
+    let labels = Object.keys(dataObj).filter(k => k !== '기타' && k !== '분류없음' && k !== '');
+    
+    labels.sort((a, b) => {
+        const keyA = dataObj[a]?.unitKey ?? 9999;
+        const keyB = dataObj[b]?.unitKey ?? 9999;
+        if (keyA === keyB) return a.localeCompare(b, 'ko'); 
+        return keyA - keyB;
+    });
+
+    const dataPoints = labels.map(l => {
+        return dataObj[l].total > 0 ? Math.round((dataObj[l].o / dataObj[l].total) * 100) : 0;
+    });
+
+    const getLabelColor = (label, majorSubj) => {
+        const info = dataObj[label];
+        const qSubj = info?.qSubj || majorSubj; 
+
+        if (majorSubj === '국어') {
+            if (['화법과작문', '언어와매체'].includes(qSubj)) return '#f39c12'; 
+            if (/(시|소설|극|수필|문학|갈래)/.test(label)) return '#2ecc71'; 
+            return '#3498db'; 
+        } else if (majorSubj === '수학') {
+            if (['미적분', '기하', '확률과통계'].includes(qSubj)) return '#f39c12'; 
+            if (qSubj === '수학2' || /(극한|연속|미분|적분)/.test(label)) return '#2ecc71'; 
+            if (qSubj === '수학1' || /(지수|로그|삼각|수열)/.test(label)) return '#3498db'; 
+            return '#27ae60'; 
+        }
+        return '#3498db'; 
+    };
+
+    const pointColors = labels.map(l => getLabelColor(l, subj));
+
+    if (window.__radarChartInstance) window.__radarChartInstance.destroy();
+
+    // 💡 차트 라벨/점 클릭 시 실행되는 진행바 렌더링 함수
+    const renderDetails = (unitName) => {
+        const panel = document.getElementById('radar-detail-panel');
+        if (!unitName || !dataObj[unitName]) {
+            panel.style.display = 'none';
+            return;
+        }
+        
+        panel.style.display = 'block';
+        const details = dataObj[unitName].details || {};
+        const detailKeys = Object.keys(details).filter(k => k !== '기타' && k !== '분류없음' && k !== '');
+        
+        let html = `<h4 style="margin:0 0 15px 0; color:#3498db; font-size:16px; display:flex; align-items:center; gap:8px;">🔍 [${unitName}] 세부 영역 분석</h4>`;
+        
+        if (detailKeys.length === 0) {
+            html += `<div style="color:#7f8c8d; font-size:13px; text-align:center; padding:10px;">세부 데이터가 없습니다.</div>`;
+        } else {
+            detailKeys.forEach(dk => {
+                const stat = details[dk];
+                const rate = stat.total > 0 ? Math.round((stat.o / stat.total) * 100) : 0;
+                
+                let barColor = '#2ecc71'; 
+                if (rate < 50) barColor = '#e74c3c'; 
+                else if (rate < 100) barColor = '#f1c40f'; 
+
+                html += `
+                    <div style="margin-bottom:15px;">
+                        <div style="display:flex; justify-content:space-between; font-size:13px; color:#34495e; margin-bottom:6px; font-weight:bold;">
+                            <span>${dk}</span>
+                            <span><b style="color:${barColor}; font-size:14px;">${rate}%</b> <span style="color:#7f8c8d; font-weight:normal;">(${stat.o}/${stat.total})</span></span>
+                        </div>
+                        <div style="width:100%; height:8px; background:#ecf0f1; border-radius:4px; overflow:hidden;">
+                            <div style="width:${rate}%; height:100%; background:${barColor}; border-radius:4px; transition: width 0.5s;"></div>
+                        </div>
+                    </div>
+                `;
+            });
+        }
+        panel.innerHTML = html;
+    };
+
+    window.__radarChartInstance = new Chart(ctx, {
+        type: 'radar',
+        data: {
+            labels: labels,
+            datasets: [{
+                label: `${subj} 성취도(%)`,
+                data: dataPoints,
+                backgroundColor: 'rgba(52, 152, 219, 0.1)',
+                borderColor: 'rgba(52, 152, 219, 0.5)',
+                pointBackgroundColor: pointColors,
+                pointBorderColor: '#fff',
+                pointHoverBackgroundColor: '#fff',
+                pointHoverBorderColor: pointColors,
+                borderWidth: 2,
+                pointRadius: 5,
+                pointHoverRadius: 7
+            }]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            // 💡 [추가] 차트 클릭 이벤트 (세부 내역 펼치기)
+            onClick: (event, elements) => {
+                if (elements && elements.length > 0) {
+                    renderDetails(labels[elements[0].index]);
+                }
+            },
+            scales: {
+                r: {
+                    beginAtZero: true, max: 100, min: 0,
+                    ticks: { stepSize: 20, display: false },
+                    grid: { color: '#ecf0f1' },
+                    angleLines: { color: '#ecf0f1' },
+                    pointLabels: {
+                        color: (context) => getLabelColor(context.label, subj),
+                        font: { size: 12, weight: 'bold' }
+                    }
+                }
+            },
+            plugins: {
+                legend: { display: false },
+                tooltip: {
+                    displayColors: false, // 💡 이전 요청 반영 (0% 중첩 방지 및 깔끔한 출력)
+                    callbacks: {
+                        title: () => '', 
+                        label: (context) => `${context.label} 성취도: ${context.raw}%`
+                    }
+                }
+            }
+        }
+    });
+
+    // 💡 [추가] 차트 로딩 시, 취약점(최하점) 항목의 세부 패널을 자동으로 띄워주기
+    if (labels.length > 0) {
+        let lowestIdx = 0;
+        let lowestScore = 101;
+        dataPoints.forEach((val, idx) => {
+            if (val < lowestScore) {
+                lowestScore = val;
+                lowestIdx = idx;
+            }
+        });
+        renderDetails(labels[lowestIdx]);
     }
 };
 
