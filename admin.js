@@ -504,7 +504,7 @@ window.__renderGradeSummaryUI = function() {
 
 // =========================================================
 // 💡 [수퍼베이스 완벽 이식판] 정시 지원 시뮬레이션 보드 렌더러
-// 기존 GAS 백엔드의 유불리 계산, 탐구 1개 보정, 정렬 로직 100% 통합
+// 🌟 탐구 1과목 반영 시 내 점수가 '점프'하는 로직 완벽 복원 버전
 // =========================================================
 window.__openUnivSimulation = async function() {
     const area = document.getElementById('univ-simulation-area');
@@ -530,6 +530,7 @@ window.__openUnivSimulation = async function() {
     if (t1 > 0) { tamCount++; if (sciSubjs.some(s => tam1Name.includes(s))) sciCount++; if (socSubjs.some(s => tam1Name.includes(s))) socCount++; }
     if (t2 > 0) { tamCount++; if (sciSubjs.some(s => tam2Name.includes(s))) sciCount++; if (socSubjs.some(s => tam2Name.includes(s))) socCount++; }
 
+    // 💡 [핵심] 탐구 최고점과 평균점 각각 계산
     const bestTam = Math.max(t1, t2);
     const avgTam = tamCount > 0 ? (t1 + t2) / tamCount : 0;
     
@@ -541,7 +542,7 @@ window.__openUnivSimulation = async function() {
     window.__currentSimStatus = {
         kor: korPct, math: mathPct, bestTam: bestTam, avgTam: avgTam,
         mathType: mathType, tamType: tamType, search: "",
-        targetScore: Math.round((korPct + mathPct + avgTam) * 10) / 10 // 목표 점수 초기값 = 평균합
+        scoreDiff: 0 // 화면 패널에서 조절하는 오프셋 값
     };
 
     try {
@@ -549,29 +550,41 @@ window.__openUnivSimulation = async function() {
         const { data: cutoffs, error } = await _supabase.from('univ_cutoffs').select('*');
         if (error || !cutoffs) throw new Error("배치표 DB 로드 실패");
 
-        // 💡 [핵심] 원본 GAS의 매칭 로직을 완벽 구현한 함수
-        const getMatches = (targetScore, isStrict = false) => {
+        // 💡 3. 매칭 로직 (탐구 1개/2개 대학에 따라 내 점수가 유동적으로 변함!)
+        const getMatches = (isStrict = false) => {
             const st = window.__currentSimStatus;
             const matches = { '가': {}, '나': {}, '다': {}, '군외': {} };
             const univSet = new Set();
 
             cutoffs.forEach(c => {
-                const reqTamCount = Number(c.tam_cnt_1) || 2;
-                // 💡 탐구 1개 반영 대학이면 bestTam, 2개면 avgTam 적용! (선생님 핵심 로직)
-                const myScoreForThisUniv = st.kor + st.math + (reqTamCount === 1 ? st.bestTam : st.avgTam);
                 const cutScore = Number(c.cut_total) || 0;
                 if (!cutScore) return;
 
-                // 필터 1: 점수 범위 
+                // 🌟 [선생님 로직 완벽 복원] 이 대학이 탐구를 몇 개 보느냐에 따라 내 기준 점수가 달라짐
+                const reqTamCount = Number(c.tam_cnt_1) || 2; 
+                let myScoreForThisUniv = st.kor + st.math;
+                
+                if (reqTamCount === 1) {
+                    myScoreForThisUniv += st.bestTam; // 1개면 잘 본 거 하나만!
+                } else {
+                    myScoreForThisUniv += st.avgTam;  // 2개면 평균!
+                }
+                
+                // 패널에서 조절한 오프셋(+1점, -2점 등)을 내 점수에 더해줌
+                myScoreForThisUniv += st.scoreDiff;
+
+                // 필터 1: 점수 범위 (내 유동적인 점수를 기준으로 대학 컷과 비교)
                 const keyword = st.search.trim();
                 if (keyword) {
                     if (!String(c.univ_name).includes(keyword) && !String(c.dept_name).includes(keyword)) return;
                 } else {
-                    // 왼쪽 패널(isStrict)은 딱 ±1점, 오른쪽 패널(targetScore)은 ±2점으로 세팅
+                    // 왼쪽(isStrict)은 딱 내 점수 라인 (±1.5점 내외)
+                    // 오른쪽(상승)은 내 점수보다 높은 곳 탐색
                     if (isStrict) {
-                        if (cutScore < myScoreForThisUniv - 1 || cutScore > myScoreForThisUniv + 1) return;
+                        if (cutScore < myScoreForThisUniv - 1.5 || cutScore > myScoreForThisUniv + 1.5) return;
                     } else {
-                        if (cutScore < targetScore - 1 || cutScore > targetScore + 2) return;
+                        // 오른쪽은 내 점수 기준 +2점에서 +5점 사이의 상향 지원 라인
+                        if (cutScore <= myScoreForThisUniv + 1.5 || cutScore > myScoreForThisUniv + 6) return;
                     }
                 }
 
@@ -594,7 +607,7 @@ window.__openUnivSimulation = async function() {
                 if (reqTamCount === 1) badges.push(tamReq === "과" ? "과1" : tamReq === "사" ? "사1" : "탐1");
                 if (c.note) badges.push(...c.note.split(" ")); 
 
-                // 💡 [선생님 명품 로직] 반영비율 유불리 계산기
+                // 비율 유불리 판별기
                 const rK = Number(c.rate_kor) || 0; const rM = Number(c.rate_math) || 0; const rT = Number(c.rate_tam) || 0;
                 if (rK > 0 && rM > 0 && rT > 0 && st.kor > 0 && st.math > 0) {
                     if (Math.max(rK, rM, rT) - Math.min(rK, rM, rT) >= 5) {
@@ -622,14 +635,14 @@ window.__openUnivSimulation = async function() {
                     dept: c.dept_name,
                     type: c.type,
                     cut: cutScore,
-                    diff: Math.round((myScoreForThisUniv - cutScore) * 10) / 10,
+                    diff: Math.round((myScoreForThisUniv - cutScore) * 10) / 10, // 대학 맞춤형 점수와 비교
                     badges: badges,
                     region: c.region
                 });
                 univSet.add(univ);
             });
 
-            // 💡 [선생님의 완벽한 정렬 로직 이식]
+            // 대학별로 학과 정렬 (컷 점수 높은 순)
             Object.keys(matches).forEach(g => {
                 Object.keys(matches[g]).forEach(u => { matches[g][u].sort((a,b) => b.cut - a.cut); });
             });
@@ -642,7 +655,6 @@ window.__openUnivSimulation = async function() {
             };
 
             const sortedUnivs = Array.from(univSet).sort((a, b) => {
-                // 대학별 대표 학과 하나씩 뽑아서 랭크 비교
                 let rankA = 4, rankB = 4;
                 ['가','나','다','군외'].forEach(g => {
                     if(matches[g][a] && matches[g][a][0]) rankA = Math.min(rankA, getRank(a, matches[g][a][0].dept, matches[g][a][0].region));
@@ -659,10 +671,10 @@ window.__openUnivSimulation = async function() {
         window.runUniversitySimulation = function() {
             const st = window.__currentSimStatus;
             
-            // 왼쪽: 내 실제 점수 라인 (isStrict = true)
-            const leftData = getMatches(st.kor + st.math + st.avgTam, true);
-            // 오른쪽: 목표 설정 점수 라인 (isStrict = false)
-            const rightData = getMatches(st.targetScore, false);
+            // 💡 왼쪽: 현재 내 라인 (isStrict = true)
+            const leftData = getMatches(true);
+            // 💡 오른쪽: 목표/상향 라인 (isStrict = false)
+            const rightData = getMatches(false);
 
             const ALL_GROUPS = ['가', '나', '다', '군외'];
             
@@ -678,7 +690,7 @@ window.__openUnivSimulation = async function() {
                         if(b.includes("🟢")) { bg = "rgba(46, 204, 113, 0.2)"; bo = "1px solid #2ecc71"; }
                         else if(b.includes("🔴")) { bg = "rgba(231, 76, 60, 0.2)"; bo = "1px solid #e74c3c"; }
                         else if(b.includes("미적") || b.includes("기하") || b.includes("미기")) bg = "rgba(231, 76, 60, 0.2)";
-                        else if(b.includes("과탐") || b.includes("과1")) bg = "rgba(52, 152, 219, 0.2)";
+                        else if(b.includes("과탐") || b.includes("과1") || b.includes("사1") || b.includes("탐1")) bg = "rgba(52, 152, 219, 0.2)";
                         badgeHtml += `<span style="background:${bg}; border:${bo}; color:#fff; padding:1px 4px; border-radius:3px; font-size:9px; font-weight:800; display:inline-block; margin:1px;">${b}</span>`;
                     });
 
@@ -706,7 +718,6 @@ window.__openUnivSimulation = async function() {
             ALL_GROUPS.forEach((gun, idx) => {
                 const isFirst = (idx === 0);
                 
-                // 좌측/우측에 그 군(gun)의 데이터가 하나라도 있는지 확인
                 let hasLeft = leftData.sortedUnivs.some(u => leftData.matches[gun][u]);
                 let hasRight = rightData.sortedUnivs.some(u => rightData.matches[gun][u]);
                 
@@ -721,7 +732,7 @@ window.__openUnivSimulation = async function() {
                                     </table>
                                  </td>`;
                     
-                    if (isFirst) rowsHtml += `<td rowspan="4" style="width:40px; text-align:center; color:#e74c3c; font-size:20px; font-weight:bold; border-right:1px solid rgba(255,255,255,0.2); background:rgba(0,0,0,0.1);">▶</td>`;
+                    if (isFirst) rowsHtml += `<td rowspan="4" style="width:40px; text-align:center; color:#e74c3c; font-size:20px; font-weight:bold; border-right:1px solid rgba(255,255,255,0.2); background:rgba(0,0,0,0.1);">▶<br><span style="font-size:10px; color:#95a5a6; display:block; margin-top:5px;">상향<br>지원</span></td>`;
                     rowsHtml += `<td style="width:30px; text-align:center; font-weight:bold; font-size:13px; background:rgba(255,255,255,0.05); color:#fff; border-right:1px solid rgba(255,255,255,0.2);">${gun}</td>`;
                     rowsHtml += `<td style="padding:0; vertical-align:top;">
                                     <table style="width:100%; border-collapse:collapse;">
@@ -733,14 +744,10 @@ window.__openUnivSimulation = async function() {
                 }
             });
 
-            const myBaseScore = Math.round((st.kor+st.math+st.avgTam)*10)/10;
-            const btnSty = "background:rgba(255,255,255,0.05); color:rgba(255,255,255,0.6); border:1px solid rgba(255,255,255,0.1); border-radius:4px; padding:3px 8px; font-size:11px; cursor:pointer; font-weight:bold; margin-right:3px;";
-            const actSty = "background:#f1c40f; color:#000; border:1px solid #f1c40f;";
-
             area.innerHTML = `
                 <div style="background:#0a0f19; border-radius:10px; overflow:hidden; border:2px solid #f1c40f;">
                     <div style="background:#0a0f19; border-bottom:2px solid #f1c40f; display:flex; justify-content:space-between; padding:8px 12px; align-items:center;">
-                        <div style="color:#fff; font-weight:800; font-size:14px;">▣ 정시 지원가능 대학 & 학과 시뮬레이션 <span style="font-size:11px; opacity:0.6; font-weight:normal;">(백분위 합산 기준)</span></div>
+                        <div style="color:#fff; font-weight:800; font-size:14px;">▣ 정시 지원가능 대학 & 학과 시뮬레이션 <span style="font-size:11px; opacity:0.6; font-weight:normal;">(대학별 탐구 반영수 자동보정)</span></div>
                         <div style="background:#f1c40f; color:#000; padding:2px 10px; font-weight:900; font-size:12px; border-radius:2px;">실제 응시: <span style="color:#c0392b; margin-left:4px;">${st.mathType}+${st.tamType}</span></div>
                     </div>
                     
@@ -748,8 +755,8 @@ window.__openUnivSimulation = async function() {
                         <div style="color:#fff; font-weight:bold; font-size:13px;">🛠️ 시뮬레이션 조정 패널</div>
                         
                         <div style="display:flex; align-items:center; gap:5px; margin-left:10px;">
-                            <span style="color:rgba(255,255,255,0.7); font-size:12px;">목표 백분위:</span>
-                            <input type="number" value="${st.targetScore}" step="0.1" onchange="window.__currentSimStatus.targetScore=Number(this.value); window.runUniversitySimulation()" style="width:65px; background:rgba(0,0,0,0.5); border:1px solid rgba(241,196,15,0.6); color:#f1c40f; font-size:15px; font-weight:900; text-align:center; outline:none; padding:4px 6px; border-radius:4px; cursor:pointer;">
+                            <span style="color:rgba(255,255,255,0.7); font-size:12px;">오프셋(±점):</span>
+                            <input type="number" value="${st.scoreDiff}" step="1" onchange="window.__currentSimStatus.scoreDiff=Number(this.value); window.runUniversitySimulation()" style="width:55px; background:rgba(0,0,0,0.5); border:1px solid rgba(241,196,15,0.6); color:#f1c40f; font-size:14px; font-weight:900; text-align:center; outline:none; padding:2px; border-radius:4px; cursor:pointer;">
                         </div>
 
                         <div style="display:flex; align-items:center; gap:5px; margin-left:10px;">
