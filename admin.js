@@ -504,7 +504,7 @@ window.__renderGradeSummaryUI = function() {
 
 // =========================================================
 // 💡 [수퍼베이스 완벽 이식판] 정시 지원 시뮬레이션 보드 렌더러
-// 🌟 디자인 수정: 전체 시스템 스타일에 맞춘 모던 라이트 테마 적용
+// 🌟 (진짜 최종) 왼쪽(현실 뼈대 ±1점 고정) / 오른쪽(목표 오프셋 적용) 완벽 분리
 // =========================================================
 window.__openUnivSimulation = async function() {
     const area = document.getElementById('univ-simulation-area');
@@ -556,16 +556,20 @@ window.__openUnivSimulation = async function() {
                 if (!cutScore) return;
 
                 const reqTamCount = Number(c.tam_cnt_1) || 2; 
-                let myScoreForThisUniv = st.kor + st.math + (reqTamCount === 1 ? st.bestTam : st.avgTam) + st.scoreDiff;
+                // 💡 [핵심 수정 1] 오프셋(scoreDiff)이 포함되지 않은 '순수 내 점수'
+                let baseScoreForThisUniv = st.kor + st.math + (reqTamCount === 1 ? st.bestTam : st.avgTam);
 
                 const keyword = st.search.trim();
                 if (keyword) {
                     if (!String(c.univ_name).includes(keyword) && !String(c.dept_name).includes(keyword)) return;
                 } else {
                     if (isStrict) { 
-                        if (cutScore < myScoreForThisUniv - 1.5 || cutScore > myScoreForThisUniv + 1.5) return;
+                        // 💡 [핵심 수정 2] 왼쪽 표(현실): 오프셋 무시, 무조건 순수 내 점수 기준 딱 ±1점만!
+                        if (cutScore < baseScoreForThisUniv - 1 || cutScore > baseScoreForThisUniv + 1) return;
                     } else { 
-                        if (cutScore <= myScoreForThisUniv + 1.5 || cutScore > myScoreForThisUniv + 6) return;
+                        // 💡 [핵심 수정 3] 오른쪽 표(타겟): 오프셋을 더한 목표 점수 기준으로 +1 초과 ~ +6점까지!
+                        let targetScore = baseScoreForThisUniv + st.scoreDiff;
+                        if (cutScore <= targetScore + 1 || cutScore > targetScore + 6) return;
                     }
                 }
 
@@ -609,7 +613,8 @@ window.__openUnivSimulation = async function() {
                 
                 matches[gun][univ].push({
                     dept: c.dept_name, type: c.type, cut: cutScore,
-                    diff: Math.round((myScoreForThisUniv - cutScore) * 10) / 10,
+                    // 💡 [핵심 수정 4] 화면에 표시되는 점수 차이(diff)는 언제나 '순수 내 점수' 대비 얼마나 부족한지로 표시
+                    diff: Math.round((baseScoreForThisUniv - cutScore) * 10) / 10,
                     badges: badges, region: c.region
                 });
                 univSet.add(univ);
@@ -680,7 +685,6 @@ window.__openUnivSimulation = async function() {
             const rightData = getMatches(false);
             const ALL_GROUPS = ['가', '나', '다', '군외'];
             
-            // 🎨 [디자인 수정] 하얀 배경의 깔끔한 카드로 변경
             const renderCards = (univData) => {
                 if(!univData || univData.length === 0) return '';
                 return univData.map(d => {
@@ -749,13 +753,12 @@ window.__openUnivSimulation = async function() {
                 }
             });
 
-            // 🎨 [디자인 수정] 전체 래퍼 및 컨트롤 패널 라이트 테마 적용
             area.innerHTML = `
                 <div style="background:#fff; border-radius:12px; overflow:hidden; border:1px solid #dee2e6; box-shadow:0 6px 12px rgba(0,0,0,0.04); margin-top:20px;">
                     
                     <div style="background:#fff; border-bottom:2px solid #dee2e6; display:flex; justify-content:space-between; padding:18px 25px; align-items:center; flex-wrap:wrap; gap:10px;">
                         <div style="color:#2c3e50; font-weight:900; font-size:17px; display:flex; align-items:center; gap:8px;">
-                            🎯 정시 지원 시뮬레이션 <span style="font-size:12px; color:#7f8c8d; font-weight:normal;">(대학별 자동보정 및 서열 적용)</span>
+                            🎯 정시 지원 시뮬레이션 <span style="font-size:12px; color:#7f8c8d; font-weight:normal;">(왼쪽 고정, 오른쪽 오프셋 반영)</span>
                         </div>
                         <div style="background:#e8f4f8; border:1px solid #3498db; color:#2980b9; padding:6px 15px; font-weight:bold; font-size:13px; border-radius:6px;">
                             실제 응시: <span style="color:#e74c3c; margin-left:4px;">${st.mathType}+${st.tamType}</span>
@@ -766,7 +769,7 @@ window.__openUnivSimulation = async function() {
                         <div style="color:#2c3e50; font-weight:bold; font-size:14px;">🛠️ 시뮬레이션 조정 패널</div>
                         
                         <div style="display:flex; align-items:center; gap:6px; margin-left:10px;">
-                            <span style="color:#7f8c8d; font-size:13px; font-weight:bold;">오프셋(±점):</span>
+                            <span style="color:#7f8c8d; font-size:13px; font-weight:bold;">목표 오프셋(±점):</span>
                             <input type="number" value="${st.scoreDiff}" step="1" onchange="window.__currentSimStatus.scoreDiff=Number(this.value); window.runUniversitySimulation()" style="width:60px; background:#fff; border:1px solid #bdc3c7; color:#2c3e50; font-size:15px; font-weight:bold; text-align:center; outline:none; padding:4px; border-radius:6px; transition:0.2s;">
                         </div>
 
