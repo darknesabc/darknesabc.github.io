@@ -463,6 +463,9 @@ window.__loadGradeTrend = async function(student) {
     } catch (err) { console.error("성적 로드 에러:", err); }
 };
 
+// =========================================================
+// 💡 1. 성적 요약 UI (시뮬레이션 열기 버튼 추가)
+// =========================================================
 window.__renderGradeSummaryUI = function() {
     const container = document.getElementById('grade-summary-container');
     if (!container) return;
@@ -471,14 +474,22 @@ window.__renderGradeSummaryUI = function() {
     
     container.innerHTML = `
         <div style="background:#fff; padding:25px; border-radius:12px; border:1px solid #dee2e6; box-shadow:0 4px 6px rgba(0,0,0,0.02); margin-top:20px;">
-            <div style="display:flex; align-items:center; gap:15px; margin-bottom:15px;">
-                <h4 style="margin:0; color:#2c3e50;">📊 성적 요약</h4>
-                <select onchange="window.__changeSummaryExam(this.value)" style="padding:6px 12px; border-radius:6px; border:1px solid #dee2e6; background:#f8f9fa; font-weight:bold; cursor:pointer;">${optionsHtml}</select>
+            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:15px;">
+                <div style="display:flex; align-items:center; gap:15px;">
+                    <h4 style="margin:0; color:#2c3e50;">📊 성적 요약</h4>
+                    <select onchange="window.__changeSummaryExam(this.value)" style="padding:6px 12px; border-radius:6px; border:1px solid #dee2e6; background:#f8f9fa; font-weight:bold; cursor:pointer;">${optionsHtml}</select>
+                </div>
+                <button onclick="window.__openUnivSimulation()" style="background:#1e272e; color:#fff; border:none; padding:8px 20px; border-radius:8px; font-weight:bold; font-size:14px; cursor:pointer; box-shadow:0 4px 6px rgba(0,0,0,0.1); transition:0.2s;">
+                    🎯 정시 지원 시뮬레이션 보드 열기
+                </button>
             </div>
+            
             <div id="grade-summary-table-area"></div>
             
+            <div id="univ-simulation-area" style="display:none; margin-top:20px;"></div>
+            
             <div style="margin-top:30px; padding-top:25px; border-top:1px dashed #dee2e6;">
-                <h4 style="margin:0 0 15px 0; color:#2c3e50;">🕸️ 취약 영역 분석 <span style="font-size:12px; color:#7f8c8d; font-weight:normal;">(점 클릭 시 세부영역/행동영역 확인 가능)</span></h4>
+                <h4 style="margin:0 0 15px 0; color:#2c3e50;">🕸️ 취약 영역 분석 <span style="font-size:12px; color:#7f8c8d; font-weight:normal;">(점 클릭 시 세부영역 확인)</span></h4>
                 <div id="vulnerability-area"><div style="text-align:center; color:#95a5a6; padding:20px;">데이터 분석 중...</div></div>
             </div>
 
@@ -489,6 +500,159 @@ window.__renderGradeSummaryUI = function() {
         </div>
     `;
     window.__renderGradeSummaryTable();
+};
+
+// =========================================================
+// 💡 2. [수퍼베이스 연동] 정시 지원 시뮬레이션 보드 렌더러
+// =========================================================
+window.__openUnivSimulation = async function() {
+    const area = document.getElementById('univ-simulation-area');
+    
+    // 이미 열려있으면 닫기 (토글 기능)
+    if (area.style.display === 'block') {
+        area.style.display = 'none'; 
+        return;
+    }
+    
+    area.style.display = 'block';
+    area.innerHTML = `<div style="text-align:center; padding:50px; background:#1e222b; color:#95a5a6; border-radius:10px;">⏳ 수퍼베이스에서 배치표 데이터를 불러오고 내 점수와 매칭 중입니다...</div>`;
+
+    // 1. 내 점수(백분위 합산) 계산 로직
+    const score = window.__currentStudentScores.find(s => s.exam_label === window.__currentSummaryExam) || {};
+    const korPct = Number(score.kor_exp_pct) || 0;
+    const mathPct = Number(score.math_exp_pct) || 0;
+    
+    let tamAvg = 0;
+    const t1 = Number(score.tam1_exp_pct) || 0;
+    const t2 = Number(score.tam2_exp_pct) || 0;
+    if (t1 > 0 && t2 > 0) tamAvg = (t1 + t2) / 2;
+    else if (t1 > 0) tamAvg = t1;
+    else if (t2 > 0) tamAvg = t2;
+
+    // 소수점 첫째 자리까지만 표시 (예: 275.5)
+    const myTotalScore = Math.round((korPct + mathPct + tamAvg) * 10) / 10;
+
+    try {
+        // 2. 수퍼베이스에서 전체 배치표 가져오기
+        const { data: cutoffs, error } = await _supabase.from('univ_cutoffs').select('*');
+        if (error || !cutoffs) throw new Error("DB를 불러오지 못했습니다.");
+
+        // 3. 내 점수 기준 위아래 5점 (±5점) 내외의 지원 가능 라인만 필터링
+        const range = 5; 
+        const matchedData = cutoffs.filter(c => {
+            const diff = myTotalScore - (Number(c.cut_total) || 0);
+            return diff >= -range && diff <= range;
+        });
+
+        if (matchedData.length === 0) {
+            area.innerHTML = `<div style="text-align:center; padding:50px; background:#1e222b; color:#e74c3c; border-radius:10px;">🚨 현재 성적(${myTotalScore}점) 기준 ±${range}점 이내에 매칭되는 대학이 배치표에 없습니다.</div>`;
+            return;
+        }
+
+        // 4. 가, 나, 다 군별 및 대학별로 데이터 그룹화
+        const simData = { '가': {}, '나': {}, '다': {}, '군외': {} };
+        const univSet = new Set();
+
+        matchedData.forEach(d => {
+            const g = String(d.gun || "가").trim();
+            const u = String(d.univ_name || "기타").trim();
+            
+            // 등록되지 않은 군 방어 로직
+            if (!simData[g]) simData[g] = {};
+            if (!simData[g][u]) simData[g][u] = [];
+            
+            simData[g][u].push({
+                dept: d.dept_name,
+                cut: Number(d.cut_total) || 0,
+                diff: Math.round((myTotalScore - (Number(d.cut_total) || 0)) * 10) / 10,
+                type: d.type,
+                note: d.note
+            });
+            univSet.add(u);
+        });
+
+        // 학과 정렬 (컷이 높은 학과가 위로 오도록 정렬)
+        Object.keys(simData).forEach(g => {
+            Object.keys(simData[g]).forEach(u => {
+                simData[g][u].sort((a, b) => b.cut - a.cut); 
+            });
+        });
+
+        const univs = Array.from(univSet).sort(); // 대학명 가나다순 정렬
+
+        // 5. 카드 렌더링 함수
+        const renderCards = (univData) => {
+            if(!univData || univData.length === 0) return '';
+            return univData.map(d => {
+                const diffColor = d.diff > 0 ? '#2ecc71' : (d.diff < 0 ? '#e74c3c' : '#f1c40f');
+                const diffStr = d.diff > 0 ? `+${d.diff}` : (d.diff === 0 ? '±0' : d.diff);
+                const noteHtml = d.note ? `<div style="margin-top:6px; display:inline-block; background:#c0392b; color:#fff; font-size:9px; padding:3px 6px; border-radius:3px;">${d.note}</div>` : '';
+                
+                return `
+                    <div style="background:#2b303b; border:1px solid #4b5262; border-radius:6px; padding:10px 8px; margin-bottom:8px; text-align:center;">
+                        <div style="font-size:10px; color:#95a5a6; margin-bottom:4px;">[${d.type}]</div>
+                        <div style="font-size:13px; color:#fff; font-weight:bold; margin-bottom:6px; word-break:keep-all;">${d.dept}</div>
+                        <div style="font-size:15px; color:${diffColor}; font-weight:900;">
+                            ${d.cut} <span style="font-size:12px; font-weight:normal;">(${diffStr})</span>
+                        </div>
+                        ${noteHtml}
+                    </div>
+                `;
+            }).join('');
+        };
+
+        // 6. 메인 표 그리기
+        let gridHtml = `<table style="width:100%; border-collapse:collapse; background:#1e222b; color:#fff; font-size:13px; min-width:${univs.length * 150}px;">`;
+        
+        // 헤더 (대학명)
+        gridHtml += `<tr><th style="width:60px; background:#15181e; border:1px solid #3d4554; padding:10px;">군</th><th style="width:80px; background:#15181e; border:1px solid #3d4554; color:#3498db; padding:10px; line-height:1.4;">내 점수<br><span style="font-size:18px; font-weight:900;">${myTotalScore}</span></th>`;
+        univs.forEach(u => { gridHtml += `<th style="background:#2b303b; padding:12px; border:1px solid #3d4554; font-size:14px;">${u}</th>`; });
+        gridHtml += `</tr>`;
+
+        // 가, 나, 다, 군외 로우 생성
+        ['가', '나', '다', '군외'].forEach(gun => {
+            let hasDataInGun = false;
+            univs.forEach(u => { if (simData[gun] && simData[gun][u]) hasDataInGun = true; });
+            
+            // 해당 군에 데이터가 하나라도 있을 때만 줄(Row)을 그림
+            if (hasDataInGun) {
+                gridHtml += `<tr>`;
+                gridHtml += `<td style="background:#15181e; text-align:center; font-weight:bold; font-size:18px; border:1px solid #3d4554;">${gun}</td>`;
+                gridHtml += `<td style="background:#1e222b; border:1px solid #3d4554;"></td>`; 
+                
+                univs.forEach(u => {
+                    const cellData = simData[gun]?.[u];
+                    gridHtml += `<td style="vertical-align:top; padding:10px; border:1px solid #3d4554;">${renderCards(cellData)}</td>`;
+                });
+                gridHtml += `</tr>`;
+            }
+        });
+        gridHtml += `</table>`;
+
+        area.innerHTML = `
+            <div style="background:#1e222b; border-radius:10px; overflow:hidden; box-shadow:0 10px 20px rgba(0,0,0,0.3); border:2px solid #2c3e50;">
+                <div style="background:#15181e; padding:15px 20px; border-bottom:1px solid #3d4554; display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:10px;">
+                    <div style="color:#fff; font-size:16px; font-weight:bold;">🎯 정시 지원가능 대학 & 학과 시뮬레이션 <span style="font-size:12px; color:#95a5a6; font-weight:normal; margin-left:8px;">(±5점 라인)</span></div>
+                    <div style="color:#f1c40f; font-size:13px; font-weight:bold; background:#2b303b; padding:6px 12px; border-radius:6px;">
+                        실제 응시: <span style="color:#e74c3c;">${score.math_choice||'수학'}</span> + <span style="color:#2ecc71;">${score.tam1_name? '과/사탐':'탐구'}</span>
+                    </div>
+                </div>
+                
+                <div style="background:#2b303b; padding:10px 20px; border-bottom:1px solid #3d4554; display:flex; gap:10px; align-items:center; flex-wrap:wrap;">
+                    <button style="background:#f1c40f; border:none; color:#1e222b; padding:4px 12px; border-radius:15px; font-size:11px; font-weight:bold;">해당 모평</button>
+                    <div style="margin-left:auto; color:#fff; font-size:13px;">
+                        해당 백분위: 국어 <b style="color:#3498db;">${korPct}</b> | 수학 <b style="color:#e74c3c;">${mathPct}</b> | 탐구평균 <b style="color:#2ecc71;">${tamAvg}</b>
+                    </div>
+                </div>
+
+                <div style="padding:15px; overflow-x:auto;">
+                    ${gridHtml}
+                </div>
+            </div>
+        `;
+    } catch (err) {
+        area.innerHTML = `<div style="text-align:center; padding:30px; background:#1e222b; color:#e74c3c;">에러가 발생했습니다: ${err.message}</div>`;
+    }
 };
 
 window.__changeSummaryExam = function(examLabel) {
