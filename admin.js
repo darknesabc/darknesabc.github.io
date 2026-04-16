@@ -478,7 +478,7 @@ window.__renderGradeSummaryTable = function() {
 };
 
 // =========================================================
-// 💡 [NEW] 정오표 데이터 호출 (수1/수2 태그 및 탐구 단원 완벽 매칭 패치)
+// 💡 [NEW] 정오표 데이터 호출 (단원명 자동 분석 수1/수2 태그 부착 패치)
 // =========================================================
 window.__loadGradeErrata = async function(examLabel) {
     const container = document.getElementById('grade-errata-area');
@@ -598,15 +598,14 @@ window.__loadGradeErrata = async function(examLabel) {
             if (['미적분', '기하', '확률과통계', '수학', '수학1', '수학2'].includes(normSubj)) addToStats('수학공통', row);
         });
 
-        // 💡 [핵심 픽스 1] 단원 맵핑 강화 (문항번호에 "1번" 처럼 글자가 있어도 숫자만 추출!)
+        // 💡 [핵심 픽스] 단원명을 분석해서 자동으로 [수학I], [수학II] 태그를 붙여줍니다!
         const qInfoMap = {}; 
         (qInfos || []).forEach(q => {
             const normSubj = normalizeSubj(q.subject);
             if (!qInfoMap[normSubj]) qInfoMap[normSubj] = {};
             
-            // 💡 DB에 "1번", " 1 " 등으로 들어있어도 완벽하게 숫자로 변환
             const qNum = parseInt(String(q.question_num).replace(/[^0-9]/g, ''), 10);
-            if (isNaN(qNum)) return; // 숫자가 아니면 패스
+            if (isNaN(qNum)) return;
 
             const unit = String(q.unit_name || '').trim();
             const subUnit = String(q.sub_unit || q.subunit || '').trim();
@@ -614,11 +613,20 @@ window.__loadGradeErrata = async function(examLabel) {
             
             let labelHtml = '';
             
-            // 💡 [요청사항] 수학 공통일 경우 앞에 [수1], [수2] 태그 부착!
-            if (normSubj === '수학1') {
-                labelHtml += `<span style="color:#2980b9; font-weight:900; margin-right:6px;">[수1]</span>`;
+            // 💡 과목명이 '수학'으로만 들어와도 단원명 글자를 보고 태그를 달아줍니다.
+            if (normSubj === '수학' || normSubj === '수학공통') {
+                const uStr = unit.replace(/\s+/g, '');
+                if (uStr.includes('지수') || uStr.includes('로그') || uStr.includes('삼각') || uStr.includes('수열')) {
+                    labelHtml += `<span style="color:#2980b9; font-weight:900; margin-right:6px;">[수학I]</span>`;
+                } else if (uStr.includes('극한') || uStr.includes('연속') || uStr.includes('미분') || uStr.includes('적분')) {
+                    labelHtml += `<span style="color:#8e44ad; font-weight:900; margin-right:6px;">[수학II]</span>`;
+                } else if (uStr.includes('다항식') || uStr.includes('방정식') || uStr.includes('부등식') || uStr.includes('도형') || uStr.includes('함수') || uStr.includes('경우')) {
+                    labelHtml += `<span style="color:#27ae60; font-weight:900; margin-right:6px;">[고1수학]</span>`;
+                }
+            } else if (normSubj === '수학1') {
+                labelHtml += `<span style="color:#2980b9; font-weight:900; margin-right:6px;">[수학I]</span>`;
             } else if (normSubj === '수학2') {
-                labelHtml += `<span style="color:#8e44ad; font-weight:900; margin-right:6px;">[수2]</span>`;
+                labelHtml += `<span style="color:#8e44ad; font-weight:900; margin-right:6px;">[수학II]</span>`;
             }
             
             let labelArr = [];
@@ -626,7 +634,6 @@ window.__loadGradeErrata = async function(examLabel) {
             
             const isTamgu = !['국어', '국어공통', '화법과작문', '언어와매체', '수학', '수학공통', '미적분', '기하', '확률과통계', '영어', '수학1', '수학2'].includes(normSubj);
             
-            // 탐구과목일 경우에만 소단원(-) 추가 (DB에 숫자로 있으면 숫자 그대로 표시됨)
             if (isTamgu && subUnit && subUnit !== '-' && subUnit !== 'null') {
                 labelArr.push(subUnit);
             }
@@ -636,16 +643,15 @@ window.__loadGradeErrata = async function(examLabel) {
             
             labelHtml += joinedUnit;
             
+            // 행동영역 (DB에 있으면 나오고, 빈칸이면 자연스럽게 생략됨)
             if (beh && beh !== '기타' && beh !== '-' && beh !== 'null') {
                 labelHtml += ` <span style="font-size:11px; color:#95a5a6; border:1px solid #ecf0f1; padding:2px 6px; border-radius:4px; margin-left:6px; background:#f8f9fa;">${beh}</span>`;
             }
             
-            // 정확하게 추출된 숫자에 맵핑
             qInfoMap[normSubj][qNum] = labelHtml;
         });
 
-        // 💡 [디버깅] F12를 누르시면 출제영역 데이터가 제대로 맵핑되었는지 확인할 수 있습니다!
-        console.log("🗺️ 단원 맵핑 결과(qInfoMap):", qInfoMap);
+        console.log("🗺️ 단원 맵핑 최종 결과:", qInfoMap);
 
         const findRowStrict = (targetName) => {
             if (!targetName) return null;
@@ -682,18 +688,14 @@ window.__loadGradeErrata = async function(examLabel) {
                 const barColor = rate >= 80 ? '#2ecc71' : (rate >= 50 ? '#f1c40f' : '#e74c3c');
                 
                 let qInfo = '-';
-                
-                // 💡 [핵심 픽스 2] 공통 과목의 경우, 더 유연하게 탐색해서 기필코 찾아냅니다.
                 if (infoKey === '수학공통') {
                     qInfo = (qInfoMap['수학1'] && qInfoMap['수학1'][i]) || 
                             (qInfoMap['수학2'] && qInfoMap['수학2'][i]) || 
                             (qInfoMap['수학'] && qInfoMap['수학'][i]) || 
-                            (qInfoMap['수학공통'] && qInfoMap['수학공통'][i]) || 
-                            (qInfoMap['공통'] && qInfoMap['공통'][i]) || '-';
+                            (qInfoMap['수학공통'] && qInfoMap['수학공통'][i]) || '-';
                 } else if (infoKey === '국어공통') {
                     qInfo = (qInfoMap['국어'] && qInfoMap['국어'][i]) || 
-                            (qInfoMap['국어공통'] && qInfoMap['국어공통'][i]) || 
-                            (qInfoMap['공통'] && qInfoMap['공통'][i]) || '-';
+                            (qInfoMap['국어공통'] && qInfoMap['국어공통'][i]) || '-';
                 } else {
                     qInfo = (qInfoMap[infoKey] && qInfoMap[infoKey][i]) || '-';
                 }
