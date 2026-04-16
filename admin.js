@@ -505,7 +505,7 @@ window.__renderGradeSummaryTable = function() {
 };
 
 // =========================================================
-// 💡 [수정됨 1] 정오표 데이터 호출 (세부영역/행동영역 데이터 분리 수집)
+// 💡 [최종 수정본] 정오표 데이터 호출 (세부영역/행동영역 데이터 분리 수집)
 // =========================================================
 window.__loadGradeErrata = async function(examLabel) {
     const container = document.getElementById('grade-errata-area');
@@ -622,7 +622,7 @@ window.__loadGradeErrata = async function(examLabel) {
             if (isNaN(qNum)) return;
 
             let unit = String(q.unit_name || '').replace(/^\d+\.?\s*/, '').trim(); 
-            // 💡 세부 영역(소단원) 데이터 확보 (새로 추가)
+            // 💡 세부 영역(소단원)도 숫자 떼고 깔끔하게 확보
             const subUnit = String(q.sub_unit || q.subunit || '').replace(/^\d+\.?\s*/, '').trim();
             const beh = String(q.behavior_domain || '').trim();
             
@@ -745,7 +745,7 @@ window.__loadGradeErrata = async function(examLabel) {
 
                 const u = unitInfo.unit;
 
-                // 💡 [추가] 국영수 vs 탐구 분리 수집 로직
+                // 💡 [핵심] 국영수 vs 탐구 분리 수집 로직
                 if (!radarStats[majorCat].units[u]) radarStats[majorCat].units[u] = { o: 0, total: 0, qSubj: unitInfo.qSubj, unitKey: unitInfo.unitKey, details: {} };
                 
                 radarStats[majorCat].units[u].total++;
@@ -767,7 +767,7 @@ window.__loadGradeErrata = async function(examLabel) {
         window.__radarStats = radarStats;
         window.__renderRadarChartUI();
 
-        // 이하 하단 정오표 테이블 렌더링 (기존 코드 그대로 유지)
+        // 이하 하단 정오표 테이블 렌더링
         const findRowStrict = (targetName) => {
             if (!targetName) return null;
             const target = normalizeSubj(targetName);
@@ -831,9 +831,8 @@ window.__loadGradeErrata = async function(examLabel) {
 };
 
 // =========================================================
-// 💡 [수정됨 2] UI 생성 (하단 세부영역 패널 추가)
+// 💡 [최종 수정본] UI 생성 (하단 세부영역 패널 추가)
 // =========================================================
-window.__switchRadarType = function(type) { window.__radarCurrentType = type; window.__renderRadarChartUI(); };
 window.__switchRadarSubj = function(subj) { window.__radarCurrentSubj = subj; window.__renderRadarChartUI(); };
 
 window.__renderRadarChartUI = function() {
@@ -879,7 +878,7 @@ window.__renderRadarChartUI = function() {
 };
 
 // =========================================================
-// 💡 [수정됨 3] 캔버스 및 클릭 이벤트 (하단 진행바 렌더링)
+// 💡 [최종 수정본] 캔버스 및 클릭 이벤트 (하단 진행바 렌더링)
 // =========================================================
 window.__renderRadarChartCanvas = function() {
     const ctx = document.getElementById('radarChartCanvas');
@@ -922,7 +921,6 @@ window.__renderRadarChartCanvas = function() {
 
     if (window.__radarChartInstance) window.__radarChartInstance.destroy();
 
-    // 💡 차트 라벨/점 클릭 시 실행되는 진행바 렌더링 함수
     const renderDetails = (unitName) => {
         const panel = document.getElementById('radar-detail-panel');
         if (!unitName || !dataObj[unitName]) {
@@ -984,11 +982,15 @@ window.__renderRadarChartCanvas = function() {
         options: {
             responsive: true,
             maintainAspectRatio: false,
-            // 💡 [추가] 차트 클릭 이벤트 (세부 내역 펼치기)
+            // 💡 [클릭 기능 보완] 차트 위의 점을 클릭하면 작동합니다!
             onClick: (event, elements) => {
                 if (elements && elements.length > 0) {
                     renderDetails(labels[elements[0].index]);
                 }
+            },
+            // 💡 [마우스 커서 추가] 마우스를 올리면 손가락 모양으로 바뀌어 클릭을 유도합니다!
+            onHover: (event, chartElement) => {
+                event.native.target.style.cursor = chartElement[0] ? 'pointer' : 'default';
             },
             scales: {
                 r: {
@@ -1005,7 +1007,7 @@ window.__renderRadarChartCanvas = function() {
             plugins: {
                 legend: { display: false },
                 tooltip: {
-                    displayColors: false, // 💡 이전 요청 반영 (0% 중첩 방지 및 깔끔한 출력)
+                    displayColors: false, 
                     callbacks: {
                         title: () => '', 
                         label: (context) => `${context.label} 성취도: ${context.raw}%`
@@ -1015,7 +1017,6 @@ window.__renderRadarChartCanvas = function() {
         }
     });
 
-    // 💡 [추가] 차트 로딩 시, 취약점(최하점) 항목의 세부 패널을 자동으로 띄워주기
     if (labels.length > 0) {
         let lowestIdx = 0;
         let lowestScore = 101;
