@@ -595,7 +595,7 @@ window.__renderGradeSummaryTable = function() {
 };
 
 // =========================================================
-// 💡 [탐구 과목명 통합] 과목명 파편화(생윤 vs 생활과윤리) 방지 로직
+// 💡 [과탐 오류 해결] 로마자(I, II) 자동 변환 및 과탐/사탐 그룹 매칭 강화
 // =========================================================
 window.__loadGradeErrata = async function(examLabel) {
     const container = document.getElementById('grade-errata-area');
@@ -732,9 +732,18 @@ window.__loadGradeErrata = async function(examLabel) {
             const cleanU = rawUnit.replace(/\s+/g, '');
             const cleanB = rawBeh.replace(/\s+/g, ''); 
             
+            // 💡 [핵심 교정] 로마자 변환 및 과탐/사탐 포괄 허용 로직
             const isSubjMatch = (u) => {
                 if (!u.subject) return true;
-                const mSubj = String(u.subject).replace(/\s+/g, '');
+                let mSubj = String(u.subject).replace(/\s+/g, '');
+                
+                // 1. 수퍼베이스에 잘못 올라간 로마자를 1, 2로 강제 번역 (물리학I -> 물리학1)
+                mSubj = mSubj.replace(/II/g, '2').replace(/I/g, '1').replace(/Ⅱ/g, '2').replace(/Ⅰ/g, '1');
+                
+                // 2. DB에 '과탐'이나 '사탐'이라고 뭉뚱그려 적은 경우도 모두 통과시켜줌
+                if (['과탐', '과학탐구'].includes(mSubj) && ['물리학1', '화학1', '생명과학1', '지구과학1', '물리학2', '화학2', '생명과학2', '지구과학2'].includes(normSubj)) return true;
+                if (['사탐', '사회탐구'].includes(mSubj) && ['생활과윤리', '윤리와사상', '한국지리', '세계지리', '동아시아사', '세계사', '정치와법', '경제', '사회문화'].includes(normSubj)) return true;
+
                 const baseNorm = normSubj.replace(/[12ⅠⅡIIV]/g, '').replace(/과학/g, '').replace(/학/g, '');
                 const baseMap = mSubj.replace(/[12ⅠⅡIIV]/g, '').replace(/과학/g, '').replace(/학/g, '');
                 const isTamguMatch = baseNorm && baseMap && (baseNorm.includes(baseMap) || baseMap.includes(baseNorm)) && (normSubj.slice(-1) === mSubj.slice(-1));
@@ -809,33 +818,24 @@ window.__loadGradeErrata = async function(examLabel) {
             const myKorChoice = normalizeSubj(exScoreInfo.kor_choice);
             const myMathChoice = normalizeSubj(exScoreInfo.math_choice);
             
-            // 💡 [핵심 해결 로직] 탭에 표시될 이름을 '표준화된 예쁜 이름'으로 강제 통일
             const getMajorCategory = (s) => {
                 if (['국어', '국어공통', '화법과작문', '언어와매체'].includes(s) || s === myKorChoice) return '국어';
                 if (['수학', '수학공통', '수학1', '수학2', '미적분', '기하', '확률과통계'].includes(s) || s === myMathChoice) return '수학';
                 if (s === '영어') return '영어';
                 
-                // 원본 데이터를 한 번 정제 (생윤 -> 생활과윤리)
                 const normTam1 = normalizeSubj(exScoreInfo.tam1_name);
                 const normTam2 = normalizeSubj(exScoreInfo.tam2_name);
                 
-                // 탭에 보여질 예쁜 이름 매핑 (버튼 텍스트용)
                 const prettyName = (name) => {
                     const map = {
-                        '생활과윤리': '생활과 윤리',
-                        '사회문화': '사회·문화',
-                        '윤리와사상': '윤리와 사상',
-                        '정치와법': '정치와 법',
-                        '한국지리': '한국 지리',
-                        '세계지리': '세계 지리'
+                        '생활과윤리': '생활과 윤리', '사회문화': '사회·문화', '윤리와사상': '윤리와 사상',
+                        '정치와법': '정치와 법', '한국지리': '한국 지리', '세계지리': '세계 지리'
                     };
                     return map[name] || name;
                 };
 
-                // 해당 데이터가 탐구1이나 탐구2에 속하면, 통합된 표준 이름을 반환
                 if (s === normTam1) return prettyName(normTam1);
                 if (s === normTam2) return prettyName(normTam2);
-                
                 return null;
             };
 
