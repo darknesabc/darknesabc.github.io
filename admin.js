@@ -950,9 +950,10 @@ window.__renderRadarChartCanvas = function() {
             plugins: {
                 legend: { display: false },
                 tooltip: {
+                    displayColors: false, // 💡 앞에 붙는 네모난 색상 박스(🟦) 숨기기 (더 깔끔해짐)
                     callbacks: {
-                        title: (tooltipItems) => tooltipItems[0].label,
-                        label: (context) => ` 성취도: ${context.raw}%`
+                        title: () => '', // 💡 겹칠 때 뜨는 대표 타이틀(엉뚱한 단원명) 아예 숨기기
+                        label: (context) => `${context.label} 성취도: ${context.raw}%` // 💡 원하시는 형식으로 출력
                     }
                 }
             }
