@@ -349,7 +349,7 @@ window.__loadStudentDetail = async function(student) {
 };
 
 // =========================================================
-// 💡 4. 성적 추이 (과목별 ON/OFF + 다이나믹 과목명 적용)
+// 💡 4. 성적 추이 (백분위/원점수 & 클래스그룹 컷오프 & 다크 표)
 // =========================================================
 window.__loadGradeTrend = async function(student) {
     const trendContainer = document.getElementById('grade-trend-container');
@@ -377,9 +377,9 @@ window.__loadGradeTrend = async function(student) {
 
         window.__currentGradeMode = 'pct'; 
         window.__currentViewMode = 'graph'; 
-        window.__toggles = { topTotal: false, topChoice: false, topClass: false, topHS: false, topGreen: false, topBlue: false, topMed: false, topSKY: false };
         
-        // 💡 [핵심 추가] 과목별 토글 상태 저장
+        // 💡 [수정] 반별(topClass) 제거, 그룹별 스위치 활성화
+        window.__toggles = { topTotal: false, topChoice: false, topHS: false, topGreen: false, topBlue: false, topMed: false, topSKY: false };
         window.__subjectToggles = { kor: true, math: true, tam1: true, tam2: true, eng: true }; 
 
         window.__renderGradeTrendUI();
@@ -393,17 +393,15 @@ window.__renderGradeTrendUI = function() {
     
     const tglBtn = (key, label) => {
         const isOn = window.__toggles[key];
-        return `<button onclick="window.__toggleCutoff('${key}')" style="border:1px solid ${isOn ? '#3498db' : '#dee2e6'}; padding:5px 12px; border-radius:20px; cursor:pointer; font-size:11px; font-weight:bold; background:${isOn ? '#e8f4f8' : '#fff'}; color:${isOn ? '#2980b9' : '#7f8c8d'}; transition:0.2s;">${label}</button>`;
+        return `<button onclick="window.__toggleCutoff('${key}')" style="border:1px solid ${isOn ? '#3498db' : '#dee2e6'}; padding:5px 12px; border-radius:20px; cursor:pointer; font-size:11px; font-weight:bold; background:${isOn ? '#e8f4f8' : '#fff'}; color:${isOn ? '#2980b9' : '#7f8c8d'}; transition:0.2s;">${label} ${isOn ? 'ON' : 'OFF'}</button>`;
     };
 
-    // 💡 [핵심 추가] 해당 학생의 최근 시험 데이터에서 실제 선택과목명 추출!
     const latestScore = window.__currentStudentScores[window.__currentStudentScores.length - 1] || {};
     const kLabel = latestScore.kor_choice ? `국어(${latestScore.kor_choice})` : '국어(선택)';
     const mLabel = latestScore.math_choice ? `수학(${latestScore.math_choice})` : '수학(선택)';
     const t1Label = latestScore.tam1_name ? `탐구1(${latestScore.tam1_name})` : '탐구1(과목명)';
     const t2Label = latestScore.tam2_name ? `탐구2(${latestScore.tam2_name})` : '탐구2(과목)';
 
-    // 💡 [핵심 추가] 클릭 시 색상이 회색으로 변하는 과목 버튼 스크립트
     const subjBtn = (id, label, color) => {
         const isOn = window.__subjectToggles[id];
         const bg = isOn ? color : '#f1f2f6';
@@ -431,14 +429,13 @@ window.__renderGradeTrendUI = function() {
             </div>
             
             <div style="display:flex; flex-wrap:wrap; gap:8px; margin-bottom:15px; ${window.__currentViewMode==='table' ? 'display:none;' : ''}">
-                ${tglBtn('topTotal', '전체 상위 30% ' + (window.__toggles.topTotal?'ON':'OFF'))}
-                ${tglBtn('topChoice', '선택 상위 30% ' + (window.__toggles.topChoice?'ON':'OFF'))}
-                ${tglBtn('topClass', '반별 상위 30% ' + (window.__toggles.topClass?'ON':'OFF'))}
-                <button style="border:1px solid #dee2e6; padding:5px 12px; border-radius:20px; font-size:11px; color:#bdc3c7; background:#fff; cursor:not-allowed;">HS반 30% OFF</button>
-                <button style="border:1px solid #dee2e6; padding:5px 12px; border-radius:20px; font-size:11px; color:#bdc3c7; background:#fff; cursor:not-allowed;">그린 30% OFF</button>
-                <button style="border:1px solid #dee2e6; padding:5px 12px; border-radius:20px; font-size:11px; color:#bdc3c7; background:#fff; cursor:not-allowed;">블루 30% OFF</button>
-                <button style="border:1px solid #dee2e6; padding:5px 12px; border-radius:20px; font-size:11px; color:#bdc3c7; background:#fff; cursor:not-allowed;">서/의치대 30% OFF</button>
-                <button style="border:1px solid #dee2e6; padding:5px 12px; border-radius:20px; font-size:11px; color:#bdc3c7; background:#fff; cursor:not-allowed;">연고대 30% OFF</button>
+                ${tglBtn('topTotal', '전체 상위 30%')}
+                ${tglBtn('topChoice', '선택 상위 30%')}
+                ${tglBtn('topHS', 'HS반 30%')}
+                ${tglBtn('topGreen', '그린 30%')}
+                ${tglBtn('topBlue', '블루 30%')}
+                ${tglBtn('topMed', '서/의치대 30%')}
+                ${tglBtn('topSKY', '연고대 30%')}
             </div>
 
             <div style="display:flex; gap:8px; margin-bottom:15px; ${window.__currentViewMode==='table' ? 'display:none;' : ''}">
@@ -460,7 +457,6 @@ window.__toggleCutoff = function(key) {
     window.__renderGradeTrendUI();
 };
 
-// 💡 [핵심 추가] 과목 토글 기능 함수
 window.__toggleSubject = function(subjId) {
     window.__subjectToggles[subjId] = !window.__subjectToggles[subjId];
     window.__renderGradeTrendUI();
@@ -478,24 +474,23 @@ window.__renderGradeDisplay = function() {
         return s[`${subj}_raw_total`] !== undefined ? (s[`${subj}_raw_total`] || 0) : (s[`${subj}_raw`] || 0);
     };
 
+    // 💡 [수정] class_group 컬럼을 사용하여 그룹별 컷오프를 완벽하게 필터링
     const getTop30 = (examLabel, subj, valKey, filterMode, myScore) => {
         let pool = window.__allMockScores.filter(s => s.exam_label === examLabel);
         
         if (filterMode === 'topChoice') {
             const choiceKey = subj === 'kor' ? 'kor_choice' : (subj === 'math' ? 'math_choice' : (subj === 'tam1' ? 'tam1_name' : 'tam2_name'));
             pool = pool.filter(s => s[choiceKey] === myScore[choiceKey]);
-        } else if (filterMode === 'topClass') {
-            pool = pool.filter(s => s.class_name === window.__currentStudentClass);
         } else if (filterMode === 'topHS') {
-            pool = pool.filter(s => s.class_name && s.class_name.includes('HS'));
+            pool = pool.filter(s => s.class_group && s.class_group.includes('HS'));
         } else if (filterMode === 'topGreen') {
-            pool = pool.filter(s => s.class_name && s.class_name.includes('그린'));
+            pool = pool.filter(s => s.class_group && s.class_group.includes('그린'));
         } else if (filterMode === 'topBlue') {
-            pool = pool.filter(s => s.class_name && s.class_name.includes('블루'));
+            pool = pool.filter(s => s.class_group && s.class_group.includes('블루'));
         } else if (filterMode === 'topMed') {
-            pool = pool.filter(s => s.class_name && (s.class_name.includes('의치') || s.class_name.includes('서/')));
+            pool = pool.filter(s => s.class_group && (s.class_group.includes('의치') || s.class_group.includes('서/')));
         } else if (filterMode === 'topSKY') {
-            pool = pool.filter(s => s.class_name && s.class_name.includes('연고'));
+            pool = pool.filter(s => s.class_group && s.class_group.includes('연고'));
         }
         
         let vals = pool.map(s => Number(s[valKey]) || 0).filter(v => v > 0).sort((a,b) => b-a);
@@ -521,14 +516,11 @@ window.__renderGradeDisplay = function() {
         const rPt = scores.length === 1 ? 5 : 0;
 
         subjs.forEach(sbj => {
-            // 💡 [핵심 추가] 과목 버튼이 꺼져있으면 그래프에 아예 선을 추가하지 않습니다!
             if (!window.__subjectToggles[sbj.id]) return;
-
             if(sbj.id === 'eng' && mode !== 'raw') return; 
             
             const valKey = mode === 'pct' ? `${sbj.id}_exp_pct` : (sbj.id.startsWith('tam') || sbj.id==='eng' ? `${sbj.id}_raw` : `${sbj.id}_raw_total`);
             
-            // 1. 내 성적 (실선)
             datasets.push({
                 label: sbj.name,
                 data: scores.map(s => sbj.id==='eng' ? (s.eng_raw||0) : getVal(s, sbj.id)),
@@ -536,7 +528,6 @@ window.__renderGradeDisplay = function() {
                 tension: 0.1, borderWidth: 2, pointRadius: 4, fill: false
             });
 
-            // 2. 컷오프 성적 (점선)
             if (sbj.id !== 'eng') {
                 const addLine = (key, label, dashPattern, color) => {
                     if (toggles[key]) {
@@ -555,7 +546,6 @@ window.__renderGradeDisplay = function() {
                 
                 addLine('topTotal', '전체상위30%', [5, 5], colors[sbj.id]);
                 addLine('topChoice', '선택상위30%', [3, 3], '#9b59b6');
-                addLine('topClass', '반별상위30%', [2, 4], '#1abc9c');
                 addLine('topHS', 'HS반 30%', [4, 2], '#e67e22');
                 addLine('topGreen', '그린 30%', [4, 2], '#2ecc71');
                 addLine('topBlue', '블루 30%', [4, 2], '#3498db');
@@ -570,12 +560,15 @@ window.__renderGradeDisplay = function() {
             options: {
                 responsive: true, maintainAspectRatio: false,
                 scales: { y: { beginAtZero: mode==='pct', max: mode==='pct'?100:null, grid: { color: '#f1f2f6' } }, x: { grid: { display: false } } },
-                plugins: { legend: { display: false }, tooltip: { mode: 'index', intersect: false } }
+                // 💡 [수정] 툴팁 배경을 어둡게, 글씨를 하얗게 만들어서 확실하게 보이게 수정
+                plugins: { 
+                    legend: { display: false }, 
+                    tooltip: { mode: 'index', intersect: false, backgroundColor: 'rgba(0,0,0,0.8)', titleColor: '#fff', bodyColor: '#fff' } 
+                }
             }
         });
 
     } else {
-        // 표(Table) 형식 렌더링
         const v = (val) => val === null || val === undefined ? '-' : val;
         const formatCell = (s, subj) => {
             const val = getVal(s, subj);
