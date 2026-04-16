@@ -5,6 +5,9 @@ const _supabase = supabase.createClient(SB_URL, SB_KEY);
 let loggedInManager = localStorage.getItem('managerName');
 let loggedInRole = localStorage.getItem('managerRole'); 
 
+// 💡 글로벌 상태 변수 (파일 최상단이나 init 함수 바로 위에 두셔도 됩니다)
+window.__currentSortMode = 'seat'; // 기본값: 자리순
+
 const EDU_SCORE_MAP = {
     "전자기기 부정사용": 10, "핸드폰 무단사용": 7, "해드폰 미제출": 7, "무단결석": 7, "무단이탈": 7,
     "타층/타관 무단출입": 5, "원내대화": 5, "무단지각": 5, "모의고사 무단 1회 미응시": 5,
@@ -60,6 +63,9 @@ function getCurrentPeriod() {
 // =========================================================
 // 2. 메인 화면 초기화 (바둑판 카드)
 // =========================================================
+// =========================================================
+// 2. 메인 화면 초기화 (바둑판 카드 + 정렬 스위치 + 접기 기능 + 설문 교시 필터 적용)
+// =========================================================
 async function init() {
     if (!loggedInManager) {
         document.getElementById('login-section').style.display = 'flex';
@@ -74,18 +80,27 @@ async function init() {
     const summary = document.getElementById('status-summary');
 
     try {
-        // 한국 시간대(로컬 시간)에 맞춰 오늘 날짜 계산
         const now = new Date();
         const today = new Date(now.getTime() - (now.getTimezoneOffset() * 60000)).toISOString().split('T')[0];
-        
         const currentP = getCurrentPeriod();
-        summary.innerText = `현재 ${currentP}교시 현황판 (${today})`;
+
+        // 💡 [UI 개선] 정렬 스위치 & 접기/펴기 버튼 렌더링
+        summary.innerHTML = `
+            <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:10px; margin-bottom:15px;">
+                <div style="font-size:18px; font-weight:bold; color:#2c3e50;">현재 ${currentP}교시 현황판 (${today})</div>
+                <div style="display:flex; gap:5px; background:#eee; padding:4px; border-radius:8px;">
+                    <button onclick="window.__changeSort('seat')" style="padding:6px 15px; border-radius:6px; border:none; cursor:pointer; font-size:13px; font-weight:bold; transition:0.2s; ${window.__currentSortMode==='seat'?'background:#2c3e50; color:white;':'background:transparent; color:#7f8c8d;'}">자리순</button>
+                    <button onclick="window.__changeSort('name')" style="padding:6px 15px; border-radius:6px; border:none; cursor:pointer; font-size:13px; font-weight:bold; transition:0.2s; ${window.__currentSortMode==='name'?'background:#2c3e50; color:white;':'background:transparent; color:#7f8c8d;'}">이름순</button>
+                    <button id="dashboard-fold-btn" onclick="window.__toggleDashboard()" style="padding:6px 15px; border-radius:6px; border:none; cursor:pointer; font-size:13px; font-weight:bold; transition:0.2s; background:#7f8c8d; color:white; margin-left:10px;">바둑판 접기 ⬆</button>
+                </div>
+            </div>
+        `;
 
         let query = _supabase.from('student').select('*');
         if (loggedInRole !== 'super') query = query.eq('teacher_name', loggedInManager);
 
         const [resStudents, resAtt, resSleep, resMove, resEdu, resSurvey] = await Promise.all([
-            query.order('seat_no'),
+            query,
             _supabase.from('attendance').select('*').eq('attendance_date', today).eq('period', currentP),
             _supabase.from('sleep_log').select('*').eq('sleep_date', today),
             _supabase.from('move_log').select('*').eq('move_date', today).order('move_time', { ascending: false }),
@@ -93,17 +108,45 @@ async function init() {
             _supabase.from('survey_log').select('*').eq('survey_date', today)
         ]);
 
-        const students = resStudents.data.filter(s => s.name && s.name !== '배정금지');
+        let students = resStudents.data.filter(s => s.name && s.name !== '배정금지');
+
+        // 💡 [기능 추가] 이름순/자리순 정렬 로직 적용
+        if (window.__currentSortMode === 'name') {
+            students.sort((a, b) => a.name.localeCompare(b.name, 'ko'));
+        } else {
+            students.sort((a, b) => a.seat_no.localeCompare(b.seat_no, undefined, {numeric: true}));
+        }
+
         window.__dashboardItems = students.map(s => ({ seat: s.seat_no, studentId: s.student_id, name: s.name, teacher: s.teacher_name, className: s.class_name }));
 
         dashboard.innerHTML = '';
+        
+        const curPInt = parseInt(currentP, 10); // 현재 교시 숫자 변환
+
         students.forEach(s => {
             const att = resAtt.data.find(a => a.student_id === s.student_id);
             const move = resMove.data.find(ml => ml.student_id === s.student_id);
-            const isOut = move && (move.return_period === "복귀안함" || parseInt(move.return_period) >= parseInt(currentP));
+            const isOut = move && (move.return_period === "복귀안함" || parseInt(move.return_period) >= curPInt);
             const validMove = (isOut && move.reason !== "화장실/정수기") ? move.reason : "";
-            const survey = resSurvey.data.find(sv => sv.student_id === s.student_id);
-            const surveyReason = survey ? `[설문] ${survey.reason.split('(')[0].trim()}` : "";
+            
+            // 💡 [버그 픽스] 설문 일정이 '현재 교시'에 해당하는지 시간표 계산 추가! (송해나 학생 해결)
+            let surveyReason = "";
+            const surveysForStudent = resSurvey.data.filter(sv => sv.student_id === s.student_id);
+            for (let sv of surveysForStudent) {
+                const timeType = sv.arrival_time_type || "";
+                let startP = 0, endP = 0;
+                
+                if (timeType.includes("결석")) { startP = 1; endP = 8; }
+                else if (timeType.includes("오전")) { startP = 1; endP = 3; } // 오전은 3교시까지만!
+                else if (timeType.includes("오후")) { startP = 4; endP = 6; }
+                else if (timeType.includes("야간") || timeType.includes("저녁")) { startP = 7; endP = 8; }
+                
+                // 현재 교시(curPInt)가 설문 적용 시간(startP ~ endP) 안에 있을 때만 표시
+                if (curPInt >= startP && curPInt <= endP) {
+                    surveyReason = `[설문] ${sv.reason.split('(')[0].trim()}`;
+                    break;
+                }
+            }
             
             const todaySleep = resSleep.data.filter(sl => sl.student_id === s.student_id).reduce((acc, cur) => acc + (cur.count || 1), 0);
             const totalEduScore = resEdu.data.filter(el => el.student_id === s.student_id).reduce((acc, cur) => acc + (EDU_SCORE_MAP[cur.reason] || 0), 0);
@@ -128,12 +171,34 @@ async function init() {
                         ${todaySleep > 0 ? `<span style="background:#ffeaa7; padding:1px 4px; border-radius:3px; font-size:10px;">💤${todaySleep}</span>` : ''}
                         ${totalEduScore > 0 ? `<span style="background:#fab1a0; padding:1px 4px; border-radius:3px; font-size:10px;">⭐${totalEduScore}</span>` : ''}
                     </div>
-                    ${move && move.reason === "화장실/정수기" && isOut ? `<div style="font-size:10px; color:#3498db; margin-top:3px;">🚰 화장실</div>` : ''}
                 </div>
             `;
         });
     } catch (err) { summary.innerText = "에러: " + err.message; }
 }
+
+// 💡 [기능 추가] 정렬 변경 버튼 헬퍼 함수
+window.__changeSort = function(mode) { 
+    window.__currentSortMode = mode; 
+    init(); 
+};
+
+// 💡 [기능 추가] 바둑판 접기/펴기 버튼 헬퍼 함수 (버튼 이름 연동 수정)
+window.__toggleDashboard = function() {
+    const dashboard = document.getElementById('dashboard');
+    const mainFoldBtn = document.getElementById('dashboard-fold-btn'); // 메인 화면 버튼
+    const detailFoldBtn = document.getElementById('fold-button'); // 상세 화면 버튼
+
+    if (dashboard.style.display === 'none') {
+        dashboard.style.display = 'grid';
+        if (mainFoldBtn) { mainFoldBtn.innerText = '바둑판 접기 ⬆'; mainFoldBtn.style.background = '#7f8c8d'; }
+        if (detailFoldBtn) { detailFoldBtn.innerText = '바둑판 접기 ⬆'; detailFoldBtn.style.background = '#2c3e50'; }
+    } else {
+        dashboard.style.display = 'none';
+        if (mainFoldBtn) { mainFoldBtn.innerText = '바둑판 펴기 ⬇'; mainFoldBtn.style.background = '#27ae60'; }
+        if (detailFoldBtn) { detailFoldBtn.innerText = '바둑판 펴기 ⬇'; detailFoldBtn.style.background = '#27ae60'; }
+    }
+};
 
 // =========================================================
 // 3. 학생 상세 페이지 로드 (요약 카드 + 성적 요약 + 정오표 + 성적 추이)
@@ -188,8 +253,8 @@ window.__loadStudentDetail = async function(student) {
             const timeType = sv.arrival_time_type || ""; let startP = 0, endP = 0;
             if (timeType.includes("결석")) { startP = 1; endP = 8; }
             else if (timeType.includes("오전")) { startP = 1; endP = 3; }
-            else if (timeType.includes("오후")) { startP = 4; endP = 6; }
-            else if (timeType.includes("야간") || timeType.includes("저녁")) { startP = 7; endP = 8; }
+            else if (timeType.includes("오후")) { startP = 1; endP = 6; }
+            else if (timeType.includes("야간") || timeType.includes("저녁")) { startP = 1; endP = 8; }
             if (startP > 0) {
                 if (!schedMap[dStr]) schedMap[dStr] = {};
                 for(let p=startP; p<=endP; p++) schedMap[dStr][p] = `[설문] ${reason}`;
@@ -1196,7 +1261,7 @@ window.__openDetailModal = async function(type, studentId, studentName) {
                 if (timeType.includes("결석")) { startP = 1; endP = 8; }
                 else if (timeType.includes("오전")) { startP = 1; endP = 3; }
                 else if (timeType.includes("오후")) { startP = 4; endP = 6; }
-                else if (timeType.includes("야간") || timeType.includes("저녁")) { startP = 7; endP = 8; }
+                else if (timeType.includes("야간") || timeType.includes("저녁")) { startP = 1; endP = 7; }
                 if (startP > 0) {
                     if (!schedMap[dStr]) schedMap[dStr] = {};
                     for(let p=startP; p<=endP; p++) schedMap[dStr][p] = `[설문] ${reason}`;
