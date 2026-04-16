@@ -478,7 +478,7 @@ window.__renderGradeSummaryTable = function() {
 };
 
 // =========================================================
-// 💡 [NEW] 정오표 데이터 호출 및 렌더링 로직 (1000개 제한 돌파 페이징 적용)
+// 💡 [NEW] 정오표 데이터 호출 및 렌더링 로직 (공통합산 & 과목명 정규화 패치)
 // =========================================================
 window.__loadGradeErrata = async function(examLabel) {
     const container = document.getElementById('grade-errata-area');
@@ -495,7 +495,6 @@ window.__loadGradeErrata = async function(examLabel) {
     const studentId = String(scoreInfo.student_id || "").trim();
 
     try {
-        // 💡 [핵심 픽스] 수퍼베이스의 1000개 제한을 뚫기 위해 반복문(while)으로 끝까지 가져옵니다!
         let allErrata = [];
         let fetchMore = true;
         let startIdx = 0;
@@ -508,99 +507,128 @@ window.__loadGradeErrata = async function(examLabel) {
                 .eq('exam_label', examLabel)
                 .range(startIdx, startIdx + limitSize - 1);
             
-            if (error) {
-                console.error("정오표 페이징 로드 에러:", error);
-                break;
-            }
+            if (error) break;
             
             if (data && data.length > 0) {
                 allErrata = allErrata.concat(data);
                 startIdx += limitSize;
-                // 가져온 데이터가 1000개 미만이면 더 이상 가져올 게 없으므로 종료
                 if (data.length < limitSize) fetchMore = false; 
             } else {
                 fetchMore = false;
             }
         }
 
-        // 문항 정보는 1000개가 넘지 않으므로 한 번에 가져옵니다.
         const { data: qInfos, error: qError } = await _supabase
             .from('mock_question_info')
             .select('*')
             .eq('exam_label', examLabel);
-            
-        if (qError) console.error("문항정보 로드 에러:", qError);
 
-        console.log(`=======================================`);
-        console.log(`🎯 [정오표 로드] 시험명: "${examLabel}" / 찾을학번: "${studentId}"`);
-        console.log(`📥 [DB 응답] 전체 정오표 데이터 개수: ${allErrata.length}개 (페이징 돌파 성공!)`);
-        
         if (allErrata.length === 0) {
             container.innerHTML = '<div style="text-align:center; padding:30px; color:#e74c3c; border:1px solid #fdf3f2; border-radius:8px;">DB에서 데이터를 가져오지 못했습니다.</div>';
             return;
         }
 
-        // 강력한 매칭 (컬럼이든 값이든 학번이 일치하면 찾아냄)
         const myErrata = allErrata.filter(e => {
             const isMatchColumn = String(e.student_id || "").trim() === studentId;
             const isMatchAnywhere = Object.values(e).some(val => String(val).trim() === studentId);
             return isMatchColumn || isMatchAnywhere;
         });
 
-        console.log(`🔍 [매칭 결과] 이 학생(${studentId})의 정오표 개수: ${myErrata.length}개`);
-        console.log(`=======================================`);
-
         if (myErrata.length === 0) {
             container.innerHTML = '<div style="text-align:center; padding:30px; color:#95a5a6; border:1px solid #f1f2f6; border-radius:8px;">이 시험의 정오표(O/X) 데이터가 아직 등록되지 않았습니다.<br><span style="font-size:12px; color:#bdc3c7;">(엑셀 업로드 내역을 확인해 주세요.)</span></div>';
             return;
         }
 
-        // 1. 코호트 분석 (전체 정답률 계산)
+        // 💡 [핵심 픽스 1] 과목명 찰떡 매칭 사전 (생윤=생활과윤리, 물1=물리학1 등 모두 통일)
+        const normalizeSubj = (name) => {
+            let s = String(name || "").trim().replace(/\s+/g, '').replace(/·/g, '');
+            if (s.includes('화법') || s.includes('화작')) return '화법과작문';
+            if (s.includes('언어') || s.includes('언매')) return '언어와매체';
+            if (s.includes('미적')) return '미적분';
+            if (s.includes('확률') || s.includes('확통')) return '확률과통계';
+            if (s.includes('기하')) return '기하';
+            if (s.includes('생활') || s.includes('생윤')) return '생활과윤리';
+            if (s.includes('윤리') && s.includes('사상') || s.includes('윤사')) return '윤리와사상';
+            if (s.includes('한국지리') || s.includes('한지')) return '한국지리';
+            if (s.includes('세계지리') || s.includes('세지')) return '세계지리';
+            if (s.includes('동아시아') || s.includes('동사')) return '동아시아사';
+            if (s.includes('세계사')) return '세계사';
+            if (s.includes('정치') || s.includes('정법')) return '정치와법';
+            if (s.includes('경제')) return '경제';
+            if (s.includes('사회') && s.includes('문화') || s.includes('사문')) return '사회문화';
+            if (s.includes('물리1') || s.includes('물리학1') || s.includes('물리학I') || s === '물1') return '물리학1';
+            if (s.includes('화학1') || s.includes('화학I') || s === '화1') return '화학1';
+            if (s.includes('생명1') || s.includes('생명과학1') || s.includes('생명과학I') || s === '생1') return '생명과학1';
+            if (s.includes('지구1') || s.includes('지구과학1') || s.includes('지구과학I') || s === '지1') return '지구과학1';
+            if (s.includes('물리2') || s.includes('물리학2') || s.includes('물리학II') || s === '물2') return '물리학2';
+            if (s.includes('화학2') || s.includes('화학II') || s === '화2') return '화학2';
+            if (s.includes('생명2') || s.includes('생명과학2') || s.includes('생명과학II') || s === '생2') return '생명과학2';
+            if (s.includes('지구2') || s.includes('지구과학2') || s.includes('지구과학II') || s === '지2') return '지구과학2';
+            if (s.includes('영어')) return '영어';
+            if (s.includes('국어')) return '국어';
+            if (s.includes('수학')) return '수학';
+            return s;
+        };
+
+        // 💡 [핵심 픽스 2] 공통문항 전교생 합산 통계 생성
         const stats = {}; 
-        allErrata.forEach(row => {
-            const subj = String(row.subject || "").trim().replace(/\s+/g, '');
-            if (!stats[subj]) stats[subj] = {};
+        const addToStats = (targetKey, rowData) => {
+            if (!stats[targetKey]) stats[targetKey] = {};
             for (let i = 1; i <= 45; i++) {
-                const val = String(row[`q${i}`] || "").trim();
-                if (val === 'O' || val === 'X' || val === '○' || val === '×' || val === 'o' || val === 'x') {
-                    if (!stats[subj][i]) stats[subj][i] = { o: 0, total: 0 };
-                    stats[subj][i].total++;
-                    if (val === 'O' || val === '○' || val === 'o') stats[subj][i].o++;
+                const val = String(rowData[`q${i}`] || "").trim();
+                if (['O', 'X', '○', '×', 'o', 'x'].includes(val)) {
+                    if (!stats[targetKey][i]) stats[targetKey][i] = { o: 0, total: 0 };
+                    stats[targetKey][i].total++;
+                    if (['O', '○', 'o'].includes(val)) stats[targetKey][i].o++;
                 }
+            }
+        };
+
+        allErrata.forEach(row => {
+            const normSubj = normalizeSubj(row.subject);
+            // 선택과목별(사문, 생윤 등) 고유 통계 적립
+            addToStats(normSubj, row);
+
+            // 국어공통, 수학공통 통계 별도 합산 적립 (화작, 언매 모두 '국어공통'에 쌓임)
+            if (normSubj === '화법과작문' || normSubj === '언어와매체' || normSubj === '국어') {
+                addToStats('국어공통', row);
+            }
+            if (normSubj === '미적분' || normSubj === '기하' || normSubj === '확률과통계' || normSubj === '수학') {
+                addToStats('수학공통', row);
             }
         });
 
-        // 2. 출제 영역 정보 매핑
+        // 💡 [핵심 픽스 3] 출제 영역 매칭 시에도 과목명 정규화 적용
         const qInfoMap = {}; 
-        qInfos.forEach(q => {
-            const subj = String(q.subject || "").trim().replace(/\s+/g, '');
-            if (!qInfoMap[subj]) qInfoMap[subj] = {};
+        (qInfos || []).forEach(q => {
+            const normSubj = normalizeSubj(q.subject);
+            if (!qInfoMap[normSubj]) qInfoMap[normSubj] = {};
             const unit = q.unit_name || '';
             const beh = q.behavior_domain || q.sub_unit || '';
             let label = unit;
             if (beh && beh !== '기타' && beh !== '-') {
                 label += ` <span style="font-size:11px; color:#95a5a6; border:1px solid #ecf0f1; padding:2px 6px; border-radius:4px; margin-left:6px; background:#f8f9fa;">${beh}</span>`;
             }
-            qInfoMap[subj][q.question_num] = label;
+            qInfoMap[normSubj][q.question_num] = label;
         });
 
-        // 3. 내 과목 찾기 헬퍼
+        // 3. 내 과목 찾기 (정규화된 과목명으로 완벽 스캔)
         const findRow = (subjHint, choiceName) => {
-            const cName = String(choiceName || "").replace(/\s+/g, '');
+            const normChoice = normalizeSubj(choiceName);
             return myErrata.find(e => {
-                const eSubj = String(e.subject || "").replace(/\s+/g, '');
-                return eSubj === cName || eSubj.includes(subjHint) || (cName && eSubj.includes(cName.slice(0,2)));
+                const normE = normalizeSubj(e.subject);
+                return normE === normChoice || normE.includes(normalizeSubj(subjHint));
             });
         };
         
-        const korRow = findRow('국어', scoreInfo.kor_choice) || myErrata.find(e => { const s = String(e.subject||"").replace(/\s+/g, ''); return s.includes('언어') || s.includes('화법'); });
-        const mathRow = findRow('수학', scoreInfo.math_choice) || myErrata.find(e => { const s = String(e.subject||"").replace(/\s+/g, ''); return s.includes('미적') || s.includes('기하') || s.includes('확률'); });
+        const korRow = findRow('국어', scoreInfo.kor_choice) || myErrata.find(e => ['화법과작문', '언어와매체', '국어'].includes(normalizeSubj(e.subject)));
+        const mathRow = findRow('수학', scoreInfo.math_choice) || myErrata.find(e => ['미적분', '기하', '확률과통계', '수학'].includes(normalizeSubj(e.subject)));
         const engRow = findRow('영어', '영어');
         const tam1Row = findRow('탐구', scoreInfo.tam1_name) || findRow('', scoreInfo.tam1_name);
         const tam2Row = findRow('탐구', scoreInfo.tam2_name) || findRow('', scoreInfo.tam2_name);
 
         // 4. 섹션별 아코디언 HTML 렌더러
-        const renderSection = (title, subtitle, qStart, qEnd, errataRow, subjKeyForInfo) => {
+        const renderSection = (title, subtitle, qStart, qEnd, errataRow, statKey, infoKey) => {
             if (!errataRow) return '';
             
             let hasData = false;
@@ -609,10 +637,7 @@ window.__loadGradeErrata = async function(examLabel) {
             }
             if (!hasData) return '';
 
-            const subj = String(errataRow.subject || "").trim().replace(/\s+/g, '');
-            const cleanSubjKey = String(subjKeyForInfo || "").trim().replace(/\s+/g, '');
             let rowsHtml = '';
-            
             for (let i = qStart; i <= qEnd; i++) {
                 const ox = String(errataRow[`q${i}`] || "").trim();
                 if (!ox) continue;
@@ -621,15 +646,20 @@ window.__loadGradeErrata = async function(examLabel) {
                 const oxColor = isO ? '#3498db' : '#e74c3c';
                 const oxBg = isO ? '#fff' : '#fdf3f2';
                 
-                const stat = (stats[subj] && stats[subj][i]) ? stats[subj][i] : { o: 0, total: 0 };
+                // 정규화된 키값(statKey)으로 정확한 통계 추출
+                const stat = (stats[statKey] && stats[statKey][i]) ? stats[statKey][i] : { o: 0, total: 0 };
                 const rate = stat.total > 0 ? Math.round((stat.o / stat.total) * 1000) / 10 : 0;
                 const barColor = rate >= 80 ? '#2ecc71' : (rate >= 50 ? '#f1c40f' : '#e74c3c');
                 
-                let qInfo = '';
-                if (qInfoMap[cleanSubjKey] && qInfoMap[cleanSubjKey][i]) qInfo = qInfoMap[cleanSubjKey][i];
-                else if (qInfoMap['국어'] && qInfoMap['국어'][i] && cleanSubjKey.includes('국어')) qInfo = qInfoMap['국어'][i];
-                else if (qInfoMap['수학'] && qInfoMap['수학'][i] && cleanSubjKey.includes('수학')) qInfo = qInfoMap['수학'][i];
-                else if (qInfoMap[subj] && qInfoMap[subj][i]) qInfo = qInfoMap[subj][i];
+                // 단원 정보 추출 (공통과목일 경우 기본 '국어/수학' 테이블도 스캔)
+                let qInfo = '-';
+                if (qInfoMap[infoKey] && qInfoMap[infoKey][i]) {
+                    qInfo = qInfoMap[infoKey][i];
+                } else if ((infoKey === '국어공통' || infoKey === '화법과작문' || infoKey === '언어와매체') && qInfoMap['국어'] && qInfoMap['국어'][i]) {
+                    qInfo = qInfoMap['국어'][i];
+                } else if ((infoKey === '수학공통' || infoKey === '미적분' || infoKey === '기하' || infoKey === '확률과통계') && qInfoMap['수학'] && qInfoMap['수학'][i]) {
+                    qInfo = qInfoMap['수학'][i];
+                }
 
                 rowsHtml += `
                     <tr style="background:${oxBg}; border-bottom: 1px solid #f1f2f6;">
@@ -678,18 +708,30 @@ window.__loadGradeErrata = async function(examLabel) {
             `;
         };
 
-        // 5. 최종 렌더링 조립
+        // 5. 최종 렌더링 조립 (인자로 '통계Key'와 '문항정보Key'를 정확히 분리 전달)
         let html = '';
-        html += renderSection('국어 공통', '문항 1~34 ▼', 1, 34, korRow, '국어');
-        if (scoreInfo.kor_choice) html += renderSection('국어 선택', `문항 35~45 · ${scoreInfo.kor_choice} ▼`, 35, 45, korRow, scoreInfo.kor_choice);
+        html += renderSection('국어 공통', '문항 1~34 ▼', 1, 34, korRow, '국어공통', '국어공통');
+        if (scoreInfo.kor_choice) {
+            const normChoice = normalizeSubj(scoreInfo.kor_choice);
+            html += renderSection('국어 선택', `문항 35~45 · ${scoreInfo.kor_choice} ▼`, 35, 45, korRow, normChoice, normChoice);
+        }
         
-        html += renderSection('수학 공통', '문항 1~22 ▼', 1, 22, mathRow, '수학');
-        if (scoreInfo.math_choice) html += renderSection('수학 선택', `문항 23~30 · ${scoreInfo.math_choice} ▼`, 23, 30, mathRow, scoreInfo.math_choice);
+        html += renderSection('수학 공통', '문항 1~22 ▼', 1, 22, mathRow, '수학공통', '수학공통');
+        if (scoreInfo.math_choice) {
+            const normChoice = normalizeSubj(scoreInfo.math_choice);
+            html += renderSection('수학 선택', `문항 23~30 · ${scoreInfo.math_choice} ▼`, 23, 30, mathRow, normChoice, normChoice);
+        }
         
-        html += renderSection('영어', '문항 1~45 ▼', 1, 45, engRow, '영어');
+        html += renderSection('영어', '문항 1~45 ▼', 1, 45, engRow, '영어', '영어');
         
-        if (scoreInfo.tam1_name) html += renderSection(`탐구 (${scoreInfo.tam1_name})`, '문항 1~20 ▼', 1, 20, tam1Row, scoreInfo.tam1_name);
-        if (scoreInfo.tam2_name) html += renderSection(`탐구 (${scoreInfo.tam2_name})`, '문항 1~20 ▼', 1, 20, tam2Row, scoreInfo.tam2_name);
+        if (scoreInfo.tam1_name) {
+            const normTam1 = normalizeSubj(scoreInfo.tam1_name);
+            html += renderSection(`탐구 (${scoreInfo.tam1_name})`, '문항 1~20 ▼', 1, 20, tam1Row, normTam1, normTam1);
+        }
+        if (scoreInfo.tam2_name) {
+            const normTam2 = normalizeSubj(scoreInfo.tam2_name);
+            html += renderSection(`탐구 (${scoreInfo.tam2_name})`, '문항 1~20 ▼', 1, 20, tam2Row, normTam2, normTam2);
+        }
         
         container.innerHTML = html || '<div style="text-align:center; padding:20px; color:#7f8c8d;">해당 시험의 정오표 데이터가 없습니다.</div>';
 
