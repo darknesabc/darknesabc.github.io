@@ -471,28 +471,97 @@ window.__changeSummaryExam = function(examLabel) {
     window.__loadGradeErrata(examLabel);
 };
 
+// =========================================================
+// 💡 [최종 표준화] 성적 요약 테이블 (과목명 표준화 및 디자인 통일)
+// =========================================================
 window.__renderGradeSummaryTable = function() {
     const area = document.getElementById('grade-summary-table-area');
     const score = window.__currentStudentScores.find(s => s.exam_label === window.__currentSummaryExam) || {};
-    const v = (val) => val === null || val === undefined || val === "" ? '-' : val;
+    
+    // 💡 [도우미 1] 줄임말 과목명을 표준 명칭으로 변경
+    const stdName = (n) => {
+        if (!n || n === '-' || n === 'null') return '-';
+        let s = String(n).trim();
+        const map = {
+            '언매': '언어와 매체', '화작': '화법과 작문',
+            '확통': '확률과 통계', '미적': '미적분',
+            '생윤': '생활과 윤리', '윤사': '윤리와 사상',
+            '한지': '한국 지리', '세지': '세계 지리',
+            '동사': '동아시아사', '정법': '정치와 법',
+            '사문': '사회 문화', '물1': '물리학1',
+            '화1': '화학1', '생1': '생명과학1', '지1': '지구과학1',
+            '지학1': '지구과학1', '생물1': '생명과학1'
+        };
+        return map[s] || s;
+    };
+
+    // 💡 [도우미 2] 값이 0이거나 없을 때 하이픈(-) 처리
+    const v = (val) => {
+        if (val === null || val === undefined || val === "" || val === 0 || val === "0") return '-';
+        return val;
+    };
+
     area.innerHTML = `
         <div style="overflow-x:auto; border-radius:8px; border:1px solid #dee2e6;">
             <style>
-                .sum-table { width:100%; border-collapse:collapse; font-size:13px; text-align:center; color:#2c3e50; min-width:700px; background:#fff; }
-                .sum-table th, .sum-table td { border-bottom:1px solid #ecf0f1; padding:12px 10px; }
-                .sum-table th { color:#7f8c8d; background:#fbfbfc; border-bottom:2px solid #dee2e6; }
-                .sum-table td.header-col { font-weight:bold; color:#7f8c8d; background:#fbfbfc; border-right:1px solid #ecf0f1; width:100px; text-align:left; padding-left:20px; }
-                .sum-table td { font-weight:bold; }
+                .sum-table { width:100%; border-collapse:collapse; font-size:13px; text-align:center; color:#2c3e50; min-width:750px; background:#fff; }
+                .sum-table th, .sum-table td { border-bottom:1px solid #ecf0f1; padding:12px 10px; height: 45px; }
+                .sum-table th { color:#7f8c8d; background:#fbfbfc; border-bottom:2px solid #dee2e6; font-weight:bold; }
+                .sum-table td.header-col { font-weight:bold; color:#7f8c8d; background:#fbfbfc; border-right:1px solid #ecf0f1; width:110px; text-align:left; padding-left:20px; }
+                .sum-table td { font-weight:bold; font-size: 14px; }
                 .sum-kor { color:#3498db; } .sum-math { color:#e74c3c; } .sum-tam1 { color:#27ae60; } .sum-tam2 { color:#f39c12; }
+                .sum-eng { color:#9b59b6; }
             </style>
             <table class="sum-table">
-                <thead><tr><th>과목</th><th>국어</th><th>수학</th><th>영어</th><th>한국사</th><th>탐구1</th><th>탐구2</th></tr></thead>
+                <thead>
+                    <tr><th>과목</th><th>국어</th><th>수학</th><th>영어</th><th>한국사</th><th>탐구1</th><th>탐구2</th></tr>
+                </thead>
                 <tbody>
-                    <tr><td class="header-col">선택과목</td><td class="sum-kor">${v(score.kor_choice)}</td><td class="sum-math">${v(score.math_choice)}</td><td>-</td><td>-</td><td class="sum-tam1">${v(score.tam1_name)}</td><td class="sum-tam2">${v(score.tam2_name)}</td></tr>
-                    <tr><td class="header-col">원점수</td><td>${v(score.kor_raw_total)}</td><td>${v(score.math_raw_total)}</td><td>${v(score.eng_raw)}</td><td>${v(score.hist_raw)}</td><td>${v(score.tam1_raw)}</td><td>${v(score.tam2_raw)}</td></tr>
-                    <tr><td class="header-col">표준점수</td><td>${v(score.kor_exp_std)}</td><td>${v(score.math_exp_std)}</td><td>-</td><td>-</td><td>${v(score.tam1_exp_std)}</td><td>${v(score.tam2_exp_std)}</td></tr>
-                    <tr><td class="header-col">백분위</td><td class="sum-kor">${v(score.kor_exp_pct)}</td><td class="sum-math">${v(score.math_exp_pct)}</td><td>-</td><td>-</td><td class="sum-tam1">${v(score.tam1_exp_pct)}</td><td class="sum-tam2">${v(score.tam2_exp_pct)}</td></tr>
-                    <tr><td class="header-col">등급</td><td>${v(score.kor_exp_grade)}</td><td>${v(score.math_exp_grade)}</td><td style="color:#9b59b6;">${v(score.eng_grade)}</td><td>${v(score.hist_grade || score.hist_exp_grade)}</td><td>${v(score.tam1_exp_grade)}</td><td>${v(score.tam2_exp_grade)}</td></tr>
+                    <tr>
+                        <td class="header-col">선택과목</td>
+                        <td class="sum-kor">${stdName(score.kor_choice)}</td>
+                        <td class="sum-math">${stdName(score.math_choice)}</td>
+                        <td>-</td>
+                        <td>-</td>
+                        <td class="sum-tam1">${stdName(score.tam1_name)}</td>
+                        <td class="sum-tam2">${stdName(score.tam2_name)}</td>
+                    </tr>
+                    <tr>
+                        <td class="header-col">원점수</td>
+                        <td>${v(score.kor_raw_total)}</td>
+                        <td>${v(score.math_raw_total)}</td>
+                        <td>${v(score.eng_raw)}</td>
+                        <td>${v(score.hist_raw)}</td>
+                        <td>${v(score.tam1_raw)}</td>
+                        <td>${v(score.tam2_raw)}</td>
+                    </tr>
+                    <tr>
+                        <td class="header-col">표준점수</td>
+                        <td>${v(score.kor_exp_std)}</td>
+                        <td>${v(score.math_exp_std)}</td>
+                        <td>-</td>
+                        <td>-</td>
+                        <td>${v(score.tam1_exp_std)}</td>
+                        <td>${v(score.tam2_exp_std)}</td>
+                    </tr>
+                    <tr>
+                        <td class="header-col">백분위</td>
+                        <td class="sum-kor">${v(score.kor_exp_pct)}</td>
+                        <td class="sum-math">${v(score.math_exp_pct)}</td>
+                        <td>-</td>
+                        <td>-</td>
+                        <td class="sum-tam1">${v(score.tam1_exp_pct)}</td>
+                        <td class="sum-tam2">${v(score.tam2_exp_pct)}</td>
+                    </tr>
+                    <tr>
+                        <td class="header-col">등급</td>
+                        <td>${v(score.kor_exp_grade)}</td>
+                        <td>${v(score.math_exp_grade)}</td>
+                        <td class="sum-eng">${v(score.eng_grade)}</td>
+                        <td>${v(score.hist_grade || score.hist_exp_grade)}</td>
+                        <td>${v(score.tam1_exp_grade)}</td>
+                        <td>${v(score.tam2_exp_grade)}</td>
+                    </tr>
                 </tbody>
             </table>
         </div>
