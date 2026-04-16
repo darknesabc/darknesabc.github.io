@@ -349,7 +349,7 @@ window.__loadStudentDetail = async function(student) {
 };
 
 // =========================================================
-// 💡 4. 성적 추이 (백분위/표점/원점수 & 컷오프 & 다크 표)
+// 💡 4. 성적 추이 (백분위/원점수 & 컷오프 스위치 풀가동 & 다크 표)
 // =========================================================
 window.__loadGradeTrend = async function(student) {
     const trendContainer = document.getElementById('grade-trend-container');
@@ -375,9 +375,10 @@ window.__loadGradeTrend = async function(student) {
             return;
         }
 
-        window.__currentGradeMode = 'pct'; // 기본값: 백분위
+        window.__currentGradeMode = 'pct'; // 기본값: 예상 백분위
         window.__currentViewMode = 'graph'; 
-        window.__toggles = { topTotal: false, topChoice: false, topClass: false }; // 컷오프 초기화
+        // 💡 모든 컷오프 스위치 초기화 (추가된 반들 모두 포함)
+        window.__toggles = { topTotal: false, topChoice: false, topClass: false, topHS: false, topGreen: false, topBlue: false, topMed: false, topSKY: false };
 
         window.__renderGradeTrendUI();
     } catch (err) { console.error("성적 로드 에러:", err); }
@@ -386,11 +387,11 @@ window.__loadGradeTrend = async function(student) {
 window.__renderGradeTrendUI = function() {
     const container = document.getElementById('grade-trend-container');
     
-    // 버튼 스타일 통일
+    // 버튼 디자인: 활성화 시 파란색, 비활성화 시 연한 회색
     const btnSty = (isActive, bg, fg) => `border:1px solid #dee2e6; padding:5px 12px; border-radius:4px; cursor:pointer; font-size:11px; font-weight:bold; background:${isActive ? bg : 'transparent'}; color:${isActive ? '#fff' : fg}; transition:0.2s;`;
     const tglBtn = (key, label) => {
         const isOn = window.__toggles[key];
-        return `<button onclick="window.__toggleCutoff('${key}')" style="border:1px solid #dee2e6; padding:5px 12px; border-radius:20px; cursor:pointer; font-size:11px; font-weight:bold; background:${isOn ? '#f1f2f6' : '#fff'}; color:${isOn ? '#2c3e50' : '#7f8c8d'}; transition:0.2s;">${label}</button>`;
+        return `<button onclick="window.__toggleCutoff('${key}')" style="border:1px solid ${isOn ? '#3498db' : '#dee2e6'}; padding:5px 12px; border-radius:20px; cursor:pointer; font-size:11px; font-weight:bold; background:${isOn ? '#e8f4f8' : '#fff'}; color:${isOn ? '#2980b9' : '#7f8c8d'}; transition:0.2s;">${label}</button>`;
     };
 
     container.innerHTML = `
@@ -400,8 +401,8 @@ window.__renderGradeTrendUI = function() {
                     <h4 style="margin:0; color:#2c3e50; display:flex; align-items:center; gap:8px;">📈 성적 추이 <span style="font-size:12px; color:#7f8c8d; font-weight:normal;">(예상 컷 기준)</span></h4>
                     
                     <div style="display:flex; gap:5px; background:#f1f2f6; padding:3px; border-radius:6px;">
-                        <button onclick="window.__switchGView('graph')" style="${btnSty(window.__currentViewMode==='graph', '#f1c40f', '#7f8c8d')} color:${window.__currentViewMode==='graph'?'#2c3e50':'#7f8c8d'};">그래프</button>
-                        <button onclick="window.__switchGView('table')" style="${btnSty(window.__currentViewMode==='table', '#f1c40f', '#7f8c8d')} color:${window.__currentViewMode==='table'?'#2c3e50':'#7f8c8d'};">표</button>
+                        <button onclick="window.__switchGView('graph')" style="${btnSty(window.__currentViewMode==='graph', '#2c3e50', '#7f8c8d')}">그래프</button>
+                        <button onclick="window.__switchGView('table')" style="${btnSty(window.__currentViewMode==='table', '#2c3e50', '#7f8c8d')}">표</button>
                     </div>
                     
                     <div style="display:flex; gap:5px; background:#f1f2f6; padding:3px; border-radius:6px; margin-left:10px;">
@@ -411,15 +412,23 @@ window.__renderGradeTrendUI = function() {
                 </div>
             </div>
             
-            <div style="display:flex; flex-wrap:wrap; gap:8px; margin-bottom:20px; ${window.__currentViewMode==='table' ? 'display:none;' : ''}">
+            <div style="display:flex; flex-wrap:wrap; gap:8px; margin-bottom:15px; ${window.__currentViewMode==='table' ? 'display:none;' : ''}">
                 ${tglBtn('topTotal', '전체 상위 30% ' + (window.__toggles.topTotal?'ON':'OFF'))}
                 ${tglBtn('topChoice', '선택 상위 30% ' + (window.__toggles.topChoice?'ON':'OFF'))}
                 ${tglBtn('topClass', '반별 상위 30% ' + (window.__toggles.topClass?'ON':'OFF'))}
-                <button style="border:1px solid #dee2e6; padding:5px 12px; border-radius:20px; font-size:11px; color:#bdc3c7; background:#fff; cursor:not-allowed;">HS반 30% OFF</button>
-                <button style="border:1px solid #dee2e6; padding:5px 12px; border-radius:20px; font-size:11px; color:#bdc3c7; background:#fff; cursor:not-allowed;">그린 30% OFF</button>
-                <button style="border:1px solid #dee2e6; padding:5px 12px; border-radius:20px; font-size:11px; color:#bdc3c7; background:#fff; cursor:not-allowed;">블루 30% OFF</button>
-                <button style="border:1px solid #dee2e6; padding:5px 12px; border-radius:20px; font-size:11px; color:#bdc3c7; background:#fff; cursor:not-allowed;">서/의치대 30% OFF</button>
-                <button style="border:1px solid #dee2e6; padding:5px 12px; border-radius:20px; font-size:11px; color:#bdc3c7; background:#fff; cursor:not-allowed;">연고대 30% OFF</button>
+                ${tglBtn('topHS', 'HS반 30% ' + (window.__toggles.topHS?'ON':'OFF'))}
+                ${tglBtn('topGreen', '그린 30% ' + (window.__toggles.topGreen?'ON':'OFF'))}
+                ${tglBtn('topBlue', '블루 30% ' + (window.__toggles.topBlue?'ON':'OFF'))}
+                ${tglBtn('topMed', '서/의치대 30% ' + (window.__toggles.topMed?'ON':'OFF'))}
+                ${tglBtn('topSKY', '연고대 30% ' + (window.__toggles.topSKY?'ON':'OFF'))}
+            </div>
+
+            <div style="display:flex; gap:8px; margin-bottom:15px; ${window.__currentViewMode==='table' ? 'display:none;' : ''}">
+                <span style="background:#3498db; color:#fff; padding:3px 10px; border-radius:12px; font-size:11px; font-weight:bold;">국어(선택)</span>
+                <span style="background:#e74c3c; color:#fff; padding:3px 10px; border-radius:12px; font-size:11px; font-weight:bold;">수학(선택)</span>
+                <span style="background:#2ecc71; color:#fff; padding:3px 10px; border-radius:12px; font-size:11px; font-weight:bold;">탐구1(과목명)</span>
+                <span style="background:#f1c40f; color:#fff; padding:3px 10px; border-radius:12px; font-size:11px; font-weight:bold;">탐구2(과목)</span>
+                <span style="background:#9b59b6; color:#fff; padding:3px 10px; border-radius:12px; font-size:11px; font-weight:bold;">영어</span>
             </div>
             
             <div id="grade-display-area" style="min-height:350px;"></div>
@@ -445,15 +454,28 @@ window.__renderGradeDisplay = function() {
         return s[`${subj}_raw_total`] !== undefined ? (s[`${subj}_raw_total`] || 0) : (s[`${subj}_raw`] || 0);
     };
 
+    // 💡 각종 반 필터링 로직 (프론트엔드에서 즉석 계산)
     const getTop30 = (examLabel, subj, valKey, filterMode, myScore) => {
         let pool = window.__allMockScores.filter(s => s.exam_label === examLabel);
+        
         if (filterMode === 'topChoice') {
             const choiceKey = subj === 'kor' ? 'kor_choice' : (subj === 'math' ? 'math_choice' : (subj === 'tam1' ? 'tam1_name' : 'tam2_name'));
             pool = pool.filter(s => s[choiceKey] === myScore[choiceKey]);
         } else if (filterMode === 'topClass') {
             pool = pool.filter(s => s.class_name === window.__currentStudentClass);
+        } else if (filterMode === 'topHS') {
+            pool = pool.filter(s => s.class_name && s.class_name.includes('HS'));
+        } else if (filterMode === 'topGreen') {
+            pool = pool.filter(s => s.class_name && s.class_name.includes('그린'));
+        } else if (filterMode === 'topBlue') {
+            pool = pool.filter(s => s.class_name && s.class_name.includes('블루'));
+        } else if (filterMode === 'topMed') {
+            pool = pool.filter(s => s.class_name && (s.class_name.includes('의치') || s.class_name.includes('서/')));
+        } else if (filterMode === 'topSKY') {
+            pool = pool.filter(s => s.class_name && s.class_name.includes('연고'));
         }
-        let vals = pool.map(s => s[valKey] || 0).sort((a,b) => b-a);
+        
+        let vals = pool.map(s => Number(s[valKey]) || 0).filter(v => v > 0).sort((a,b) => b-a);
         if (vals.length === 0) return null;
         let idx = Math.floor(vals.length * 0.3);
         if (idx >= vals.length) idx = vals.length - 1;
@@ -469,8 +491,8 @@ window.__renderGradeDisplay = function() {
         const colors = { kor:'#3498db', math:'#e74c3c', tam1:'#2ecc71', tam2:'#f1c40f', eng:'#9b59b6' };
         
         const subjs = [
-            {id:'kor', name:'국어(선택)'}, {id:'math', name:'수학(선택)'}, 
-            {id:'tam1', name:'탐구1(과목명)'}, {id:'tam2', name:'탐구2(과목)'}, {id:'eng', name:'영어'}
+            {id:'kor', name:'국어'}, {id:'math', name:'수학'}, 
+            {id:'tam1', name:'탐구1'}, {id:'tam2', name:'탐구2'}, {id:'eng', name:'영어'}
         ];
 
         subjs.forEach(sbj => {
@@ -486,11 +508,26 @@ window.__renderGradeDisplay = function() {
                 tension: 0.1, borderWidth: 2, pointRadius: 4, fill: false
             });
 
-            // 2. 컷오프 성적 (점선)
+            // 2. 컷오프 성적 (점선) 추가 로직
             if (sbj.id !== 'eng') {
-                if (toggles.topTotal) datasets.push({ label: `${sbj.name} (전체상위30%)`, data: scores.map(s => getTop30(s.exam_label, sbj.id, valKey, 'topTotal', s)), borderColor: colors[sbj.id], borderDash: [5, 5], borderWidth: 1, pointRadius: 0, fill: false });
-                if (toggles.topChoice) datasets.push({ label: `${sbj.name} (선택상위30%)`, data: scores.map(s => getTop30(s.exam_label, sbj.id, valKey, 'topChoice', s)), borderColor: '#9b59b6', borderDash: [3, 3], borderWidth: 1, pointRadius: 0, fill: false });
-                if (toggles.topClass) datasets.push({ label: `${sbj.name} (반별상위30%)`, data: scores.map(s => getTop30(s.exam_label, sbj.id, valKey, 'topClass', s)), borderColor: '#1abc9c', borderDash: [2, 4], borderWidth: 1, pointRadius: 0, fill: false });
+                const addLine = (key, label) => {
+                    if (toggles[key]) {
+                        datasets.push({ 
+                            label: `${sbj.name} (${label})`, 
+                            data: scores.map(s => getTop30(s.exam_label, sbj.id, valKey, key, s)), 
+                            borderColor: colors[sbj.id], borderDash: [4, 4], borderWidth: 1.5, pointRadius: 0, fill: false 
+                        });
+                    }
+                };
+                
+                addLine('topTotal', '전체상위30%');
+                addLine('topChoice', '선택상위30%');
+                addLine('topClass', '반별상위30%');
+                addLine('topHS', 'HS반 30%');
+                addLine('topGreen', '그린 30%');
+                addLine('topBlue', '블루 30%');
+                addLine('topMed', '의치대 30%');
+                addLine('topSKY', '연고대 30%');
             }
         });
 
@@ -500,14 +537,20 @@ window.__renderGradeDisplay = function() {
             options: {
                 responsive: true, maintainAspectRatio: false,
                 scales: { y: { beginAtZero: mode==='pct', max: mode==='pct'?100:null, grid: { color: '#f1f2f6' } }, x: { grid: { display: false } } },
-                plugins: { legend: { position: 'bottom', labels: { boxWidth: 10, font: { size: 11 } } } }
+                plugins: { legend: { display: false } } // 커스텀 뱃지를 위에서 렌더링했으므로 기본 레전드 숨김
             }
         });
 
     } else {
-        // 💡 표(Table) 형식 다크테마 스타일 렌더링 (이미지 2번과 동일)
+        // 💡 표(Table) 형식 다크테마 스타일 렌더링 (이미지 2번 완벽 구현)
         const v = (val) => val === null || val === undefined ? '-' : val;
-        
+        const formatCell = (s, subj) => {
+            const val = getVal(s, subj);
+            const grade = s[`${subj}_exp_grade`] || '-';
+            const unit = mode === 'pct' ? '%' : '점';
+            return `<b>${val}${unit}</b><br><span style="color:#7f8c8d; font-size:11px;">(${grade}등급)</span>`;
+        };
+
         let h = `
         <div style="overflow-x:auto; border-radius:8px; border:1px solid #2f3542;">
             <style>
@@ -546,7 +589,8 @@ window.__renderGradeDisplay = function() {
                 <td class="c-tam2">${v(s.tam2_name)}</td> <td>${v(s.tam2_raw)}</td> <td class="c-tam2" style="font-weight:bold;">${v(s.tam2_exp_pct)}</td> <td>${v(s.tam2_exp_grade)}</td>
             </tr>`;
         });
-        area.innerHTML = h + '</tbody></table></div>';
+        h += '</tbody></table></div>';
+        area.innerHTML = h;
     }
 };
 
