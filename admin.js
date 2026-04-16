@@ -944,73 +944,59 @@ window.__renderRadarChartCanvas = function() {
     let labels = Object.keys(dataObj).filter(k => k !== '분류없음' && k !== '기타' && k !== '');
     if (labels.length === 0) labels = ['데이터 없음'];
 
-    // 💡 [핵심 픽스 1 & 2] 완벽한 정렬 (DB unit_map 기준 + 강력한 하드코딩 백업)
-    labels.sort((a, b) => {
-        const getCode = (name) => {
-            let code = 9999;
-            
-            // 1. DB unit_map에서 탐색 시도
-            if (window.__unitMap && window.__unitMap.length > 0) {
-                const targetName = name.replace(/[^가-힣a-zA-Z0-9]/g, '');
-                const found = window.__unitMap.find(u => {
-                    const uSubj = String(u.subject || '').replace(/[^가-힣a-zA-Z0-9]/g, '');
-                    if (uSubj && !uSubj.includes(subj.replace(/[^가-힣a-zA-Z0-9]/g, '')) && !subj.replace(/[^가-힣a-zA-Z0-9]/g, '').includes(uSubj)) return false;
-                    const uName = String(u.unit_name || u.unit || u.name || u.title || '').replace(/[^가-힣a-zA-Z0-9]/g, '');
-                    return uName && (uName === targetName || uName.includes(targetName) || targetName.includes(uName));
-                });
-                if (found) code = parseInt(found.unit_code || found.unit_num || found.chapter, 10);
-            }
-            
-            // 2. DB 매칭 실패 시, 단원명 글자를 직접 분석해서 강제 정렬 (수학, 사문 등 완벽 대응)
-            if (isNaN(code) || code === 9999) {
-                const n = name.replace(/\s+/g, '');
-                if (subj === '수학') {
-                    if (n.includes('지수') || n.includes('로그')) code = 1;
-                    else if (n.includes('삼각')) code = 2;
-                    else if (n.includes('수열')) code = 3;
-                    else if (n.includes('극한') || n.includes('연속')) code = 4;
-                    else if (n.includes('미분')) code = 5;
-                    else if (n.includes('적분')) code = 6;
-                    else code = 7; // 선택과목은 제일 뒤로
-                } else if (subj.includes('사회문화') || subj.includes('사문')) {
-                    if (n.includes('탐구')) code = 1;
-                    else if (n.includes('개인') || n.includes('구조')) code = 2;
-                    else if (n.includes('문화') || n.includes('일상')) code = 3;
-                    else if (n.includes('계층') || n.includes('불평등')) code = 4;
-                    else if (n.includes('변동')) code = 5;
-                } else {
-                    // 지구과학 등 탐구는 맨 앞 숫자가 있으면 그 숫자로 정렬
-                    const match = name.match(/^(\d+)/);
-                    if (match) code = parseInt(match[1], 10);
-                }
-            }
-            return isNaN(code) ? 9999 : code;
-        };
-        return getCode(a) - getCode(b);
-    });
+    // 💡 [핵심 픽스 1] 단원명 텍스트를 정밀 분석하여 정렬 순서(code)와 색상(color)을 완벽하게 부여합니다!
+    const getLabelInfo = (label, subject) => {
+        const n = label.replace(/\s+/g, '');
+        let code = 9999;
+        let color = '#3498db'; // 기본 파랑
+
+        if (subject === '국어') {
+            if (n.includes('독서') || n.includes('인문') || n.includes('사회') || n.includes('과학') || n.includes('기술') || n.includes('예술') || n.includes('이론')) { code = 1; color = '#3498db'; }
+            else if (n.includes('시') || n.includes('소설') || n.includes('극') || n.includes('수필') || n.includes('문학') || n.includes('갈래')) { code = 2; color = '#2ecc71'; } // 갈래 복합 (초록)
+            else if (n.includes('화법') || n.includes('작문') || n.includes('언어') || n.includes('매체')) { code = 3; color = '#f39c12'; }
+        } 
+        else if (subject === '수학') {
+            // 수1
+            if (n.includes('지수') || n.includes('로그')) { code = 1.1; color = '#3498db'; }
+            else if (n.includes('삼각')) { code = 1.2; color = '#3498db'; }
+            else if (n.includes('수열') && !n.includes('극한')) { code = 1.3; color = '#3498db'; }
+            // 수2
+            else if (n.includes('함수의극한') || n.includes('연속')) { code = 2.1; color = '#8e44ad'; }
+            else if (n === '미분') { code = 2.2; color = '#8e44ad'; }
+            else if (n === '적분') { code = 2.3; color = '#8e44ad'; }
+            // 선택 (미적분 등)
+            else if (n.includes('수열의극한')) { code = 3.1; color = '#f39c12'; }
+            else if (n.includes('미분법')) { code = 3.2; color = '#f39c12'; }
+            else if (n.includes('적분법')) { code = 3.3; color = '#f39c12'; }
+            else if (n.includes('확률') || n.includes('통계') || n.includes('경우') || n.includes('이차곡선') || n.includes('벡터') || n.includes('공간') || n.includes('미적분') || n.includes('기하')) { code = 3.4; color = '#f39c12'; }
+        } 
+        else if (subject.includes('사회문화') || subject.includes('사문')) {
+            if (n.includes('탐구')) code = 1;
+            else if (n.includes('개인') || n.includes('구조')) code = 2;
+            else if (n.includes('문화') || n.includes('일상')) code = 3;
+            else if (n.includes('계층') || n.includes('불평등')) code = 4;
+            else if (n.includes('변동')) code = 5;
+        }
+        else if (subject === '지구1' || subject.includes('지학1') || subject.includes('지구과학')) {
+            if (n.includes('지권') || n.includes('고체')) code = 1;
+            else if (n.includes('지구의역사') || n.includes('지질')) code = 2;
+            else if (n.includes('대기와해양의변화') || n.includes('날씨')) code = 3;
+            else if (n.includes('상호작용') || n.includes('해류')) code = 4;
+            else if (n.includes('별과외계') || n.includes('항성')) code = 5;
+            else if (n.includes('우주') || n.includes('은하') || n.includes('팽창')) code = 6;
+        }
+        return { code, color };
+    };
+
+    // 💡 [핵심 픽스 2] 분석된 코드에 따라 강제로 1,2,3,4 시계방향 정렬 적용
+    labels.sort((a, b) => getLabelInfo(a, subj).code - getLabelInfo(b, subj).code);
 
     const dataPoints = labels.map(l => {
         const stat = dataObj[l];
         return stat && stat.total > 0 ? Math.round((stat.o / stat.total) * 100) : 0;
     });
 
-    // 💡 [핵심 픽스 3] 색상 분배 (국어 갈래복합 초록색, 수학 선택과목 주황색 완벽 적용!)
-    const getLabelColor = (label, subject) => {
-        const n = label.replace(/\s+/g, '');
-        if (subject === '국어') {
-            if (n.includes('화법') || n.includes('작문') || n.includes('언어') || n.includes('매체')) return '#f39c12'; // 선택(주황)
-            if (n.includes('시') || n.includes('소설') || n.includes('극') || n.includes('수필') || n.includes('문학') || n.includes('갈래')) return '#2ecc71'; // 문학(초록) - 갈래복합 포함!
-            return '#3498db'; // 독서(파랑)
-        } else if (subject === '수학') {
-            if (n.includes('확률') || n.includes('통계') || n.includes('경우') || n.includes('이차곡선') || n.includes('벡터') || n.includes('공간') || n.includes('미적분') || n.includes('기하')) return '#f39c12'; // 선택(주황)
-            if (n.includes('극한') || n.includes('연속') || n.includes('미분') || n.includes('적분')) return '#8e44ad'; // 수학2(보라)
-            if (n.includes('지수') || n.includes('로그') || n.includes('삼각') || n.includes('수열')) return '#3498db'; // 수학1(파랑)
-            return '#27ae60'; // 기타(초록)
-        }
-        return '#3498db'; // 탐구는 기본 파랑
-    };
-
-    const pointColors = labels.map(l => type === 'unit' ? getLabelColor(l, subj) : '#8e44ad');
+    const pointColors = labels.map(l => type === 'unit' ? getLabelInfo(l, subj).color : '#8e44ad');
 
     if (window.__radarChartInstance) window.__radarChartInstance.destroy();
 
@@ -1045,7 +1031,7 @@ window.__renderRadarChartCanvas = function() {
                     angleLines: { color: '#ecf0f1' },
                     pointLabels: {
                         color: function(context) {
-                            return type === 'unit' ? getLabelColor(context.label, subj) : '#2c3e50'; 
+                            return type === 'unit' ? getLabelInfo(context.label, subj).color : '#2c3e50'; 
                         },
                         font: { size: 12, weight: 'bold' }
                     }
@@ -1053,30 +1039,21 @@ window.__renderRadarChartCanvas = function() {
             },
             plugins: {
                 legend: { display: false },
-                // 💡 [핵심 픽스 4] 0%가 여러 개 겹칠 때 모두 보여주는 똑똑한 툴팁 기능!
+                // 💡 [핵심 픽스 3] 중복을 제거한 깔끔한 0% 겹침 툴팁
                 tooltip: {
                     callbacks: {
                         title: function(tooltipItems) {
                             const val = tooltipItems[0].raw;
-                            const dataset = tooltipItems[0].dataset;
-                            const chartLabels = tooltipItems[0].chart.data.labels;
-                            const sameValLabels = chartLabels.filter((l, i) => dataset.data[i] === val);
-                            
-                            // 만약 값이 0%이고 여러 개가 겹쳐있다면 특별한 제목을 띄웁니다.
-                            if (sameValLabels.length > 1 && val === 0) {
-                                return `🚨 취약 영역 (0%) - 총 ${sameValLabels.length}개`;
+                            if (val === 0 && tooltipItems.length > 1) {
+                                return `🚨 취약 영역 (0%) - 총 ${tooltipItems.length}개`;
                             }
                             return tooltipItems[0].label;
                         },
                         label: function(context) {
                             const val = context.raw;
-                            const dataset = context.dataset;
-                            const chartLabels = context.chart.data.labels;
-                            const sameValLabels = chartLabels.filter((l, i) => dataset.data[i] === val);
-                            
-                            // 0%인 단원들을 배열로 리턴하면 툴팁에 여러 줄로 깔끔하게 나옵니다.
-                            if (sameValLabels.length > 1 && val === 0) {
-                                return sameValLabels.map(l => ` • ${l}`);
+                            if (val === 0) {
+                                // 반복문 없이 라벨 하나만 딱 던져주면 라이브러리가 알아서 예쁘게 합쳐줍니다.
+                                return ` • ${context.label}`;
                             }
                             return ` ${val}%`;
                         }
