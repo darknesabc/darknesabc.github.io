@@ -504,7 +504,7 @@ window.__renderGradeSummaryUI = function() {
 
 // =========================================================
 // 💡 [수퍼베이스 완벽 이식판] 정시 지원 시뮬레이션 보드 렌더러
-// 🌟 탐구 1과목 반영 시 내 점수가 '점프'하는 로직 완벽 복원 버전
+// 🌟 (최종) 탐구 1과목 보정 + 39개 대학 서열 정렬 + 첨단/무전공 트렌드 반영
 // =========================================================
 window.__openUnivSimulation = async function() {
     const area = document.getElementById('univ-simulation-area');
@@ -530,7 +530,7 @@ window.__openUnivSimulation = async function() {
     if (t1 > 0) { tamCount++; if (sciSubjs.some(s => tam1Name.includes(s))) sciCount++; if (socSubjs.some(s => tam1Name.includes(s))) socCount++; }
     if (t2 > 0) { tamCount++; if (sciSubjs.some(s => tam2Name.includes(s))) sciCount++; if (socSubjs.some(s => tam2Name.includes(s))) socCount++; }
 
-    // 💡 [핵심] 탐구 최고점과 평균점 각각 계산
+    // 탐구 최고점(1과목용)과 평균점(2과목용) 분리
     const bestTam = Math.max(t1, t2);
     const avgTam = tamCount > 0 ? (t1 + t2) / tamCount : 0;
     
@@ -538,11 +538,11 @@ window.__openUnivSimulation = async function() {
     const mathType = (mathChoice.includes("미적") || mathChoice.includes("기하")) ? "미기" : "확통";
     const tamType = (sciCount > 0 && socCount === 0) ? "과탐" : (socCount > 0 && sciCount === 0) ? "사탐" : "사과탐";
 
-    // 💡 시뮬레이션 전역 상태 
+    // 💡 시뮬레이션 전역 상태 (목표 점수 조정을 위한 오프셋 포함)
     window.__currentSimStatus = {
         kor: korPct, math: mathPct, bestTam: bestTam, avgTam: avgTam,
         mathType: mathType, tamType: tamType, search: "",
-        scoreDiff: 0 // 화면 패널에서 조절하는 오프셋 값
+        scoreDiff: 0 
     };
 
     try {
@@ -550,7 +550,7 @@ window.__openUnivSimulation = async function() {
         const { data: cutoffs, error } = await _supabase.from('univ_cutoffs').select('*');
         if (error || !cutoffs) throw new Error("배치표 DB 로드 실패");
 
-        // 💡 3. 매칭 로직 (탐구 1개/2개 대학에 따라 내 점수가 유동적으로 변함!)
+        // 3. 대학 매칭 및 유불리 계산 핵심 함수
         const getMatches = (isStrict = false) => {
             const st = window.__currentSimStatus;
             const matches = { '가': {}, '나': {}, '다': {}, '군외': {} };
@@ -560,35 +560,24 @@ window.__openUnivSimulation = async function() {
                 const cutScore = Number(c.cut_total) || 0;
                 if (!cutScore) return;
 
-                // 🌟 [선생님 로직 완벽 복원] 이 대학이 탐구를 몇 개 보느냐에 따라 내 기준 점수가 달라짐
+                // 💡 [핵심] 대학이 요구하는 탐구 수에 따라 내 기준 점수가 달라짐 (탐구 1과목 뻥튀기 로직)
                 const reqTamCount = Number(c.tam_cnt_1) || 2; 
-                let myScoreForThisUniv = st.kor + st.math;
-                
-                if (reqTamCount === 1) {
-                    myScoreForThisUniv += st.bestTam; // 1개면 잘 본 거 하나만!
-                } else {
-                    myScoreForThisUniv += st.avgTam;  // 2개면 평균!
-                }
-                
-                // 패널에서 조절한 오프셋(+1점, -2점 등)을 내 점수에 더해줌
-                myScoreForThisUniv += st.scoreDiff;
+                let myScoreForThisUniv = st.kor + st.math + (reqTamCount === 1 ? st.bestTam : st.avgTam) + st.scoreDiff;
 
-                // 필터 1: 점수 범위 (내 유동적인 점수를 기준으로 대학 컷과 비교)
                 const keyword = st.search.trim();
                 if (keyword) {
                     if (!String(c.univ_name).includes(keyword) && !String(c.dept_name).includes(keyword)) return;
                 } else {
-                    // 왼쪽(isStrict)은 딱 내 점수 라인 (±1.5점 내외)
-                    // 오른쪽(상승)은 내 점수보다 높은 곳 탐색
-                    if (isStrict) {
+                    if (isStrict) { 
+                        // 왼쪽 패널 (내 점수 타겟: ±1.5점 내외 적정)
                         if (cutScore < myScoreForThisUniv - 1.5 || cutScore > myScoreForThisUniv + 1.5) return;
-                    } else {
-                        // 오른쪽은 내 점수 기준 +2점에서 +5점 사이의 상향 지원 라인
+                    } else { 
+                        // 오른쪽 패널 (상향 지원: +1.5점 초과 ~ +6점)
                         if (cutScore <= myScoreForThisUniv + 1.5 || cutScore > myScoreForThisUniv + 6) return;
                     }
                 }
 
-                // 필터 2: 수학 / 탐구 필수 조건 컷팅
+                // 필수 응시 과목 컷팅 (수학 / 탐구 제한)
                 const combo = String(c.reflect_combo || "");
                 if ((combo.includes("미/기") || combo.includes("미기")) && st.mathType !== "미기") return;
                 if ((combo.includes("[확]") || combo.includes("확통")) && st.mathType !== "확통") return;
@@ -602,21 +591,19 @@ window.__openUnivSimulation = async function() {
                     if (tamReq === "사" && st.tamType !== "사탐") return;
                 }
 
-                // 필터 3: 가산점 및 유불리 뱃지 생성
+                // 뱃지 부착
                 const badges = [];
                 if (reqTamCount === 1) badges.push(tamReq === "과" ? "과1" : tamReq === "사" ? "사1" : "탐1");
                 if (c.note) badges.push(...c.note.split(" ")); 
 
-                // 비율 유불리 판별기
+                // 💡 반영 비율 유불리 판별기
                 const rK = Number(c.rate_kor) || 0; const rM = Number(c.rate_math) || 0; const rT = Number(c.rate_tam) || 0;
                 if (rK > 0 && rM > 0 && rT > 0 && st.kor > 0 && st.math > 0) {
                     if (Math.max(rK, rM, rT) - Math.min(rK, rM, rT) >= 5) {
                         const myT = reqTamCount === 1 ? st.bestTam : st.avgTam;
                         const scores = [{n:'국', s:st.kor, w:rK}, {n:'수', s:st.math, w:rM}, {n:'탐', s:myT, w:rT}];
-                        
                         scores.sort((a,b) => b.s - a.s);
                         const bestSubj = scores[0].n; const worstSubj = scores[2].n;
-                        
                         scores.sort((a,b) => b.w - a.w);
                         const highestWeight = scores[0].n; const lowestWeight = scores[2].n;
                         
@@ -632,50 +619,94 @@ window.__openUnivSimulation = async function() {
                 if (!matches[gun][univ]) matches[gun][univ] = [];
                 
                 matches[gun][univ].push({
-                    dept: c.dept_name,
-                    type: c.type,
-                    cut: cutScore,
-                    diff: Math.round((myScoreForThisUniv - cutScore) * 10) / 10, // 대학 맞춤형 점수와 비교
-                    badges: badges,
-                    region: c.region
+                    dept: c.dept_name, type: c.type, cut: cutScore,
+                    diff: Math.round((myScoreForThisUniv - cutScore) * 10) / 10,
+                    badges: badges, region: c.region
                 });
                 univSet.add(univ);
             });
 
-            // 대학별로 학과 정렬 (컷 점수 높은 순)
+            // 대학 내 학과 정렬 (컷 점수 내림차순)
             Object.keys(matches).forEach(g => {
                 Object.keys(matches[g]).forEach(u => { matches[g][u].sort((a,b) => b.cut - a.cut); });
             });
 
-            const getRank = (univ, dept, region) => {
-                if (/(의예|치의예|한의예|수의예|수의과|약학|약대|의학|치의학|한의학|의과대학)/.test(dept)) return 1;
-                if (["서울", "경기", "인천"].some(r => String(region).includes(r))) return 2;
-                if (/(부산대|경북대|전남대|충남대|전북대|충북대|강원대|경상국립대|경상대|제주대)/.test(univ)) return 3;
-                return 4;
+            // 💡 [핵심] 39개 대학 완벽 서열화 배열
+            const univRankOrder = [
+                "서울대", "연세대", "가톨릭대", "성균관대", "울산대", "고려대", "한양대", "경희대", "이화여대", "이화여자대", "중앙대", 
+                "서강대", "한국외대", "한국외국어대", "서울시립대", "건국대", "동국대", "홍익대", "숙명여대", "숙명여자대", 
+                "국민대", "숭실대", "세종대", "단국대", "인하대", "아주대", "항공대", "가천대", 
+                "광운대", "명지대", "상명대", "서울과기대", "성신여대", "동덕여대", "덕성여대", "서울여대", "삼육대", "한성대", "서경대"
+            ];
+            
+            const getUnivRank = (uName) => {
+                const branchRanks = {
+                    "한양대(ERICA)": 25.1, "중앙대(다빈치)": 25.2, "한국외대(글로벌)": 25.3, "단국대(천안)": 25.4,
+                    "연세대(미래)": 35.1, "고려대(세종)": 35.2, "홍익대(세종)": 35.3, "건국대(글로컬)": 35.4, "동국대(WISE)": 35.5
+                };
+                for (const key in branchRanks) if (uName.includes(key)) return branchRanks[key];
+                const idx = univRankOrder.findIndex(u => uName.includes(u)); 
+                return idx !== -1 ? idx : 999; 
             };
 
+            // 💡 1차 대그룹 분류 (카테고리 랭크) - 올해 최신 트렌드 적용!
+            const getCategoryRank = (univ, dept, region) => {
+                let cat = 50; 
+                // 1. 기존 메디컬 (가장 왼쪽 고정)
+                if (/(의예|의학|의과)/.test(dept) && !/(식물|의공|의생명|의료|의과학)/.test(dept)) cat = 10;
+                else if (/(치의예|치의학)/.test(dept)) cat = 11;
+                else if (/(한의예|한의학)/.test(dept)) cat = 12;
+                else if (/(수의예|수의과)/.test(dept)) cat = 13;
+                else if (/(약학|약대)/.test(dept) && !/(신약|제약|약과학|한약)/.test(dept)) cat = 14;
+                
+                // 💡 2. 대기업 계약학과 및 첨단학과 (메디컬 다음으로 상향 배치)
+                else if (/(반도체|지능형|인공지능|AI|모빌리티|스마트)/i.test(dept)) cat = 15;
+
+                // 💡 3. 무전공/자유전공 (일반 학과보다 상향 배치)
+                else if (/(자유전공|무전공|계열모집)/.test(dept)) cat = 18;
+                
+                // 4. 인서울, 수도권, 지거국 분류
+                else if (["서울"].some(r => String(region).includes(r)) || /(성균관대|경희대)/.test(univ)) cat = 20;
+                else if (["경기", "인천"].some(r => String(region).includes(r))) cat = 30;
+                else if (/(부산대|경북대|전남대|충남대|전북대|충북대|강원대|경상국립대|제주대)/.test(univ)) cat = 40;
+                
+                // 분교 보정 (메디컬/첨단이 아닌 일반 분교 학과만 강등)
+                if (/(ERICA|다빈치|글로벌|미래|세종|천안|글로컬|WISE)/i.test(univ) && cat >= 20) cat = 35;
+                return cat;
+            };
+
+            // 대학 간 최종 정렬 로직 (1. 대분류 ➡️ 2. 간판 서열 ➡️ 3. 가나다순)
             const sortedUnivs = Array.from(univSet).sort((a, b) => {
-                let rankA = 4, rankB = 4;
+                let catA = 50, catB = 50;
+                let deptA = "", deptB = "", regA = "", regB = "";
+                
+                // 해당 대학의 가장 높은 학과 기준 탐색
                 ['가','나','다','군외'].forEach(g => {
-                    if(matches[g][a] && matches[g][a][0]) rankA = Math.min(rankA, getRank(a, matches[g][a][0].dept, matches[g][a][0].region));
-                    if(matches[g][b] && matches[g][b][0]) rankB = Math.min(rankB, getRank(b, matches[g][b][0].dept, matches[g][b][0].region));
+                    if(matches[g][a] && matches[g][a][0]) { deptA = matches[g][a][0].dept; regA = matches[g][a][0].region; }
+                    if(matches[g][b] && matches[g][b][0]) { deptB = matches[g][b][0].dept; regB = matches[g][b][0].region; }
                 });
-                if (rankA !== rankB) return rankA - rankB;
-                return a.localeCompare(b);
+                
+                catA = getCategoryRank(a, deptA, regA);
+                catB = getCategoryRank(b, deptB, regB);
+                
+                if (catA !== catB) return catA - catB; // 1차 카테고리 분류
+                
+                let rankA = getUnivRank(a);
+                let rankB = getUnivRank(b);
+                if (rankA !== rankB) return rankA - rankB; // 2차 간판(39개) 분류
+                
+                return a.localeCompare(b); // 3차 가나다
             });
 
             return { matches, sortedUnivs };
         };
 
-        // 4. HTML 렌더링 엔진 (버튼 누를 때마다 호출됨)
+        // 4. HTML 렌더링 엔진 
         window.runUniversitySimulation = function() {
             const st = window.__currentSimStatus;
             
-            // 💡 왼쪽: 현재 내 라인 (isStrict = true)
-            const leftData = getMatches(true);
-            // 💡 오른쪽: 목표/상향 라인 (isStrict = false)
-            const rightData = getMatches(false);
-
+            const leftData = getMatches(true);   // 적정 라인
+            const rightData = getMatches(false); // 상향 라인
             const ALL_GROUPS = ['가', '나', '다', '군외'];
             
             const renderCards = (univData) => {
@@ -717,26 +748,27 @@ window.__openUnivSimulation = async function() {
             let rowsHtml = '';
             ALL_GROUPS.forEach((gun, idx) => {
                 const isFirst = (idx === 0);
-                
                 let hasLeft = leftData.sortedUnivs.some(u => leftData.matches[gun][u]);
                 let hasRight = rightData.sortedUnivs.some(u => rightData.matches[gun][u]);
                 
                 if (hasLeft || hasRight) {
                     rowsHtml += `<tr style="border-top:1px solid rgba(255,255,255,0.2);">`;
+                    // 왼쪽 테이블
                     if (isFirst) rowsHtml += `<td rowspan="4" style="width:45px; background:#2980b9; color:#fff; text-align:center; font-weight:900; font-size:13px; border-right:1px solid rgba(255,255,255,0.2);">내<br>점<br>수<br><br><span style="font-size:16px; color:#f1c40f;">${Math.round((st.kor+st.math+st.avgTam)*10)/10}</span></td>`;
                     rowsHtml += `<td style="width:30px; text-align:center; font-weight:bold; font-size:13px; background:rgba(255,255,255,0.05); color:#fff; border-right:1px solid rgba(255,255,255,0.2);">${gun}</td>`;
                     rowsHtml += `<td style="padding:0; vertical-align:top; border-right:1px solid rgba(255,255,255,0.2);">
                                     <table style="width:100%; border-collapse:collapse;">
-                                        <thead><tr>${leftData.sortedUnivs.map(u => `<th style="background:rgba(255,255,255,0.1); font-size:12px; padding:6px;">${u}</th>`).join('')}</tr></thead>
+                                        <thead><tr>${leftData.sortedUnivs.map(u => `<th style="background:rgba(255,255,255,0.1); font-size:12px; padding:6px; color:#bdc3c7;">${u}</th>`).join('')}</tr></thead>
                                         <tbody><tr>${renderTableCols(leftData.sortedUnivs, leftData.matches, gun)}</tr></tbody>
                                     </table>
                                  </td>`;
                     
+                    // 오른쪽 테이블
                     if (isFirst) rowsHtml += `<td rowspan="4" style="width:40px; text-align:center; color:#e74c3c; font-size:20px; font-weight:bold; border-right:1px solid rgba(255,255,255,0.2); background:rgba(0,0,0,0.1);">▶<br><span style="font-size:10px; color:#95a5a6; display:block; margin-top:5px;">상향<br>지원</span></td>`;
                     rowsHtml += `<td style="width:30px; text-align:center; font-weight:bold; font-size:13px; background:rgba(255,255,255,0.05); color:#fff; border-right:1px solid rgba(255,255,255,0.2);">${gun}</td>`;
                     rowsHtml += `<td style="padding:0; vertical-align:top;">
                                     <table style="width:100%; border-collapse:collapse;">
-                                        <thead><tr>${rightData.sortedUnivs.map(u => `<th style="background:rgba(52, 152, 219, 0.2); font-size:12px; padding:6px;">${u}</th>`).join('')}</tr></thead>
+                                        <thead><tr>${rightData.sortedUnivs.map(u => `<th style="background:rgba(52, 152, 219, 0.2); font-size:12px; padding:6px; color:#bdc3c7;">${u}</th>`).join('')}</tr></thead>
                                         <tbody><tr>${renderTableCols(rightData.sortedUnivs, rightData.matches, gun)}</tr></tbody>
                                     </table>
                                  </td>`;
@@ -747,7 +779,7 @@ window.__openUnivSimulation = async function() {
             area.innerHTML = `
                 <div style="background:#0a0f19; border-radius:10px; overflow:hidden; border:2px solid #f1c40f;">
                     <div style="background:#0a0f19; border-bottom:2px solid #f1c40f; display:flex; justify-content:space-between; padding:8px 12px; align-items:center;">
-                        <div style="color:#fff; font-weight:800; font-size:14px;">▣ 정시 지원가능 대학 & 학과 시뮬레이션 <span style="font-size:11px; opacity:0.6; font-weight:normal;">(대학별 탐구 반영수 자동보정)</span></div>
+                        <div style="color:#fff; font-weight:800; font-size:14px;">▣ 정시 지원가능 대학 & 학과 시뮬레이션 <span style="font-size:11px; opacity:0.6; font-weight:normal;">(대학별 탐구 반영수 자동보정 및 서열 정렬 완벽 적용)</span></div>
                         <div style="background:#f1c40f; color:#000; padding:2px 10px; font-weight:900; font-size:12px; border-radius:2px;">실제 응시: <span style="color:#c0392b; margin-left:4px;">${st.mathType}+${st.tamType}</span></div>
                     </div>
                     
@@ -776,7 +808,6 @@ window.__openUnivSimulation = async function() {
             `;
         };
 
-        // 최초 렌더링 실행
         window.runUniversitySimulation();
 
     } catch (err) {
