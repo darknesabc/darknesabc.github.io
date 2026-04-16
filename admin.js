@@ -931,7 +931,7 @@ window.__renderRadarChartUI = function() {
 };
 
 // =========================================================
-// 💡 [레이더 차트] 방사형 그래프 렌더러 (정렬, 색상, 0% 툴팁 완벽 패치)
+// 💡 [레이더 차트] 방사형 그래프 렌더러 (국어 정렬 완벽 패치)
 // =========================================================
 window.__renderRadarChartCanvas = function() {
     const ctx = document.getElementById('radarChartCanvas');
@@ -944,27 +944,43 @@ window.__renderRadarChartCanvas = function() {
     let labels = Object.keys(dataObj).filter(k => k !== '분류없음' && k !== '기타' && k !== '');
     if (labels.length === 0) labels = ['데이터 없음'];
 
-    // 💡 [핵심 픽스 1] 단원명 텍스트를 정밀 분석하여 정렬 순서(code)와 색상(color)을 완벽하게 부여합니다!
+    // 💡 [핵심 픽스] 단원명 텍스트를 정밀 분석하여 정렬 순서(code)와 색상(color)을 부여합니다!
     const getLabelInfo = (label, subject) => {
         const n = label.replace(/\s+/g, '');
         let code = 9999;
         let color = '#3498db'; // 기본 파랑
 
         if (subject === '국어') {
-            if (n.includes('독서') || n.includes('인문') || n.includes('사회') || n.includes('과학') || n.includes('기술') || n.includes('예술') || n.includes('이론')) { code = 1; color = '#3498db'; }
-            else if (n.includes('시') || n.includes('소설') || n.includes('극') || n.includes('수필') || n.includes('문학') || n.includes('갈래')) { code = 2; color = '#2ecc71'; } // 갈래 복합 (초록)
-            else if (n.includes('화법') || n.includes('작문') || n.includes('언어') || n.includes('매체')) { code = 3; color = '#f39c12'; }
+            // 💡 국어 정렬 안전망 추가! (독서 -> 문학 -> 선택)
+            if (n.includes('독서이론')) { code = 1.1; color = '#3498db'; }
+            else if (n.includes('인문')) { code = 1.2; color = '#3498db'; }
+            else if (n.includes('사회')) { code = 1.3; color = '#3498db'; }
+            else if (n.includes('과학')) { code = 1.4; color = '#3498db'; }
+            else if (n.includes('기술')) { code = 1.5; color = '#3498db'; }
+            else if (n.includes('예술')) { code = 1.6; color = '#3498db'; }
+            else if (n.includes('독서')) { code = 1.9; color = '#3498db'; }
+            
+            else if (n.includes('현대시')) { code = 2.1; color = '#2ecc71'; }
+            else if (n.includes('고전시가')) { code = 2.2; color = '#2ecc71'; }
+            else if (n.includes('현대소설')) { code = 2.3; color = '#2ecc71'; }
+            else if (n.includes('고전소설')) { code = 2.4; color = '#2ecc71'; }
+            else if (n.includes('극')) { code = 2.5; color = '#2ecc71'; }
+            else if (n.includes('수필')) { code = 2.6; color = '#2ecc71'; }
+            else if (n.includes('갈래복합')) { code = 2.7; color = '#2ecc71'; }
+            else if (n.includes('문학') || n.includes('갈래')) { code = 2.9; color = '#2ecc71'; }
+            
+            else if (n.includes('화법')) { code = 3.1; color = '#f39c12'; }
+            else if (n.includes('작문')) { code = 3.2; color = '#f39c12'; }
+            else if (n.includes('언어')) { code = 3.3; color = '#f39c12'; }
+            else if (n.includes('매체')) { code = 3.4; color = '#f39c12'; }
         } 
         else if (subject === '수학') {
-            // 수1
             if (n.includes('지수') || n.includes('로그')) { code = 1.1; color = '#3498db'; }
             else if (n.includes('삼각')) { code = 1.2; color = '#3498db'; }
             else if (n.includes('수열') && !n.includes('극한')) { code = 1.3; color = '#3498db'; }
-            // 수2
             else if (n.includes('함수의극한') || n.includes('연속')) { code = 2.1; color = '#8e44ad'; }
             else if (n === '미분') { code = 2.2; color = '#8e44ad'; }
             else if (n === '적분') { code = 2.3; color = '#8e44ad'; }
-            // 선택 (미적분 등)
             else if (n.includes('수열의극한')) { code = 3.1; color = '#f39c12'; }
             else if (n.includes('미분법')) { code = 3.2; color = '#f39c12'; }
             else if (n.includes('적분법')) { code = 3.3; color = '#f39c12'; }
@@ -985,11 +1001,35 @@ window.__renderRadarChartCanvas = function() {
             else if (n.includes('별과외계') || n.includes('항성')) code = 5;
             else if (n.includes('우주') || n.includes('은하') || n.includes('팽창')) code = 6;
         }
+        else {
+            const match = n.match(/^(\d+)/);
+            if (match) code = parseInt(match[1], 10);
+        }
         return { code, color };
     };
 
-    // 💡 [핵심 픽스 2] 분석된 코드에 따라 강제로 1,2,3,4 시계방향 정렬 적용
-    labels.sort((a, b) => getLabelInfo(a, subj).code - getLabelInfo(b, subj).code);
+    // 💡 정렬 로직 (DB unit_map 체크 후, 실패 시 위의 하드코딩 순서 적용)
+    labels.sort((a, b) => {
+        const getDbCode = (name) => {
+            if (!window.__unitMap || window.__unitMap.length === 0) return null;
+            const targetName = name.replace(/[^가-힣a-zA-Z0-9]/g, '');
+            const found = window.__unitMap.find(u => {
+                const uSubj = String(u.subject || '').replace(/[^가-힣a-zA-Z0-9]/g, '');
+                if (uSubj && !uSubj.includes(subj.replace(/[^가-힣a-zA-Z0-9]/g, '')) && !subj.replace(/[^가-힣a-zA-Z0-9]/g, '').includes(uSubj)) return false;
+                const uName = String(u.unit_name || u.unit || u.name || u.title || '').replace(/[^가-힣a-zA-Z0-9]/g, '');
+                return uName && (uName === targetName || uName.includes(targetName) || targetName.includes(uName));
+            });
+            return found ? (parseInt(found.unit_code || found.unit_num || found.chapter, 10)) : null;
+        };
+        
+        let codeA = getDbCode(a);
+        if (codeA === null || isNaN(codeA)) codeA = getLabelInfo(a, subj).code;
+        
+        let codeB = getDbCode(b);
+        if (codeB === null || isNaN(codeB)) codeB = getLabelInfo(b, subj).code;
+        
+        return codeA - codeB;
+    });
 
     const dataPoints = labels.map(l => {
         const stat = dataObj[l];
@@ -1039,7 +1079,6 @@ window.__renderRadarChartCanvas = function() {
             },
             plugins: {
                 legend: { display: false },
-                // 💡 [핵심 픽스 3] 중복을 제거한 깔끔한 0% 겹침 툴팁
                 tooltip: {
                     callbacks: {
                         title: function(tooltipItems) {
@@ -1052,7 +1091,6 @@ window.__renderRadarChartCanvas = function() {
                         label: function(context) {
                             const val = context.raw;
                             if (val === 0) {
-                                // 반복문 없이 라벨 하나만 딱 던져주면 라이브러리가 알아서 예쁘게 합쳐줍니다.
                                 return ` • ${context.label}`;
                             }
                             return ` ${val}%`;
