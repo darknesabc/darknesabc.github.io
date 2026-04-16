@@ -212,7 +212,7 @@ window.__toggleDashboard = function() {
 };
 
 // =========================================================
-// 3. 학생 상세 페이지 로드
+// 3. 학생 상세 페이지 로드 (공결 처리 완벽 대응 버전)
 // =========================================================
 window.__loadStudentDetail = async function(student) {
     if (!student || !student.studentId) return;
@@ -269,43 +269,63 @@ window.__loadStudentDetail = async function(student) {
             }
         });
 
-        let totalAtt = 0, totalLate = 0, totalAbs = 0;
-        let att7d = 0, late7d = 0, abs7d = 0;
+        // 💡 통계 변수에 '공결' 추가
+        let totalAtt = 0, totalLate = 0, totalAbs = 0, totalExcused = 0;
+        let att7d = 0, late7d = 0, abs7d = 0, excused7d = 0;
         const recentAbsences = [];
         
         resAtt.data.forEach(a => {
             if (a.attendance_date > todayIso || (a.attendance_date === todayIso && parseInt(a.period, 10) > currentP)) return;
-            if (new Date(a.attendance_date).getDay() === 0) return;
+            if (new Date(a.attendance_date).getDay() === 0) return; // 일요일 제외
 
             const p = parseInt(a.period, 10);
             
             const hasEduLate = schedMap[a.attendance_date]?.[p] === true;
             const hasMemoLate = a.memo ? a.memo.includes('지각') : false;
             
+            // 💡 [핵심] 공결 판별 로직 추가
+            // status_code가 3(결석)이더라도, memo에 '공결' 또는 '조퇴', '병결' 등이 적혀있으면 isExcused로 빼냅니다.
+            const isExcused = (a.memo && (a.memo.includes('공결') || a.memo.includes('조퇴') || a.memo.includes('병결') || a.memo.includes('스케줄')));
+            
             const isLate = (a.status_code === '2') || hasEduLate || hasMemoLate;
             const isAtt = (a.status_code === '1');
-            const isAbs = (a.status_code === '3');
+            const isAbs = (a.status_code === '3') && !isExcused; // 💡 진짜 결석 = 결석코드 && 공결이 아님
 
             let finalType = '';
-            if (isLate) finalType = 'late';
+            if (isExcused) finalType = 'excused'; // 공결이 최우선
+            else if (isLate) finalType = 'late';
             else if (isAbs) finalType = 'abs';
             else if (isAtt) finalType = 'att';
 
+            // 전체 카운트 누적
             if (finalType === 'att') totalAtt++;
             if (finalType === 'late') totalLate++;
-            if (finalType === 'abs') { totalAbs++; if (recentAbsences.length < 3) recentAbsences.push(a); }
+            if (finalType === 'excused') totalExcused++;
+            if (finalType === 'abs') { 
+                totalAbs++; 
+                // 💡 최근 무단 결석 리스트에는 진짜 결석만 추가!
+                if (recentAbsences.length < 3) recentAbsences.push(a); 
+            }
             
+            // 7일 카운트 누적
             if (a.attendance_date >= start7dIso && a.attendance_date <= todayIso) {
                 if (finalType === 'att') att7d++;
                 if (finalType === 'late') late7d++;
+                if (finalType === 'excused') excused7d++;
                 if (finalType === 'abs') abs7d++;
             }
         });
         
-        const totalCount = totalAtt + totalLate + totalAbs;
+        // 💡 [핵심] 출석률 계산 시 공결(totalExcused)은 모수에서 완전히 제외!
+        const totalCount = totalAtt + totalLate + totalAbs; // 공결 제외한 유효 수업 일수
         const count7d = att7d + late7d + abs7d;
-        const attRate = totalCount > 0 ? Math.round((totalAtt / totalCount) * 100) : 0;
-        const attRate7d = count7d > 0 ? Math.round((att7d / count7d) * 100) : 0;
+        
+        // 출석 + 지각을 '출석'으로 간주하여 계산 (학원 방침에 따라 변경 가능)
+        // 현재 로직상 지각도 출석률에 긍정 반영되려면 분자에 totalLate를 더해야 합니다. 
+        // 만약 지각은 출석률에서 까이는 거라면 totalAtt만 남기면 됩니다.
+        const attRate = totalCount > 0 ? Math.round((totalAtt / totalCount) * 100) : 100;
+        const attRate7d = count7d > 0 ? Math.round((att7d / count7d) * 100) : 100;
+        
         const attRate7dColor = attRate7d >= 90 ? '#2ecc71' : (attRate7d >= 70 ? '#f39c12' : '#e74c3c');
 
         let restroom7d = 0, noReturn7d = 0;
@@ -333,7 +353,7 @@ window.__loadStudentDetail = async function(student) {
             <div style="border-bottom: 2px solid #e9ecef; padding-bottom: 20px; margin-bottom: 25px;">
                 <div style="display:flex; justify-content:space-between; align-items:flex-start;">
                     <div>
-                        <h2 style="margin: 0 0 10px 0; color: #2c3e50; font-size:24px;">${student.name} <span style="font-size:14px; color:#e74c3c; background:rgba(231,76,60,0.1); padding:3px 8px; border-radius:4px; margin-left:10px;">🚨 출결위험 (${attRate}%)</span></h2>
+                        <h2 style="margin: 0 0 10px 0; color: #2c3e50; font-size:24px;">${student.name} ${attRate < 80 ? `<span style="font-size:14px; color:#e74c3c; background:rgba(231,76,60,0.1); padding:3px 8px; border-radius:4px; margin-left:10px;">🚨 출결위험 (${attRate}%)</span>` : ''}</h2>
                         <div style="color:#7f8c8d; font-size:14px; line-height:1.6;">
                             좌석: <b style="color:#34495e;">${student.seat}</b> | 학번: <b style="color:#34495e;">${student.studentId}</b> | 담임: <b style="color:#34495e;">${student.teacher}</b>
                         </div>
@@ -356,7 +376,7 @@ window.__loadStudentDetail = async function(student) {
                         </div>
                         <div style="width:100%; height:8px; background:#ecf0f1; border-radius:4px; margin-bottom:10px; overflow:hidden;"><div style="width:${attRate7d}%; height:100%; background:${attRate7dColor}; border-radius:4px;"></div></div>
                         <div style="display:flex; justify-content:space-between; font-size:13px; color:#7f8c8d; padding-bottom:15px; border-bottom:1px dashed #ecf0f1;">
-                            <span>출석 <b style="color:#34495e;">${att7d}</b></span><span>지각 <b style="color:#f39c12;">${late7d}</b></span><span>결석 <b style="color:#e74c3c;">${abs7d}</b></span>
+                            <span>출석 <b style="color:#34495e;">${att7d}</b></span><span>지각 <b style="color:#f39c12;">${late7d}</b></span><span>결석 <b style="color:#e74c3c;">${abs7d}</b></span><span style="color:#bdc3c7;">공결 <b>${excused7d}</b></span>
                         </div>
                     </div>
                     <div style="margin-bottom:15px;">
@@ -364,7 +384,7 @@ window.__loadStudentDetail = async function(student) {
                             <span style="font-size:15px;">전체 누적 출석률</span><span style="color:#2980b9; font-size:16px;">${attRate}%</span>
                         </div>
                         <div style="display:flex; justify-content:space-between; font-size:13px; color:#7f8c8d; padding-bottom:15px; border-bottom:1px dashed #ecf0f1;">
-                            <span>출석 <b style="color:#34495e;">${totalAtt}</b></span><span>지각 <b style="color:#f39c12;">${totalLate}</b></span><span>결석 <b style="color:#e74c3c;">${totalAbs}</b></span>
+                            <span>출석 <b style="color:#34495e;">${totalAtt}</b></span><span>지각 <b style="color:#f39c12;">${totalLate}</b></span><span>결석 <b style="color:#e74c3c;">${totalAbs}</b></span><span style="color:#bdc3c7;">공결 <b>${totalExcused}</b></span>
                         </div>
                     </div>
                     <div style="font-size:12px; color:#95a5a6; margin-bottom:8px;">최근 무단 결석:</div>
