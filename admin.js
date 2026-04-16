@@ -478,7 +478,7 @@ window.__renderGradeSummaryTable = function() {
 };
 
 // =========================================================
-// 💡 [NEW] 정오표 데이터 호출 (수1/수2 분리 및 탐구 소단원 상세 표시 패치)
+// 💡 [NEW] 정오표 데이터 호출 (단원명 초간단 직관적 표시 패치)
 // =========================================================
 window.__loadGradeErrata = async function(examLabel) {
     const container = document.getElementById('grade-errata-area');
@@ -500,6 +500,7 @@ window.__loadGradeErrata = async function(examLabel) {
         let startIdx = 0;
         const limitSize = 1000;
 
+        // 1000개 제한 돌파 페이징
         while (fetchMore) {
             const { data, error } = await _supabase
                 .from('mock_errata')
@@ -539,6 +540,7 @@ window.__loadGradeErrata = async function(examLabel) {
             return;
         }
 
+        // 과목명 정규화 (로마자 버그 완벽 차단)
         const normalizeSubj = (name) => {
             let s = String(name || "").trim().replace(/\s+/g, '').replace(/·/g, '').replace(/과학/g, '');
             s = s.replace(/II/g, '2').replace(/I/g, '1').replace(/Ⅱ/g, '2').replace(/Ⅰ/g, '1');
@@ -598,7 +600,7 @@ window.__loadGradeErrata = async function(examLabel) {
             if (['미적분', '기하', '확률과통계', '수학', '수학1', '수학2'].includes(normSubj)) addToStats('수학공통', row);
         });
 
-        // 💡 [핵심 픽스 1] 수1/수2 태그 부착 및 탐구 소단원 표시 로직
+        // 💡 [초간단 단원명 생성 로직] 1, 2, 3, 4 등 DB에 있는 내용을 군더더기 없이 출력!
         const qInfoMap = {}; 
         (qInfos || []).forEach(q => {
             const normSubj = normalizeSubj(q.subject);
@@ -610,7 +612,7 @@ window.__loadGradeErrata = async function(examLabel) {
             
             let labelHtml = '';
             
-            // 수학 공통일 경우 앞에 예쁜 파란색/보라색 태그를 달아줍니다
+            // 수1/수2 전용 파란색/보라색 예쁜 태그
             if (normSubj === '수학1') {
                 labelHtml += `<span style="color:#2980b9; font-weight:900; margin-right:6px;">[수학I]</span>`;
             } else if (normSubj === '수학2') {
@@ -620,10 +622,9 @@ window.__loadGradeErrata = async function(examLabel) {
             let labelArr = [];
             if (unit && unit !== '-' && unit !== 'null') labelArr.push(unit);
             
-            // 국수영이 아니면 '탐구'로 간주합니다
+            // 탐구과목일 경우 소단원이 존재하면 하이픈으로 묶기 (DB에 1, 2, 3만 있으면 그대로 1, 2, 3만 출력됨)
             const isTamgu = !['국어', '국어공통', '화법과작문', '언어와매체', '수학', '수학공통', '미적분', '기하', '확률과통계', '영어', '수학1', '수학2'].includes(normSubj);
             
-            // 탐구일 때만 소단원을 하이픈(-)으로 이어서 표시!
             if (isTamgu && subUnit && subUnit !== '-' && subUnit !== 'null') {
                 labelArr.push(subUnit);
             }
@@ -633,6 +634,7 @@ window.__loadGradeErrata = async function(examLabel) {
             
             labelHtml += joinedUnit;
             
+            // 행동영역은 보기 편하게 회색 뱃지로 유지
             if (beh && beh !== '기타' && beh !== '-' && beh !== 'null') {
                 labelHtml += ` <span style="font-size:11px; color:#95a5a6; border:1px solid #ecf0f1; padding:2px 6px; border-radius:4px; margin-left:6px; background:#f8f9fa;">${beh}</span>`;
             }
@@ -675,7 +677,7 @@ window.__loadGradeErrata = async function(examLabel) {
                 
                 let qInfo = '-';
                 if (infoKey === '수학공통') {
-                    // 수학 공통은 수1, 수2 테이블을 교차해서 스캔합니다.
+                    // 수학 공통은 수학1, 수학2를 우선적으로 찾아서 꽂아줍니다!
                     qInfo = (qInfoMap['수학1'] && qInfoMap['수학1'][i]) || 
                             (qInfoMap['수학2'] && qInfoMap['수학2'][i]) || 
                             (qInfoMap['수학'] && qInfoMap['수학'][i]) || '-';
@@ -704,11 +706,6 @@ window.__loadGradeErrata = async function(examLabel) {
             }
             
             const sectionId = 'errata-' + Math.random().toString(36).substr(2, 9);
-            
-            // 💡 [핵심 픽스 2] 표의 헤더 부분도 국/수/영과 탐구에 맞게 텍스트 분리
-            const infoHeader = (infoKey === '수학공통' || infoKey === '국어공통' || infoKey === '영어' || infoKey === '미적분' || infoKey === '기하' || infoKey === '확률과통계' || infoKey === '화법과작문' || infoKey === '언어와매체') 
-                             ? '출제 영역 (과목 / 대단원)' 
-                             : '출제 영역 (대단원 - 소단원)';
 
             return `
                 <div style="border: 1px solid #dee2e6; border-radius: 8px; margin-bottom: 10px; overflow:hidden; background:#fff;">
@@ -723,7 +720,7 @@ window.__loadGradeErrata = async function(examLabel) {
                                 <tr style="border-bottom: 2px solid #dee2e6; background: #fff;">
                                     <th style="padding: 10px 5px; text-align:center; color:#95a5a6; font-size:11px;">문항</th>
                                     <th style="padding: 10px 5px; text-align:center; color:#95a5a6; font-size:11px;">O/X</th>
-                                    <th style="padding: 10px; text-align:left; color:#95a5a6; font-size:11px;">${infoHeader}</th>
+                                    <th style="padding: 10px; text-align:left; color:#95a5a6; font-size:11px;">출제 영역 (단원)</th>
                                     <th style="padding: 10px; text-align:right; color:#95a5a6; font-size:11px;">정답률</th>
                                     <th style="padding: 10px; text-align:right; color:#95a5a6; font-size:11px;">O/응시</th>
                                 </tr>
