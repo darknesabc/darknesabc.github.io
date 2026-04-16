@@ -748,32 +748,47 @@ window.__openDetailModal = async function(type, studentId, studentName) {
                 contentHtml += `</tr></thead><tbody>`;
 
                 for(let p=1; p<=8; p++) {
-                    contentHtml += `<tr><th>${p}</th>`;
+                    contentHtml += `<tr><td style="background:#fcfcfc; font-weight:bold;">${p}교시</td>`;
                     weekDates.forEach(dateStr => {
                         const isFuture = dateStr > todayIso || (dateStr === todayIso && p > currentP);
                         const cellData = (weekMap[mon][dateStr] && weekMap[mon][dateStr][p]) ? weekMap[mon][dateStr][p] : null;
                         
-                        let memo = '-';
+                        // 💡 1. 스케줄(메모)은 과거나 미래 상관없이 데이터가 있으면 무조건 가져오기!
+                        const baseMemo = cellData && cellData.memo ? cellData.memo.trim() : '';
+                        const extraMemo = schedMap[dateStr]?.[p] || '';
+                        let memo = extraMemo || baseMemo || '-';
+                        
                         let statusHtml = '-';
 
+                        // 💡 2. 출결 상태 표시 로직
                         if (isFuture) {
-                            memo = '-';
-                            statusHtml = '-';
+                            // 미래 시간은 출결 칸만 하이픈 처리
+                            statusHtml = '<span style="color:#bdc3c7;">-</span>'; 
                         } else {
-                            const baseMemo = cellData && cellData.memo ? cellData.memo.trim() : '';
-                            const extraMemo = schedMap[dateStr]?.[p] || '';
-                            memo = extraMemo || baseMemo || '-';
-
-                            if (cellData) {
+                            if (!cellData) {
+                                statusHtml = '<span style="color:#ccc;">미입력</span>';
+                            } else {
                                 const isLate = cellData.status === '2' || memo.includes('지각');
-                                if (isLate) statusHtml = `<div class="st-2">지각</div>`;
-                                else if (cellData.status === '1') statusHtml = `<div class="st-1">출석</div>`;
-                                else if (cellData.status === '3') statusHtml = `<div class="st-3">결석</div>`;
-                                else statusHtml = cellData.status;
+                                const isUnexcusedAbs = cellData.status === '3' && !isLate && (!memo || memo === '-');
+
+                                if (isLate) {
+                                    statusHtml = `<div class="st-2">지각</div>`;
+                                } else if (cellData.status === '1') {
+                                    statusHtml = `<div class="st-1">출석</div>`;
+                                } else if (isUnexcusedAbs) {
+                                    statusHtml = `<div class="st-3">결석</div>`; // 진짜 무단결석 (빨간색)
+                                } else if (cellData.status === '3') {
+                                    // 사유가 있는 결석은 회색 '공결' 처리
+                                    statusHtml = `<div style="background:#f1f2f6; color:#7f8c8d; font-weight:bold; border-radius:3px; padding:2px 0;">공결</div>`;
+                                } else {
+                                    statusHtml = cellData.status;
+                                }
                             }
                         }
 
-                        contentHtml += `<td class="st-memo">${memo}</td><td>${statusHtml}</td>`;
+                        // 💡 3. 미래 스케줄이 있다면 눈에 띄게 파란색으로 표시
+                        const memoStyle = (isFuture && memo !== '-') ? 'color:#3498db; font-weight:900;' : '';
+                        contentHtml += `<td class="st-memo" style="${memoStyle}">${memo}</td><td>${statusHtml}</td>`;
                     });
                     contentHtml += `</tr>`;
                 }
