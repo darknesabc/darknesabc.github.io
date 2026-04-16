@@ -501,7 +501,7 @@ window.__renderGradeSummaryTable = function() {
 
 
 // =========================================================
-// 💡 [최종 통합] 정오표 데이터 호출 (세부영역 분리 수집 완벽 적용)
+// 💡 [최종 진화] 정오표 데이터 호출 (단원별 & 행동영역별 이중 수집)
 // =========================================================
 window.__loadGradeErrata = async function(examLabel) {
     const container = document.getElementById('grade-errata-area');
@@ -618,7 +618,6 @@ window.__loadGradeErrata = async function(examLabel) {
             if (isNaN(qNum)) return;
 
             let unit = String(q.unit_name || '').replace(/^\d+\.?\s*/, '').trim(); 
-            // 💡 세부 영역(소단원/행동영역) 데이터 확보
             const subUnit = String(q.sub_unit || q.subunit || '').replace(/^\d+\.?\s*/, '').trim();
             const beh = String(q.behavior_domain || '').trim();
             
@@ -658,7 +657,6 @@ window.__loadGradeErrata = async function(examLabel) {
             let cleanBeh = beh;
             if (!cleanBeh || cleanBeh === '-' || cleanBeh === 'null') cleanBeh = '기타';
             
-            // 💡 맵에 subUnit, beh 포함해서 저장
             qInfoRawMap[normSubj][qNum] = { 
                 unit: cleanUnit, 
                 subUnit: subUnit,
@@ -667,6 +665,7 @@ window.__loadGradeErrata = async function(examLabel) {
                 qSubj: normSubj 
             };
 
+            // ... (HTML 뱃지 생성 로직 생략 - 원본과 동일) ...
             let labelHtml = '';
             if (normSubj === '수학' || normSubj === '수학공통') {
                 const uStr = cleanUnit.replace(/\s+/g, '');
@@ -718,6 +717,7 @@ window.__loadGradeErrata = async function(examLabel) {
             const majorCat = getMajorCategory(normS);
             if (!majorCat) return;
 
+            // 💡 [핵심] units(단원별)와 behaviors(행동영역별) 2개의 저장소 준비
             if (!radarStats[majorCat]) radarStats[majorCat] = { units: {}, behaviors: {} };
 
             for (let i = 1; i <= 45; i++) {
@@ -740,30 +740,39 @@ window.__loadGradeErrata = async function(examLabel) {
                 if (!unitInfo) unitInfo = { unit: '분류없음', subUnit: '분류없음', beh: '분류없음', unitKey: 9999, qSubj: normS };
 
                 const u = unitInfo.unit;
+                const b = unitInfo.beh;
 
-                // 💡 [추가] 국영수 vs 탐구 분리 수집 로직
+                // 1. 단원별(units) 데이터 누적
                 if (!radarStats[majorCat].units[u]) radarStats[majorCat].units[u] = { o: 0, total: 0, qSubj: unitInfo.qSubj, unitKey: unitInfo.unitKey, details: {} };
-                
                 radarStats[majorCat].units[u].total++;
                 if (isO) radarStats[majorCat].units[u].o++;
 
-                // 국/영/수면 행동영역(beh), 탐구면 소단원(subUnit) 추출
                 const isTamgu = !['국어', '수학', '영어'].includes(majorCat);
-                let detailKey = isTamgu ? unitInfo.subUnit : unitInfo.beh;
-                if (!detailKey || detailKey === '-' || detailKey === 'null') detailKey = '분류없음';
+                let detailKeyUnitView = isTamgu ? unitInfo.subUnit : unitInfo.beh;
+                if (!detailKeyUnitView || detailKeyUnitView === '-' || detailKeyUnitView === 'null') detailKeyUnitView = '분류없음';
 
-                if (!radarStats[majorCat].units[u].details[detailKey]) {
-                    radarStats[majorCat].units[u].details[detailKey] = { o: 0, total: 0 };
+                if (!radarStats[majorCat].units[u].details[detailKeyUnitView]) radarStats[majorCat].units[u].details[detailKeyUnitView] = { o: 0, total: 0 };
+                radarStats[majorCat].units[u].details[detailKeyUnitView].total++;
+                if (isO) radarStats[majorCat].units[u].details[detailKeyUnitView].o++;
+
+                // 2. 행동영역별(behaviors) 데이터 누적 (신규 기능!)
+                if (b && b !== '-' && b !== 'null' && b !== '기타' && b !== '분류없음') {
+                    if (!radarStats[majorCat].behaviors[b]) radarStats[majorCat].behaviors[b] = { o: 0, total: 0, details: {} };
+                    radarStats[majorCat].behaviors[b].total++;
+                    if (isO) radarStats[majorCat].behaviors[b].o++;
+
+                    // 행동영역의 하위 세부 데이터는 "단원명(unit)"이 됩니다!
+                    if (!radarStats[majorCat].behaviors[b].details[u]) radarStats[majorCat].behaviors[b].details[u] = { o: 0, total: 0 };
+                    radarStats[majorCat].behaviors[b].details[u].total++;
+                    if (isO) radarStats[majorCat].behaviors[b].details[u].o++;
                 }
-                radarStats[majorCat].units[u].details[detailKey].total++;
-                if (isO) radarStats[majorCat].units[u].details[detailKey].o++;
             }
         });
 
         window.__radarStats = radarStats;
         window.__renderRadarChartUI();
 
-        // 이하 하단 정오표 테이블 렌더링
+        // 이하 하단 정오표 테이블 렌더링 (그대로 유지)
         const findRowStrict = (targetName) => {
             if (!targetName) return null;
             const target = normalizeSubj(targetName);
@@ -794,13 +803,9 @@ window.__loadGradeErrata = async function(examLabel) {
                 const barColor = rate >= 80 ? '#2ecc71' : (rate >= 50 ? '#f1c40f' : '#e74c3c');
                 
                 let qInfo = '-';
-                if (infoKey === '수학공통') {
-                    qInfo = (qInfoMap['수학1']?.[i]) || (qInfoMap['수학2']?.[i]) || (qInfoMap['수학']?.[i]) || (qInfoMap['수학공통']?.[i]) || (qInfoMap['공통']?.[i]) || '-';
-                } else if (infoKey === '국어공통') {
-                    qInfo = (qInfoMap['국어']?.[i]) || (qInfoMap['국어공통']?.[i]) || (qInfoMap['공통']?.[i]) || '-';
-                } else {
-                    qInfo = (qInfoMap[infoKey] && qInfoMap[infoKey][i]) || '-';
-                }
+                if (infoKey === '수학공통') qInfo = (qInfoMap['수학1']?.[i]) || (qInfoMap['수학2']?.[i]) || (qInfoMap['수학']?.[i]) || (qInfoMap['수학공통']?.[i]) || (qInfoMap['공통']?.[i]) || '-';
+                else if (infoKey === '국어공통') qInfo = (qInfoMap['국어']?.[i]) || (qInfoMap['국어공통']?.[i]) || (qInfoMap['공통']?.[i]) || '-';
+                else qInfo = (qInfoMap[infoKey] && qInfoMap[infoKey][i]) || '-';
 
                 rowsHtml += `<tr style="background:${oxBg}; border-bottom: 1px solid #f1f2f6;"><td style="padding:8px 5px; text-align:center; font-weight:bold; color:#7f8c8d; width:50px;">${i}</td><td style="padding:8px 5px; text-align:center; font-weight:900; color:${oxColor}; font-size:15px; width:60px;">${isO?'O':'X'}</td><td style="padding:8px 10px; text-align:left; color:#34495e; font-size:12px;">${qInfo}</td><td style="padding:8px 10px; text-align:right; font-size:12px; color:#2c3e50; width:120px;"><div style="display:flex; align-items:center; justify-content:flex-end; gap:8px;"><span style="width:35px; text-align:right;">${rate}%</span><div style="width:50px; height:6px; background:#ecf0f1; border-radius:3px; overflow:hidden;"><div style="width:${rate}%; height:100%; background:${barColor};"></div></div></div></td><td style="padding:8px 10px; text-align:right; font-size:11px; color:#95a5a6; width:70px;">${stat.o}/${stat.total}</td></tr>`;
             }
@@ -827,8 +832,9 @@ window.__loadGradeErrata = async function(examLabel) {
 };
 
 // =========================================================
-// 💡 [최종 통합] UI 생성 (하단 세부영역 패널 추가)
+// 💡 [최종 진화] UI 생성 (단원/행동영역 스위치 추가)
 // =========================================================
+window.__switchRadarType = function(type) { window.__radarCurrentType = type; window.__renderRadarChartUI(); };
 window.__switchRadarSubj = function(subj) { window.__radarCurrentSubj = subj; window.__renderRadarChartUI(); };
 
 window.__renderRadarChartUI = function() {
@@ -846,6 +852,9 @@ window.__renderRadarChartUI = function() {
     }
 
     const subj = window.__radarCurrentSubj;
+    const type = window.__radarCurrentType || 'unit'; // 'unit' 또는 'beh'
+
+    const btnSty = (isActive, bg) => `padding:6px 15px; border-radius:20px; border:1px solid ${isActive?bg:'#dee2e6'}; cursor:pointer; font-size:12px; font-weight:bold; transition:0.2s; background:${isActive?bg:'#f8f9fa'}; color:${isActive?'#fff':'#7f8c8d'};`;
 
     let tabsHtml = subjs.map(s => {
         const isActive = s === subj;
@@ -857,8 +866,12 @@ window.__renderRadarChartUI = function() {
 
     area.innerHTML = `
         <div style="background:#ffffff; border-radius:12px; padding:25px; color:#2c3e50; border: 1px solid #dee2e6;">
-            <div style="display:flex; justify-content:flex-end; align-items:center; margin-bottom:20px;">
+            <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:15px; margin-bottom:20px;">
                 <div>${tabsHtml}</div>
+                <div style="display:flex; gap:5px;">
+                    <button onclick="window.__switchRadarType('unit')" style="${btnSty(type==='unit', '#2980b9')}">단원별 성취도</button>
+                    <button onclick="window.__switchRadarType('beh')" style="${btnSty(type==='beh', '#8e44ad')}">행동영역 보기</button>
+                </div>
             </div>
             
             <div style="position:relative; height:350px; width:100%; max-width:650px; margin:0 auto;">
@@ -874,29 +887,50 @@ window.__renderRadarChartUI = function() {
 };
 
 // =========================================================
-// 💡 [최종 픽스] 캔버스 & 겹친 데이터(0%) 선택 기능 추가
+// 💡 [최종 진화] 캔버스 & 겹친 데이터 처리 & 종류별 데이터 렌더링
 // =========================================================
 window.__renderRadarChartCanvas = function() {
     const ctx = document.getElementById('radarChartCanvas');
     if (!ctx || !window.__radarStats) return;
 
     const subj = window.__radarCurrentSubj;
-    const dataObj = window.__radarStats[subj]?.units || {};
+    const type = window.__radarCurrentType || 'unit'; 
+    
+    // 💡 현재 탭이 행동영역이면 행동영역 데이터를 가져옴
+    let dataObj = window.__radarStats[subj]?.[type === 'unit' ? 'units' : 'behaviors'] || {};
+    
+    // 만약 행동영역 데이터가 없으면 안내 메시지 (데이터 없는 탐구 과목 등 대비)
+    if (Object.keys(dataObj).length === 0 && type === 'beh') {
+        const p = document.getElementById('radar-detail-panel');
+        p.style.display = 'block';
+        p.innerHTML = `<div style="text-align:center; padding:20px; color:#e74c3c; font-weight:bold;">해당 과목은 분석 가능한 행동영역 데이터가 없습니다.</div>`;
+        return;
+    }
 
     let labels = Object.keys(dataObj).filter(k => k !== '기타' && k !== '분류없음' && k !== '');
     
+    // 💡 정렬 로직 (단원은 지정순서대로, 행동영역은 가나다순)
     labels.sort((a, b) => {
-        const keyA = dataObj[a]?.unitKey ?? 9999;
-        const keyB = dataObj[b]?.unitKey ?? 9999;
-        if (keyA === keyB) return a.localeCompare(b, 'ko'); 
-        return keyA - keyB;
+        if (type === 'unit') {
+            const keyA = dataObj[a]?.unitKey ?? 9999;
+            const keyB = dataObj[b]?.unitKey ?? 9999;
+            if (keyA === keyB) return a.localeCompare(b, 'ko'); 
+            return keyA - keyB;
+        } else {
+            return a.localeCompare(b, 'ko');
+        }
     });
 
     const dataPoints = labels.map(l => {
         return dataObj[l].total > 0 ? Math.round((dataObj[l].o / dataObj[l].total) * 100) : 0;
     });
 
-    const getLabelColor = (label, majorSubj) => {
+    // 💡 행동영역 전용 컬러 팔레트 (보라, 주황, 청록, 빨강, 파랑...)
+    const BEH_COLORS = ['#9b59b6', '#e67e22', '#1abc9c', '#e74c3c', '#3498db', '#f1c40f'];
+
+    const getLabelColor = (label, majorSubj, index) => {
+        if (type === 'beh') return BEH_COLORS[index % BEH_COLORS.length]; // 행동영역은 컬러풀하게!
+
         const info = dataObj[label];
         const qSubj = info?.qSubj || majorSubj; 
 
@@ -913,11 +947,10 @@ window.__renderRadarChartCanvas = function() {
         return '#3498db'; 
     };
 
-    const pointColors = labels.map(l => getLabelColor(l, subj));
+    const pointColors = labels.map((l, i) => getLabelColor(l, subj, i));
 
     if (window.__radarChartInstance) window.__radarChartInstance.destroy();
 
-    // 💡 [추가됨] 겹쳐있는 항목들을 처리하기 위해 배열로 받는 함수로 업그레이드
     window.__renderRadarDetails = (unitNamesArray, activeUnit) => {
         const panel = document.getElementById('radar-detail-panel');
         if (!unitNamesArray || unitNamesArray.length === 0) {
@@ -928,7 +961,6 @@ window.__renderRadarChartCanvas = function() {
         panel.style.display = 'block';
         const targetUnit = activeUnit || unitNamesArray[0];
 
-        // 차트 하이라이트 효과 (클릭된 점 굵어지게)
         if (window.__radarChartInstance) {
             const dataset = window.__radarChartInstance.data.datasets[0];
             dataset.pointRadius = labels.map(l => l === targetUnit ? 8 : 5);
@@ -939,7 +971,6 @@ window.__renderRadarChartCanvas = function() {
         
         let html = '';
 
-        // 💡 0% 등 항목이 여러 개 겹쳐있을 경우 "선택 버튼" UI 띄우기
         if (unitNamesArray.length > 1) {
             const arrayStr = JSON.stringify(unitNamesArray).replace(/"/g, '&quot;');
             html += `<div style="margin-bottom:20px; padding:15px; background:#fdf3f2; border-radius:8px; border:1px dashed #e74c3c;">`;
@@ -955,7 +986,11 @@ window.__renderRadarChartCanvas = function() {
             html += `</div></div>`;
         }
         
-        html += `<h4 style="margin:0 0 15px 0; color:#3498db; font-size:16px; display:flex; align-items:center; gap:8px;">🔍 [${targetUnit}] 세부 영역 분석</h4>`;
+        // 💡 현재 탭이 행동영역이면 제목이 "단원별 득점 비중"으로 바뀝니다!
+        const detailTitle = type === 'unit' ? '세부 영역 분석' : '단원별 득점 비중';
+        const detailIcon = type === 'unit' ? '🔍' : '🧠';
+
+        html += `<h4 style="margin:0 0 15px 0; color:#3498db; font-size:16px; display:flex; align-items:center; gap:8px;">${detailIcon} [${targetUnit}] ${detailTitle}</h4>`;
         
         const details = dataObj[targetUnit].details || {};
         const detailKeys = Object.keys(details).filter(k => k !== '기타' && k !== '분류없음' && k !== '');
@@ -1001,14 +1036,14 @@ window.__renderRadarChartCanvas = function() {
                 pointHoverBackgroundColor: '#fff',
                 pointHoverBorderColor: pointColors,
                 borderWidth: 2,
-                pointRadius: 5,
+                pointRadius: labels.map(() => 5),
+                pointBorderWidth: labels.map(() => 2),
                 pointHoverRadius: 7
             }]
         },
         options: {
             responsive: true,
             maintainAspectRatio: false,
-            // 💡 정중앙을 클릭했을 때, 0%인 모든 항목을 수집해서 패널로 넘김
             onClick: (event, elements) => {
                 if (elements && elements.length > 0) {
                     const clickedIdx = elements[0].index;
@@ -1016,7 +1051,6 @@ window.__renderRadarChartCanvas = function() {
                     
                     let overlapUnits = [labels[clickedIdx]];
                     
-                    // 만약 클릭한 값이 0%라면, 차트 내의 모든 0% 항목을 싹 모아옵니다!
                     if (clickedValue === 0) {
                         overlapUnits = labels.filter((l, idx) => dataPoints[idx] === 0);
                     }
@@ -1034,7 +1068,7 @@ window.__renderRadarChartCanvas = function() {
                     grid: { color: '#ecf0f1' },
                     angleLines: { color: '#ecf0f1' },
                     pointLabels: {
-                        color: (context) => getLabelColor(context.label, subj),
+                        color: (context) => getLabelColor(context.label, subj, labels.indexOf(context.label)),
                         font: { size: 12, weight: 'bold' }
                     }
                 }
@@ -1052,14 +1086,12 @@ window.__renderRadarChartCanvas = function() {
         }
     });
 
-    // 💡 초기 로딩 시 자동 렌더링도, 최하점(0%)이 여러 개면 메뉴가 열리게 설정
     if (labels.length > 0) {
         let lowestScore = 101;
         dataPoints.forEach(val => {
             if (val < lowestScore) lowestScore = val;
         });
         
-        // 최하점과 점수가 똑같은 모든 단원을 수집
         let lowestUnits = labels.filter((l, idx) => dataPoints[idx] === lowestScore);
         window.__renderRadarDetails(lowestUnits, lowestUnits[0]);
     }
