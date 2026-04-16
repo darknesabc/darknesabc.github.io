@@ -128,10 +128,7 @@ async function init() {
 }
 
 // =========================================================
-// 3. 학생 상세 페이지 로드 (요약 카드 + 상세 내역 리스트)
-// =========================================================
-// =========================================================
-// 3. 학생 상세 페이지 로드 (요약 카드 + 성적 요약 + 성적 추이)
+// 3. 학생 상세 페이지 로드 (요약 카드 + 성적 요약 + 정오표 + 성적 추이)
 // =========================================================
 window.__loadStudentDetail = async function(student) {
     if (!student || !student.studentId) return;
@@ -352,7 +349,7 @@ window.__loadStudentDetail = async function(student) {
 };
 
 // =========================================================
-// 💡 4. 성적 (요약 & 추이 통합)
+// 💡 4. 성적 (요약 & 정오표 & 추이 통합)
 // =========================================================
 window.__loadGradeTrend = async function(student) {
     const trendContainer = document.getElementById('grade-trend-container');
@@ -378,21 +375,20 @@ window.__loadGradeTrend = async function(student) {
             return;
         }
 
-        // 💡 [추가] 성적 요약 컴포넌트 초기화
         window.__currentSummaryExam = window.__currentStudentScores[window.__currentStudentScores.length - 1].exam_label;
+        
         window.__renderGradeSummaryUI();
+        window.__loadGradeErrata(window.__currentSummaryExam); // 💡 초기 정오표 데이터 호출
 
-        // 기존 추이 초기화
         window.__currentGradeMode = 'pct'; 
         window.__currentViewMode = 'graph'; 
-        window.__toggles = { topTotal: false, topChoice: false, topClass: false, topHS: false, topGreen: false, topBlue: false, topMed: false, topSKY: false };
+        window.__toggles = { topTotal: false, topChoice: false, topHS: false, topGreen: false, topBlue: false, topMed: false, topSKY: false };
         window.__subjectToggles = { kor: true, math: true, tam1: true, tam2: true, eng: true }; 
 
         window.__renderGradeTrendUI();
     } catch (err) { console.error("성적 로드 에러:", err); }
 };
 
-// 💡 [추가] 성적 요약 껍데기(드롭다운 포함) 렌더링
 window.__renderGradeSummaryUI = function() {
     const container = document.getElementById('grade-summary-container');
     if (!container) return;
@@ -411,6 +407,11 @@ window.__renderGradeSummaryUI = function() {
                 </div>
             </div>
             <div id="grade-summary-table-area"></div>
+
+            <div style="margin-top:25px; padding-top:20px; border-top:1px dashed #dee2e6;">
+                <h4 style="margin:0 0 15px 0; color:#2c3e50; display:flex; align-items:center; gap:8px;">🎯 정오표 상세 분석</h4>
+                <div id="grade-errata-area"></div>
+            </div>
         </div>
     `;
     window.__renderGradeSummaryTable();
@@ -419,13 +420,12 @@ window.__renderGradeSummaryUI = function() {
 window.__changeSummaryExam = function(examLabel) {
     window.__currentSummaryExam = examLabel;
     window.__renderGradeSummaryTable();
+    window.__loadGradeErrata(examLabel); // 💡 모의고사 변경 시 정오표도 리로드
 };
 
-// 💡 [추가] 선택된 시험의 데이터로 표(Table) 렌더링 (화이트 테마)
 window.__renderGradeSummaryTable = function() {
     const area = document.getElementById('grade-summary-table-area');
     const score = window.__currentStudentScores.find(s => s.exam_label === window.__currentSummaryExam) || {};
-
     const v = (val) => val === null || val === undefined || val === "" ? '-' : val;
 
     area.innerHTML = `
@@ -438,68 +438,38 @@ window.__renderGradeSummaryTable = function() {
                 .sum-table td { font-weight:bold; color:#2c3e50; }
                 .sum-table tbody tr:hover { background-color:#f8f9fa; transition:0.2s; }
                 .sum-table tr:last-child td { border-bottom:none; }
-                .sum-kor { color:#3498db; }
-                .sum-math { color:#e74c3c; }
-                .sum-tam1 { color:#27ae60; }
-                .sum-tam2 { color:#f39c12; }
+                .sum-kor { color:#3498db; } .sum-math { color:#e74c3c; } .sum-tam1 { color:#27ae60; } .sum-tam2 { color:#f39c12; }
             </style>
             <table class="sum-table">
                 <thead>
                     <tr>
                         <th style="width:100px; border-right:1px solid #ecf0f1;">과목</th>
-                        <th>국어</th>
-                        <th>수학</th>
-                        <th>영어</th>
-                        <th>한국사</th>
-                        <th>탐구1</th>
-                        <th>탐구2</th>
+                        <th>국어</th><th>수학</th><th>영어</th><th>한국사</th><th>탐구1</th><th>탐구2</th>
                     </tr>
                 </thead>
                 <tbody>
                     <tr>
                         <td class="header-col">선택과목</td>
-                        <td class="sum-kor">${v(score.kor_choice)}</td>
-                        <td class="sum-math">${v(score.math_choice)}</td>
-                        <td>-</td>
-                        <td>-</td>
-                        <td class="sum-tam1">${v(score.tam1_name)}</td>
-                        <td class="sum-tam2">${v(score.tam2_name)}</td>
+                        <td class="sum-kor">${v(score.kor_choice)}</td><td class="sum-math">${v(score.math_choice)}</td>
+                        <td>-</td><td>-</td>
+                        <td class="sum-tam1">${v(score.tam1_name)}</td><td class="sum-tam2">${v(score.tam2_name)}</td>
                     </tr>
                     <tr>
                         <td class="header-col">원점수</td>
-                        <td>${v(score.kor_raw_total)}</td>
-                        <td>${v(score.math_raw_total)}</td>
-                        <td>${v(score.eng_raw)}</td>
-                        <td>${v(score.hist_raw)}</td>
-                        <td>${v(score.tam1_raw)}</td>
-                        <td>${v(score.tam2_raw)}</td>
+                        <td>${v(score.kor_raw_total)}</td><td>${v(score.math_raw_total)}</td><td>${v(score.eng_raw)}</td><td>${v(score.hist_raw)}</td><td>${v(score.tam1_raw)}</td><td>${v(score.tam2_raw)}</td>
                     </tr>
                     <tr>
                         <td class="header-col">표준점수</td>
-                        <td>${v(score.kor_exp_std)}</td>
-                        <td>${v(score.math_exp_std)}</td>
-                        <td>-</td>
-                        <td>-</td>
-                        <td>${v(score.tam1_exp_std)}</td>
-                        <td>${v(score.tam2_exp_std)}</td>
+                        <td>${v(score.kor_exp_std)}</td><td>${v(score.math_exp_std)}</td><td>-</td><td>-</td><td>${v(score.tam1_exp_std)}</td><td>${v(score.tam2_exp_std)}</td>
                     </tr>
                     <tr>
                         <td class="header-col">백분위</td>
-                        <td class="sum-kor">${v(score.kor_exp_pct)}</td>
-                        <td class="sum-math">${v(score.math_exp_pct)}</td>
-                        <td>-</td>
-                        <td>-</td>
-                        <td class="sum-tam1">${v(score.tam1_exp_pct)}</td>
-                        <td class="sum-tam2">${v(score.tam2_exp_pct)}</td>
+                        <td class="sum-kor">${v(score.kor_exp_pct)}</td><td class="sum-math">${v(score.math_exp_pct)}</td><td>-</td><td>-</td><td class="sum-tam1">${v(score.tam1_exp_pct)}</td><td class="sum-tam2">${v(score.tam2_exp_pct)}</td>
                     </tr>
                     <tr>
                         <td class="header-col">등급</td>
-                        <td>${v(score.kor_exp_grade)}</td>
-                        <td>${v(score.math_exp_grade)}</td>
-                        <td style="color:#9b59b6;">${v(score.eng_grade)}</td>
-                        <td>${v(score.hist_grade || score.hist_exp_grade)}</td>
-                        <td>${v(score.tam1_exp_grade)}</td>
-                        <td>${v(score.tam2_exp_grade)}</td>
+                        <td>${v(score.kor_exp_grade)}</td><td>${v(score.math_exp_grade)}</td><td style="color:#9b59b6;">${v(score.eng_grade)}</td>
+                        <td>${v(score.hist_grade || score.hist_exp_grade)}</td><td>${v(score.tam1_exp_grade)}</td><td>${v(score.tam2_exp_grade)}</td>
                     </tr>
                 </tbody>
             </table>
@@ -507,7 +477,175 @@ window.__renderGradeSummaryTable = function() {
     `;
 };
 
-// 💡 추이 UI 렌더링
+// =========================================================
+// 💡 [NEW] 정오표 데이터 호출 및 렌더링 로직 (프론트 단독 연산)
+// =========================================================
+window.__loadGradeErrata = async function(examLabel) {
+    const container = document.getElementById('grade-errata-area');
+    if (!container) return;
+    
+    container.innerHTML = '<div style="text-align:center; padding:30px; color:#95a5a6;"><span style="font-size:24px; display:block; margin-bottom:10px;">⏳</span>데이터를 분석하는 중입니다...</div>';
+
+    const scoreInfo = window.__currentStudentScores.find(s => s.exam_label === examLabel);
+    if (!scoreInfo) {
+        container.innerHTML = '<div style="text-align:center; padding:20px; color:#7f8c8d;">선택한 시험의 데이터가 없습니다.</div>';
+        return;
+    }
+    
+    const studentId = scoreInfo.student_id;
+
+    try {
+        // 수퍼베이스에서 O/X 및 문항정보 일괄 로드
+        const [errataRes, qInfoRes] = await Promise.all([
+            _supabase.from('mock_errata').select('*').eq('exam_label', examLabel),
+            _supabase.from('mock_question_info').select('*').eq('exam_label', examLabel)
+        ]);
+
+        const allErrata = errataRes.data || [];
+        const qInfos = qInfoRes.data || [];
+
+        const myErrata = allErrata.filter(e => e.student_id === studentId);
+        if (myErrata.length === 0) {
+            container.innerHTML = '<div style="text-align:center; padding:30px; color:#95a5a6; border:1px solid #f1f2f6; border-radius:8px;">이 시험의 정오표(O/X) 데이터가 아직 등록되지 않았습니다.</div>';
+            return;
+        }
+
+        // 1. 코호트 분석 (전체 정답률 계산)
+        const stats = {}; 
+        allErrata.forEach(row => {
+            const subj = row.subject;
+            if (!stats[subj]) stats[subj] = {};
+            for (let i = 1; i <= 45; i++) {
+                const val = row[`q${i}`];
+                if (val === 'O' || val === 'X' || val === '○' || val === '×') {
+                    if (!stats[subj][i]) stats[subj][i] = { o: 0, total: 0 };
+                    stats[subj][i].total++;
+                    if (val === 'O' || val === '○') stats[subj][i].o++;
+                }
+            }
+        });
+
+        // 2. 출제 영역 정보 매핑
+        const qInfoMap = {}; 
+        qInfos.forEach(q => {
+            if (!qInfoMap[q.subject]) qInfoMap[q.subject] = {};
+            const unit = q.unit_name || '';
+            const beh = q.behavior_domain || q.sub_unit || '';
+            let label = unit;
+            if (beh && beh !== '기타' && beh !== '-') {
+                label += ` <span style="font-size:11px; color:#95a5a6; border:1px solid #ecf0f1; padding:2px 6px; border-radius:4px; margin-left:6px; background:#f8f9fa;">${beh}</span>`;
+            }
+            qInfoMap[q.subject][q.question_num] = label;
+        });
+
+        // 3. 내 과목 찾기 헬퍼
+        const findRow = (subjHint, choiceName) => {
+            return myErrata.find(e => e.subject === choiceName || e.subject.includes(subjHint) || (choiceName && e.subject.includes(choiceName.slice(0,2))));
+        };
+        const korRow = findRow('국어', scoreInfo.kor_choice) || myErrata.find(e => e.subject.includes('언어') || e.subject.includes('화법'));
+        const mathRow = findRow('수학', scoreInfo.math_choice) || myErrata.find(e => e.subject.includes('미적') || e.subject.includes('기하') || e.subject.includes('확률'));
+        const engRow = findRow('영어', '영어');
+        const tam1Row = findRow('탐구', scoreInfo.tam1_name) || myErrata.find(e => e.subject === scoreInfo.tam1_name);
+        const tam2Row = findRow('탐구', scoreInfo.tam2_name) || myErrata.find(e => e.subject === scoreInfo.tam2_name);
+
+        // 4. 섹션별 아코디언 HTML 렌더러
+        const renderSection = (title, subtitle, qStart, qEnd, errataRow, subjKeyForInfo) => {
+            if (!errataRow) return '';
+            
+            let hasData = false;
+            for (let i = qStart; i <= qEnd; i++) {
+                if (errataRow[`q${i}`]) { hasData = true; break; }
+            }
+            if (!hasData) return '';
+
+            const subj = errataRow.subject;
+            let rowsHtml = '';
+            
+            for (let i = qStart; i <= qEnd; i++) {
+                const ox = errataRow[`q${i}`];
+                if (!ox) continue;
+                
+                const isO = (ox === 'O' || ox === '○');
+                const oxColor = isO ? '#3498db' : '#e74c3c';
+                const oxBg = isO ? '#fff' : '#fdf3f2';
+                
+                const stat = (stats[subj] && stats[subj][i]) ? stats[subj][i] : { o: 0, total: 0 };
+                const rate = stat.total > 0 ? Math.round((stat.o / stat.total) * 1000) / 10 : 0;
+                const barColor = rate >= 80 ? '#2ecc71' : (rate >= 50 ? '#f1c40f' : '#e74c3c');
+                
+                let qInfo = '';
+                if (qInfoMap[subjKeyForInfo] && qInfoMap[subjKeyForInfo][i]) qInfo = qInfoMap[subjKeyForInfo][i];
+                else if (qInfoMap['국어'] && qInfoMap['국어'][i] && subjKeyForInfo.includes('국어')) qInfo = qInfoMap['국어'][i];
+                else if (qInfoMap['수학'] && qInfoMap['수학'][i] && subjKeyForInfo.includes('수학')) qInfo = qInfoMap['수학'][i];
+                else if (qInfoMap[subj] && qInfoMap[subj][i]) qInfo = qInfoMap[subj][i];
+
+                rowsHtml += `
+                    <tr style="background:${oxBg}; border-bottom: 1px solid #f1f2f6;">
+                        <td style="padding:8px 5px; text-align:center; font-weight:bold; color:#7f8c8d; width:50px;">${i}</td>
+                        <td style="padding:8px 5px; text-align:center; font-weight:900; color:${oxColor}; font-size:15px; width:60px;">${isO?'O':'X'}</td>
+                        <td style="padding:8px 10px; text-align:left; color:#34495e; font-size:12px;">${qInfo}</td>
+                        <td style="padding:8px 10px; text-align:right; font-size:12px; color:#2c3e50; width:120px;">
+                            <div style="display:flex; align-items:center; justify-content:flex-end; gap:8px;">
+                                <span style="width:35px; text-align:right;">${rate}%</span>
+                                <div style="width:50px; height:6px; background:#ecf0f1; border-radius:3px; overflow:hidden;">
+                                    <div style="width:${rate}%; height:100%; background:${barColor};"></div>
+                                </div>
+                            </div>
+                        </td>
+                        <td style="padding:8px 10px; text-align:right; font-size:11px; color:#95a5a6; width:70px;">${stat.o}/${stat.total}</td>
+                    </tr>
+                `;
+            }
+            
+            const sectionId = 'errata-' + Math.random().toString(36).substr(2, 9);
+            
+            return `
+                <div style="border: 1px solid #dee2e6; border-radius: 8px; margin-bottom: 10px; overflow:hidden; background:#fff;">
+                    <div onclick="const el = document.getElementById('${sectionId}'); el.style.display = el.style.display === 'none' ? 'block' : 'none';" 
+                         style="padding: 12px 15px; background: #fbfbfc; cursor: pointer; display: flex; justify-content: space-between; align-items: center; transition: background 0.2s;">
+                        <div style="font-weight: bold; color: #2c3e50; font-size: 14px;">${title}</div>
+                        <div style="font-size: 11px; color: #7f8c8d;">${subtitle}</div>
+                    </div>
+                    <div id="${sectionId}" style="display: none; padding: 0;">
+                        <table style="width: 100%; border-collapse: collapse; margin-bottom: 0;">
+                            <thead>
+                                <tr style="border-bottom: 2px solid #dee2e6; background: #fff;">
+                                    <th style="padding: 10px 5px; text-align:center; color:#95a5a6; font-size:11px;">문항</th>
+                                    <th style="padding: 10px 5px; text-align:center; color:#95a5a6; font-size:11px;">O/X</th>
+                                    <th style="padding: 10px; text-align:left; color:#95a5a6; font-size:11px;">출제 영역 (단원-행동영역)</th>
+                                    <th style="padding: 10px; text-align:right; color:#95a5a6; font-size:11px;">정답률</th>
+                                    <th style="padding: 10px; text-align:right; color:#95a5a6; font-size:11px;">O/응시</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                ${rowsHtml}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            `;
+        };
+
+        // 5. 최종 렌더링 조립
+        let html = '';
+        html += renderSection('국어 공통', '문항 1~34 ▼', 1, 34, korRow, '국어');
+        if (scoreInfo.kor_choice) html += renderSection('국어 선택', `문항 35~45 · ${scoreInfo.kor_choice} ▼`, 35, 45, korRow, scoreInfo.kor_choice);
+        
+        html += renderSection('수학 공통', '문항 1~22 ▼', 1, 22, mathRow, '수학');
+        if (scoreInfo.math_choice) html += renderSection('수학 선택', `문항 23~30 · ${scoreInfo.math_choice} ▼`, 23, 30, mathRow, scoreInfo.math_choice);
+        
+        html += renderSection('영어', '문항 1~45 ▼', 1, 45, engRow, '영어');
+        
+        if (scoreInfo.tam1_name) html += renderSection(`탐구 (${scoreInfo.tam1_name})`, '문항 1~20 ▼', 1, 20, tam1Row, scoreInfo.tam1_name);
+        if (scoreInfo.tam2_name) html += renderSection(`탐구 (${scoreInfo.tam2_name})`, '문항 1~20 ▼', 1, 20, tam2Row, scoreInfo.tam2_name);
+        
+        container.innerHTML = html || '<div style="text-align:center; padding:20px; color:#7f8c8d;">해당 시험의 정오표 데이터가 없습니다.</div>';
+
+    } catch (err) {
+        container.innerHTML = `<div style="text-align:center; padding:20px; color:#e74c3c;">에러 발생: ${err.message}</div>`;
+    }
+};
+
 window.__renderGradeTrendUI = function() {
     const container = document.getElementById('grade-trend-container');
     
@@ -563,8 +701,8 @@ window.__renderGradeTrendUI = function() {
             <div style="display:flex; gap:8px; margin-bottom:15px; ${window.__currentViewMode==='table' ? 'display:none;' : ''}">
                 ${subjBtn('kor', kLabel, '#3498db')}
                 ${subjBtn('math', mLabel, '#e74c3c')}
-                ${subjBtn('tam1', t1Label, '#2ecc71')}
-                ${subjBtn('tam2', t2Label, '#f1c40f')}
+                ${subjBtn('tam1', t1Label, '#27ae60')}
+                ${subjBtn('tam2', t2Label, '#f39c12')}
                 ${subjBtn('eng', '영어', '#9b59b6')}
             </div>
             
@@ -574,15 +712,8 @@ window.__renderGradeTrendUI = function() {
     window.__renderGradeDisplay();
 };
 
-window.__toggleCutoff = function(key) {
-    window.__toggles[key] = !window.__toggles[key];
-    window.__renderGradeTrendUI();
-};
-
-window.__toggleSubject = function(subjId) {
-    window.__subjectToggles[subjId] = !window.__subjectToggles[subjId];
-    window.__renderGradeTrendUI();
-};
+window.__toggleCutoff = function(key) { window.__toggles[key] = !window.__toggles[key]; window.__renderGradeTrendUI(); };
+window.__toggleSubject = function(subjId) { window.__subjectToggles[subjId] = !window.__subjectToggles[subjId]; window.__renderGradeTrendUI(); };
 
 window.__renderGradeDisplay = function() {
     const area = document.getElementById('grade-display-area');
@@ -655,7 +786,7 @@ window.__renderGradeDisplay = function() {
         
         const labels = scores.map(s => s.exam_label);
         const datasets = [];
-        const colors = { kor:'#3498db', math:'#e74c3c', tam1:'#27ae60', tam2:'#f39c12', eng:'#9b59b6' }; // 💡 탐구 색상 화이트 테마 맞춤 보정
+        const colors = { kor:'#3498db', math:'#e74c3c', tam1:'#27ae60', tam2:'#f39c12', eng:'#9b59b6' };
         
         const subjs = [
             {id:'kor', name:'국어'}, {id:'math', name:'수학'}, 
@@ -666,6 +797,7 @@ window.__renderGradeDisplay = function() {
 
         subjs.forEach(sbj => {
             if (!window.__subjectToggles[sbj.id]) return;
+            if(sbj.id === 'eng' && mode !== 'raw') return; 
             
             let valKey;
             if (sbj.id === 'eng') {
@@ -685,29 +817,32 @@ window.__renderGradeDisplay = function() {
                 yAxisID: yAxisID
             });
 
-            const addLine = (key, label, dashPattern, color) => {
-                if (toggles[key]) {
-                    datasets.push({ 
-                        label: `${sbj.name} (${label})`, 
-                        data: scores.map(s => getTop30(s.exam_label, sbj.id, valKey, key, s)), 
-                        borderColor: color || colors[sbj.id], 
-                        borderDash: dashPattern, 
-                        borderWidth: 1.5, 
-                        pointRadius: rPt, 
-                        pointStyle: 'rect', 
-                        fill: false,
-                        yAxisID: yAxisID
-                    });
-                }
-            };
-            
-            addLine('topTotal', '전체상위30%', [5, 5], colors[sbj.id]);
-            addLine('topChoice', '선택상위30%', [3, 3], '#9b59b6');
-            addLine('topHS', 'HS반 30%', [4, 2], '#e67e22');
-            addLine('topGreen', '그린 30%', [4, 2], '#2ecc71');
-            addLine('topBlue', '블루 30%', [4, 2], '#3498db');
-            addLine('topMed', '의치대 30%', [4, 2], '#c0392b');
-            addLine('topSKY', '연고대 30%', [4, 2], '#2980b9');
+            if (sbj.id !== 'eng') {
+                const addLine = (key, label, dashPattern, color) => {
+                    if (toggles[key]) {
+                        datasets.push({ 
+                            label: `${sbj.name} (${label})`, 
+                            data: scores.map(s => getTop30(s.exam_label, sbj.id, valKey, key, s)), 
+                            borderColor: color || colors[sbj.id], 
+                            borderDash: dashPattern, 
+                            borderWidth: 1.5, 
+                            pointRadius: rPt, 
+                            pointStyle: 'rect', 
+                            fill: false,
+                            yAxisID: yAxisID
+                        });
+                    }
+                };
+                
+                addLine('topTotal', '전체상위30%', [5, 5], colors[sbj.id]);
+                addLine('topChoice', '선택상위30%', [3, 3], '#9b59b6');
+                addLine('topClass', '반별상위30%', [2, 4], '#1abc9c');
+                addLine('topHS', 'HS반 30%', [4, 2], '#e67e22');
+                addLine('topGreen', '그린 30%', [4, 2], '#2ecc71');
+                addLine('topBlue', '블루 30%', [4, 2], '#3498db');
+                addLine('topMed', '의치대 30%', [4, 2], '#c0392b');
+                addLine('topSKY', '연고대 30%', [4, 2], '#2980b9');
+            }
         });
 
         Chart.defaults.color = '#7f8c8d';
