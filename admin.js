@@ -534,7 +534,14 @@ window.__loadGradeErrata = async function(examLabel) {
             }
         }
 
-        const { data: qInfos } = await _supabase.from('mock_question_info').select('*').eq('exam_label', examLabel);
+        const { data: qInfos, error: qError } = await _supabase
+            .from('mock_question_info')
+            .select('*')
+            .eq('exam_label', examLabel);
+
+        // 💡 [여기 추가됨!] unit_map 테이블 데이터 가져오기 (레이더 차트 정렬용)
+        const { data: unitMapData } = await _supabase.from('unit_map').select('*');
+        window.__unitMap = unitMapData || [];
 
         if (allErrata.length === 0) {
             container.innerHTML = '<div style="text-align:center; padding:30px; color:#e74c3c;">DB에서 데이터를 가져오지 못했습니다.</div>';
@@ -923,7 +930,7 @@ window.__renderRadarChartUI = function() {
 };
 
 // =========================================================
-// 💡 [레이더 차트] 방사형 그래프 렌더러 (다중 컬러 적용 완벽 복구)
+// 💡 [레이더 차트] 방사형 그래프 렌더러 (unit_code 정렬 & 갈래복합 색상 수정)
 // =========================================================
 window.__renderRadarChartCanvas = function() {
     const ctx = document.getElementById('radarChartCanvas');
@@ -936,28 +943,49 @@ window.__renderRadarChartCanvas = function() {
     let labels = Object.keys(dataObj).filter(k => k !== '분류없음' && k !== '기타' && k !== '');
     if (labels.length === 0) labels = ['데이터 없음'];
 
+    // 💡 [핵심 픽스 1] unit_map의 unit_code를 기준으로 차트 라벨(꼭짓점) 순서 정렬
+    labels.sort((a, b) => {
+        const getCode = (name) => {
+            if (!window.__unitMap || window.__unitMap.length === 0) return 9999;
+            const targetName = name.replace(/\s+/g, '');
+            
+            const found = window.__unitMap.find(u => {
+                // 과목 컬럼이 있다면(subject), 현재 과목과 일치하는지 먼저 체크하여 정확도 상승
+                const uSubj = String(u.subject || '').replace(/\s+/g, '');
+                if (uSubj && !uSubj.includes(subj.replace(/\s+/g, '')) && !subj.includes(uSubj)) return false;
+                
+                // 단원명 매칭
+                const uName = String(u.unit_name || u.unit || u.name || u.title || '').replace(/\s+/g, '');
+                return uName && (uName === targetName || uName.includes(targetName) || targetName.includes(uName));
+            });
+            return found ? (parseInt(found.unit_code, 10) || 9999) : 9999;
+        };
+        return getCode(a) - getCode(b);
+    });
+
     const dataPoints = labels.map(l => {
         const stat = dataObj[l];
         return stat && stat.total > 0 ? Math.round((stat.o / stat.total) * 100) : 0;
     });
 
-    // 💡 단원명(또는 행동영역) 글자를 분석해서 색상을 반환하는 함수
+    // 💡 [핵심 픽스 2] '갈래 복합'을 완벽하게 문학(초록색)으로 분류!
     const getLabelColor = (label, subject) => {
         if (subject === '국어') {
-            if (/(독서|인문|사회|과학|기술|예술|갈래\s*복합)/.test(label)) return '#3498db'; // 파랑 (독서)
-            if (/(현대시|고전시가|현대소설|고전소설|극|수필|문학)/.test(label)) return '#2ecc71'; // 초록 (문학)
-            if (/(화법|작문|언어|매체)/.test(label)) return '#f39c12'; // 주황 (선택)
-            return '#7f8c8d'; // 기본색
+            // 독서(파랑)에서는 '갈래 복합' 제외
+            if (/(독서|인문|사회|과학|기술|예술|이론)/.test(label)) return '#3498db'; 
+            // 문학(초록)에 '갈래 복합' 완벽 추가
+            if (/(현대시|고전시가|현대소설|고전소설|극|수필|문학|갈래\s*복합)/.test(label)) return '#2ecc71'; 
+            if (/(화법|작문|언어|매체)/.test(label)) return '#f39c12'; // 선택(주황)
+            return '#7f8c8d'; 
         } else if (subject === '수학') {
-            if (/(지수|로그|삼각|수열)/.test(label)) return '#3498db'; // 파랑 (수학I)
-            if (/(극한|연속|미분|적분)/.test(label)) return '#8e44ad'; // 보라 (수학II)
-            if (/(확률|통계|경우|이차곡선|벡터|공간|미적분|기하)/.test(label)) return '#f39c12'; // 주황 (선택)
-            return '#27ae60'; // 초록 (고1수학 등)
+            if (/(지수|로그|삼각|수열)/.test(label)) return '#3498db'; 
+            if (/(극한|연속|미분|적분)/.test(label)) return '#8e44ad'; 
+            if (/(확률|통계|경우|이차곡선|벡터|공간|미적분|기하)/.test(label)) return '#f39c12'; 
+            return '#27ae60'; 
         }
-        return '#3498db'; // 다른 과목 기본색 (파랑)
+        return '#3498db'; // 다른 탐구 과목 등은 기본 파란색
     };
 
-    // 각 포인트와 라벨에 들어갈 색상 배열 생성
     const pointColors = labels.map(l => getLabelColor(l, subj));
 
     if (window.__radarChartInstance) window.__radarChartInstance.destroy();
@@ -969,9 +997,9 @@ window.__renderRadarChartCanvas = function() {
             datasets: [{
                 label: `${subj} 성취도(%)`,
                 data: dataPoints,
-                backgroundColor: 'rgba(52, 152, 219, 0.1)', // 연한 파란색 배경
-                borderColor: 'rgba(52, 152, 219, 0.5)',     // 연한 테두리
-                pointBackgroundColor: pointColors,          // 💡 포인트마다 다채로운 색상!
+                backgroundColor: 'rgba(52, 152, 219, 0.1)',
+                borderColor: 'rgba(52, 152, 219, 0.5)',
+                pointBackgroundColor: pointColors,  // 점 색상 매핑
                 pointBorderColor: '#fff',
                 pointHoverBackgroundColor: '#fff',
                 pointHoverBorderColor: pointColors,
@@ -993,7 +1021,7 @@ window.__renderRadarChartCanvas = function() {
                     angleLines: { color: '#ecf0f1' },
                     pointLabels: {
                         color: function(context) {
-                            return getLabelColor(context.label, subj); // 💡 라벨 글씨도 같은 색상으로!
+                            return getLabelColor(context.label, subj); // 글씨 색상도 매핑!
                         },
                         font: { size: 12, weight: 'bold' }
                     }
