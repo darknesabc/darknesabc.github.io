@@ -580,7 +580,7 @@ window.__renderGradeSummaryTable = function() {
 };
 
 // =========================================================
-// 💡 [단원명 오류 해결] 과목 엄격 매칭 & 누적 정오표 로직
+// 💡 [탐구 과목명 통합] 과목명 파편화(생윤 vs 생활과윤리) 방지 로직
 // =========================================================
 window.__loadGradeErrata = async function(examLabel) {
     const container = document.getElementById('grade-errata-area');
@@ -717,7 +717,6 @@ window.__loadGradeErrata = async function(examLabel) {
             const cleanU = rawUnit.replace(/\s+/g, '');
             const cleanB = rawBeh.replace(/\s+/g, ''); 
             
-            // 💡 [오류 해결 1] 과목이 일치하는지 먼저 엄격하게 검사하는 함수 추가
             const isSubjMatch = (u) => {
                 if (!u.subject) return true;
                 const mSubj = String(u.subject).replace(/\s+/g, '');
@@ -730,7 +729,6 @@ window.__loadGradeErrata = async function(examLabel) {
             const getNum = (v) => { const n = parseInt(String(v).replace(/[^0-9]/g, ''), 10); return isNaN(n) ? 9999 : n; };
 
             if (window.__unitMap && window.__unitMap.length > 0) {
-                // 단원명 매칭 (수학이 국어에 매칭되지 않도록 방어 + 정확히 일치하는 이름 우선)
                 let foundUnit = window.__unitMap.find(u => isSubjMatch(u) && String(u.unit_name || u.unit || '').replace(/\s+/g, '') === cleanU);
                 if (!foundUnit) {
                     foundUnit = window.__unitMap.find(u => {
@@ -762,7 +760,6 @@ window.__loadGradeErrata = async function(examLabel) {
                 }
             }
 
-            // 💡 [색상 복구] qSubj (출제 세부 과목) 정보를 함께 저장
             qInfoRawMap[exLabel][normSubj][qNum] = { unit: rawUnit, subUnit: subUnitName, beh: rawBeh, unitKey: uKey, behKey: bKey, qSubj: normSubj };
 
             if (exLabel === examLabel) {
@@ -797,12 +794,33 @@ window.__loadGradeErrata = async function(examLabel) {
             const myKorChoice = normalizeSubj(exScoreInfo.kor_choice);
             const myMathChoice = normalizeSubj(exScoreInfo.math_choice);
             
+            // 💡 [핵심 해결 로직] 탭에 표시될 이름을 '표준화된 예쁜 이름'으로 강제 통일
             const getMajorCategory = (s) => {
                 if (['국어', '국어공통', '화법과작문', '언어와매체'].includes(s) || s === myKorChoice) return '국어';
                 if (['수학', '수학공통', '수학1', '수학2', '미적분', '기하', '확률과통계'].includes(s) || s === myMathChoice) return '수학';
                 if (s === '영어') return '영어';
-                if (s === normalizeSubj(exScoreInfo.tam1_name)) return exScoreInfo.tam1_name;
-                if (s === normalizeSubj(exScoreInfo.tam2_name)) return exScoreInfo.tam2_name;
+                
+                // 원본 데이터를 한 번 정제 (생윤 -> 생활과윤리)
+                const normTam1 = normalizeSubj(exScoreInfo.tam1_name);
+                const normTam2 = normalizeSubj(exScoreInfo.tam2_name);
+                
+                // 탭에 보여질 예쁜 이름 매핑 (버튼 텍스트용)
+                const prettyName = (name) => {
+                    const map = {
+                        '생활과윤리': '생활과 윤리',
+                        '사회문화': '사회·문화',
+                        '윤리와사상': '윤리와 사상',
+                        '정치와법': '정치와 법',
+                        '한국지리': '한국 지리',
+                        '세계지리': '세계 지리'
+                    };
+                    return map[name] || name;
+                };
+
+                // 해당 데이터가 탐구1이나 탐구2에 속하면, 통합된 표준 이름을 반환
+                if (s === normTam1) return prettyName(normTam1);
+                if (s === normTam2) return prettyName(normTam2);
+                
                 return null;
             };
 
@@ -831,7 +849,6 @@ window.__loadGradeErrata = async function(examLabel) {
 
                 const u = info.unit; const b = info.beh;
 
-                // 💡 [색상 복구] qSubj를 details 객체에 저장하여 렌더러가 컬러를 인식하게 함
                 if (!radarStats[majorCat].units[u]) radarStats[majorCat].units[u] = { o: 0, total: 0, unitKey: info.unitKey, qSubj: info.qSubj, details: {} };
                 radarStats[majorCat].units[u].total++;
                 if (isO) radarStats[majorCat].units[u].o++;
