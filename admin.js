@@ -504,138 +504,168 @@ window.__renderGradeSummaryUI = function() {
 
 // =========================================================
 // 💡 [수퍼베이스 완벽 이식판] 정시 지원 시뮬레이션 보드 렌더러
-// 기존 GAS 백엔드의 유불리 계산 및 과목 필터링 로직을 프론트에 100% 구현
+// 기존 GAS 백엔드의 유불리 계산, 탐구 1개 보정, 정렬 로직 100% 통합
 // =========================================================
 window.__openUnivSimulation = async function() {
     const area = document.getElementById('univ-simulation-area');
-    if (area.style.display === 'block') {
-        area.style.display = 'none'; return;
-    }
+    if (area.style.display === 'block') { area.style.display = 'none'; return; }
     
     area.style.display = 'block';
-    area.innerHTML = `<div style="text-align:center; padding:50px; background:#1e222b; color:#95a5a6; border-radius:10px;">⏳ 수퍼베이스에서 배치표 데이터를 분석 중입니다...</div>`;
+    area.innerHTML = `<div style="text-align:center; padding:50px; background:#1e222b; color:#95a5a6; border-radius:10px;">⏳ 수퍼베이스에서 마스터 배치표 데이터를 분석 중입니다...</div>`;
 
-    // 1. 내 점수 및 프로필 분석
+    // 1. 학생 기본 프로필 및 점수 파싱
     const score = window.__currentStudentScores.find(s => s.exam_label === window.__currentSummaryExam) || {};
     const korPct = Number(score.kor_exp_pct) || 0;
     const mathPct = Number(score.math_exp_pct) || 0;
     const t1 = Number(score.tam1_exp_pct) || 0;
     const t2 = Number(score.tam2_exp_pct) || 0;
     
-    let tamCount = 0;
-    if (t1 > 0) tamCount++;
-    if (t2 > 0) tamCount++;
+    let tamCount = 0, sciCount = 0, socCount = 0;
+    const sciSubjs = ["물리학", "화학", "생명과학", "지구과학", "물리", "생명", "지학"];
+    const socSubjs = ["생활과윤리", "생윤", "윤리와사상", "윤사", "한국지리", "한지", "세계지리", "세지", "동아시아사", "동사", "세계사", "세사", "경제", "정치와법", "정법", "사회문화", "사문"];
+    
+    const tam1Name = String(score.tam1_name || "").replace(/\s+/g, "");
+    const tam2Name = String(score.tam2_name || "").replace(/\s+/g, "");
+    
+    if (t1 > 0) { tamCount++; if (sciSubjs.some(s => tam1Name.includes(s))) sciCount++; if (socSubjs.some(s => tam1Name.includes(s))) socCount++; }
+    if (t2 > 0) { tamCount++; if (sciSubjs.some(s => tam2Name.includes(s))) sciCount++; if (socSubjs.some(s => tam2Name.includes(s))) socCount++; }
 
     const bestTam = Math.max(t1, t2);
     const avgTam = tamCount > 0 ? (t1 + t2) / tamCount : 0;
     
-    // 수학/탐구 선택과목 타입 판별
-    const mathChoice = String(score.math_choice || "").trim();
+    const mathChoice = String(score.math_choice || "").replace(/\s+/g, "");
     const mathType = (mathChoice.includes("미적") || mathChoice.includes("기하")) ? "미기" : "확통";
-    
-    const tam1Name = String(score.tam1_name || "").trim();
-    const tam2Name = String(score.tam2_name || "").trim();
-    const sciSubjs = ["물리", "화학", "생명", "지구", "지학"];
-    let isSci = sciSubjs.some(s => tam1Name.includes(s) || tam2Name.includes(s));
-    let isSoc = tam1Name && tam2Name && !isSci; // 단순 판별, 실제론 사탐 배열 필요
-    let tamType = (isSci && !isSoc) ? "과탐" : (!isSci && isSoc) ? "사탐" : "사과탐";
+    const tamType = (sciCount > 0 && socCount === 0) ? "과탐" : (socCount > 0 && sciCount === 0) ? "사탐" : "사과탐";
 
-    // 💡 시뮬레이션 상태 관리 객체 (UI에서 조정 가능)
+    // 💡 시뮬레이션 전역 상태 
     window.__currentSimStatus = {
         kor: korPct, math: mathPct, bestTam: bestTam, avgTam: avgTam,
         mathType: mathType, tamType: tamType, search: "",
-        scoreDiff: 0 // 목표 백분위 조정용 (예: +2점)
+        targetScore: Math.round((korPct + mathPct + avgTam) * 10) / 10 // 목표 점수 초기값 = 평균합
     };
 
     try {
-        // 2. 수퍼베이스에서 29개 마스터 데이터 가져오기
+        // 2. 수퍼베이스 29개 열 마스터 데이터 로드
         const { data: cutoffs, error } = await _supabase.from('univ_cutoffs').select('*');
         if (error || !cutoffs) throw new Error("배치표 DB 로드 실패");
 
-        // 3. 필터링 및 렌더링을 담당하는 핵심 함수 (버튼 누를 때마다 재실행)
-        window.runUniversitySimulation = function() {
+        // 💡 [핵심] 원본 GAS의 매칭 로직을 완벽 구현한 함수
+        const getMatches = (targetScore, isStrict = false) => {
             const st = window.__currentSimStatus;
-            const simLines = { '가': {}, '나': {}, '다': {}, '군외': {} };
+            const matches = { '가': {}, '나': {}, '다': {}, '군외': {} };
             const univSet = new Set();
-            
-            const currentSumTam1 = st.kor + st.math + st.bestTam + st.scoreDiff;
-            const currentSumTam2 = st.kor + st.math + st.avgTam + st.scoreDiff;
 
             cutoffs.forEach(c => {
                 const reqTamCount = Number(c.tam_cnt_1) || 2;
-                const myScore = (reqTamCount === 1) ? currentSumTam1 : currentSumTam2;
+                // 💡 탐구 1개 반영 대학이면 bestTam, 2개면 avgTam 적용! (선생님 핵심 로직)
+                const myScoreForThisUniv = st.kor + st.math + (reqTamCount === 1 ? st.bestTam : st.avgTam);
                 const cutScore = Number(c.cut_total) || 0;
-                
                 if (!cutScore) return;
 
-                // 💡 [기존 GAS 로직] 검색어가 없으면 내 점수 기준 위아래 5점(또는 지정범위)만
+                // 필터 1: 점수 범위 
                 const keyword = st.search.trim();
                 if (keyword) {
-                    if (!c.univ_name.includes(keyword) && !c.dept_name.includes(keyword)) return;
+                    if (!String(c.univ_name).includes(keyword) && !String(c.dept_name).includes(keyword)) return;
                 } else {
-                    if (cutScore < myScore - 5 || cutScore > myScore + 5) return;
+                    // 왼쪽 패널(isStrict)은 딱 ±1점, 오른쪽 패널(targetScore)은 ±2점으로 세팅
+                    if (isStrict) {
+                        if (cutScore < myScoreForThisUniv - 1 || cutScore > myScoreForThisUniv + 1) return;
+                    } else {
+                        if (cutScore < targetScore - 1 || cutScore > targetScore + 2) return;
+                    }
                 }
 
-                // 💡 [기존 GAS 로직] 필수 과목 제한 컷팅
+                // 필터 2: 수학 / 탐구 필수 조건 컷팅
                 const combo = String(c.reflect_combo || "");
-                if (combo.includes("미/기") && st.mathType !== "미기") return;
-                if (combo.includes("확통") && st.mathType !== "확통") return;
+                if ((combo.includes("미/기") || combo.includes("미기")) && st.mathType !== "미기") return;
+                if ((combo.includes("[확]") || combo.includes("확통")) && st.mathType !== "확통") return;
                 
                 const tamReq = String(c.tam_reflect || "");
-                if (tamReq === "과" && st.tamType !== "과탐") return;
-                if (tamReq === "사" && st.tamType !== "사탐") return;
+                if (reqTamCount === 1) {
+                    if (tamReq === "과" && st.tamType === "사탐") return;
+                    if (tamReq === "사" && st.tamType === "과탐") return;
+                } else {
+                    if (tamReq === "과" && st.tamType !== "과탐") return;
+                    if (tamReq === "사" && st.tamType !== "사탐") return;
+                }
 
-                // 💡 [기존 GAS 로직] 유불리 및 뱃지 계산
+                // 필터 3: 가산점 및 유불리 뱃지 생성
                 const badges = [];
-                if (c.note) badges.push(...c.note.split(" ")); // 수퍼베이스에 넣은 미기+5% 등
-                
-                const rK = Number(c.rate_kor) || 0;
-                const rM = Number(c.rate_math) || 0;
-                const rT = Number(c.rate_tam) || 0;
-                
+                if (reqTamCount === 1) badges.push(tamReq === "과" ? "과1" : tamReq === "사" ? "사1" : "탐1");
+                if (c.note) badges.push(...c.note.split(" ")); 
+
+                // 💡 [선생님 명품 로직] 반영비율 유불리 계산기
+                const rK = Number(c.rate_kor) || 0; const rM = Number(c.rate_math) || 0; const rT = Number(c.rate_tam) || 0;
                 if (rK > 0 && rM > 0 && rT > 0 && st.kor > 0 && st.math > 0) {
-                    const maxWeight = Math.max(rK, rM, rT);
-                    const minWeight = Math.min(rK, rM, rT);
-                    if (maxWeight - minWeight >= 5) {
+                    if (Math.max(rK, rM, rT) - Math.min(rK, rM, rT) >= 5) {
                         const myT = reqTamCount === 1 ? st.bestTam : st.avgTam;
                         const scores = [{n:'국', s:st.kor, w:rK}, {n:'수', s:st.math, w:rM}, {n:'탐', s:myT, w:rT}];
                         
                         scores.sort((a,b) => b.s - a.s);
                         const bestSubj = scores[0].n; const worstSubj = scores[2].n;
-                        scores.sort((a,b) => b.w - a.w);
-                        const bestWeight = scores[0].n; const worstWeight = scores[2].n;
                         
-                        if (bestSubj === bestWeight && worstSubj === worstWeight) badges.unshift("🟢극상(비율)");
-                        else if (bestSubj === bestWeight) badges.unshift("🟢유리(비율)");
-                        else if (worstSubj === bestWeight || bestSubj === worstWeight) badges.unshift("🔴불리(비율)");
+                        scores.sort((a,b) => b.w - a.w);
+                        const highestWeight = scores[0].n; const lowestWeight = scores[2].n;
+                        
+                        if (bestSubj === highestWeight && worstSubj === lowestWeight) badges.unshift("🟢극상(비율)");
+                        else if (bestSubj === highestWeight) badges.unshift("🟢유리(비율)");
+                        else if (worstSubj === highestWeight || bestSubj === lowestWeight) badges.unshift("🔴불리(비율)");
                     }
                 }
 
-                const gun = c.gun || "가";
-                const univ = c.univ_name;
-                if (!simLines[gun]) simLines[gun] = {};
-                if (!simLines[gun][univ]) simLines[gun][univ] = [];
+                const gun = String(c.gun || "가").trim();
+                const univ = String(c.univ_name).trim();
+                if (!matches[gun]) matches[gun] = {};
+                if (!matches[gun][univ]) matches[gun][univ] = [];
                 
-                simLines[gun][univ].push({
+                matches[gun][univ].push({
                     dept: c.dept_name,
                     type: c.type,
                     cut: cutScore,
-                    diff: Math.round((myScore - cutScore) * 10) / 10,
-                    badges: badges
+                    diff: Math.round((myScoreForThisUniv - cutScore) * 10) / 10,
+                    badges: badges,
+                    region: c.region
                 });
                 univSet.add(univ);
             });
 
-            // 대학별로 학과 정렬 (컷 점수 높은 순)
-            Object.keys(simLines).forEach(g => {
-                Object.keys(simLines[g]).forEach(u => {
-                    simLines[g][u].sort((a,b) => b.cut - a.cut);
-                });
+            // 💡 [선생님의 완벽한 정렬 로직 이식]
+            Object.keys(matches).forEach(g => {
+                Object.keys(matches[g]).forEach(u => { matches[g][u].sort((a,b) => b.cut - a.cut); });
             });
 
-            const univs = Array.from(univSet).sort();
+            const getRank = (univ, dept, region) => {
+                if (/(의예|치의예|한의예|수의예|수의과|약학|약대|의학|치의학|한의학|의과대학)/.test(dept)) return 1;
+                if (["서울", "경기", "인천"].some(r => String(region).includes(r))) return 2;
+                if (/(부산대|경북대|전남대|충남대|전북대|충북대|강원대|경상국립대|경상대|제주대)/.test(univ)) return 3;
+                return 4;
+            };
+
+            const sortedUnivs = Array.from(univSet).sort((a, b) => {
+                // 대학별 대표 학과 하나씩 뽑아서 랭크 비교
+                let rankA = 4, rankB = 4;
+                ['가','나','다','군외'].forEach(g => {
+                    if(matches[g][a] && matches[g][a][0]) rankA = Math.min(rankA, getRank(a, matches[g][a][0].dept, matches[g][a][0].region));
+                    if(matches[g][b] && matches[g][b][0]) rankB = Math.min(rankB, getRank(b, matches[g][b][0].dept, matches[g][b][0].region));
+                });
+                if (rankA !== rankB) return rankA - rankB;
+                return a.localeCompare(b);
+            });
+
+            return { matches, sortedUnivs };
+        };
+
+        // 4. HTML 렌더링 엔진 (버튼 누를 때마다 호출됨)
+        window.runUniversitySimulation = function() {
+            const st = window.__currentSimStatus;
             
-            // 카드 렌더링
+            // 왼쪽: 내 실제 점수 라인 (isStrict = true)
+            const leftData = getMatches(st.kor + st.math + st.avgTam, true);
+            // 오른쪽: 목표 설정 점수 라인 (isStrict = false)
+            const rightData = getMatches(st.targetScore, false);
+
+            const ALL_GROUPS = ['가', '나', '다', '군외'];
+            
             const renderCards = (univData) => {
                 if(!univData || univData.length === 0) return '';
                 return univData.map(d => {
@@ -644,81 +674,102 @@ window.__openUnivSimulation = async function() {
                     
                     let badgeHtml = "";
                     d.badges.forEach(b => {
-                        let bg = "#7f8c8d"; let border = "none";
-                        if(b.includes("🟢")) { bg = "rgba(46, 204, 113, 0.2)"; border = "1px solid #2ecc71"; }
-                        else if(b.includes("🔴")) { bg = "rgba(231, 76, 60, 0.2)"; border = "1px solid #e74c3c"; }
-                        else if(b.includes("미적") || b.includes("기하") || b.includes("미기")) bg = "rgba(231, 76, 60, 0.4)";
-                        else if(b.includes("과탐")) bg = "rgba(52, 152, 219, 0.4)";
-                        badgeHtml += `<span style="background:${bg}; border:${border}; color:#fff; padding:2px 4px; border-radius:3px; font-size:9.5px; font-weight:bold; display:inline-block; margin:2px 1px;">${b}</span>`;
+                        let bg = "#7f8c8d"; let bo = "none";
+                        if(b.includes("🟢")) { bg = "rgba(46, 204, 113, 0.2)"; bo = "1px solid #2ecc71"; }
+                        else if(b.includes("🔴")) { bg = "rgba(231, 76, 60, 0.2)"; bo = "1px solid #e74c3c"; }
+                        else if(b.includes("미적") || b.includes("기하") || b.includes("미기")) bg = "rgba(231, 76, 60, 0.2)";
+                        else if(b.includes("과탐") || b.includes("과1")) bg = "rgba(52, 152, 219, 0.2)";
+                        badgeHtml += `<span style="background:${bg}; border:${bo}; color:#fff; padding:1px 4px; border-radius:3px; font-size:9px; font-weight:800; display:inline-block; margin:1px;">${b}</span>`;
                     });
 
                     return `
-                        <div style="background:#2b303b; border:1px solid #4b5262; border-radius:6px; padding:8px; margin-bottom:6px; text-align:center;">
+                        <div style="background:#2b303b; border:1px solid #4b5262; border-radius:6px; padding:6px; margin-bottom:4px; text-align:center;">
                             <div style="font-size:10px; color:#95a5a6; margin-bottom:2px;">[${d.type}]</div>
-                            <div style="font-size:12px; color:#fff; font-weight:bold; margin-bottom:4px; word-break:keep-all;">${d.dept}</div>
-                            <div style="font-size:14px; color:${diffColor}; font-weight:900;">
-                                ${d.cut} <span style="font-size:11px; font-weight:normal;">(${diffStr})</span>
-                            </div>
-                            ${badgeHtml ? `<div>${badgeHtml}</div>` : ''}
+                            <div style="font-size:11.5px; color:#fff; font-weight:bold; margin-bottom:4px; word-break:keep-all;">${d.dept}</div>
+                            <div style="font-size:13px; color:${diffColor}; font-weight:900;">${d.cut} <span style="font-size:10px; font-weight:normal;">(${diffStr})</span></div>
+                            ${badgeHtml ? `<div style="margin-top:2px;">${badgeHtml}</div>` : ''}
                         </div>
                     `;
                 }).join('');
             };
 
-            let gridHtml = `<table style="width:100%; border-collapse:collapse; background:#1e222b; color:#fff; font-size:13px; min-width:${univs.length * 120}px;">`;
-            gridHtml += `<tr><th style="width:50px; background:#15181e; border:1px solid #3d4554; padding:8px;">군</th><th style="width:70px; background:#15181e; border:1px solid #3d4554; color:#3498db; padding:8px; line-height:1.3;">내 점수<br><span style="font-size:16px; font-weight:900;">${Math.round(currentSumTam2*10)/10}</span></th>`;
-            univs.forEach(u => { gridHtml += `<th style="background:#2b303b; padding:10px; border:1px solid #3d4554; font-size:13px; position:sticky; top:0;">${u}</th>`; });
-            gridHtml += `</tr>`;
+            const renderTableCols = (univs, matchDict, gun) => {
+                let html = '';
+                univs.forEach(u => {
+                    const data = matchDict[gun][u];
+                    html += `<td style="vertical-align:top; padding:6px; border:1px solid rgba(255,255,255,0.1); min-width:90px;">${renderCards(data)}</td>`;
+                });
+                return html;
+            };
 
-            ['가', '나', '다', '군외'].forEach(gun => {
-                let hasData = false;
-                univs.forEach(u => { if (simLines[gun] && simLines[gun][u]) hasData = true; });
-                if (hasData) {
-                    gridHtml += `<tr>`;
-                    gridHtml += `<td style="background:#15181e; text-align:center; font-weight:bold; font-size:16px; border:1px solid #3d4554;">${gun}</td>`;
-                    gridHtml += `<td style="background:#1e222b; border:1px solid #3d4554;"></td>`; 
-                    univs.forEach(u => {
-                        gridHtml += `<td style="vertical-align:top; padding:6px; border:1px solid #3d4554;">${renderCards(simLines[gun]?.[u])}</td>`;
-                    });
-                    gridHtml += `</tr>`;
+            let rowsHtml = '';
+            ALL_GROUPS.forEach((gun, idx) => {
+                const isFirst = (idx === 0);
+                
+                // 좌측/우측에 그 군(gun)의 데이터가 하나라도 있는지 확인
+                let hasLeft = leftData.sortedUnivs.some(u => leftData.matches[gun][u]);
+                let hasRight = rightData.sortedUnivs.some(u => rightData.matches[gun][u]);
+                
+                if (hasLeft || hasRight) {
+                    rowsHtml += `<tr style="border-top:1px solid rgba(255,255,255,0.2);">`;
+                    if (isFirst) rowsHtml += `<td rowspan="4" style="width:45px; background:#2980b9; color:#fff; text-align:center; font-weight:900; font-size:13px; border-right:1px solid rgba(255,255,255,0.2);">내<br>점<br>수<br><br><span style="font-size:16px; color:#f1c40f;">${Math.round((st.kor+st.math+st.avgTam)*10)/10}</span></td>`;
+                    rowsHtml += `<td style="width:30px; text-align:center; font-weight:bold; font-size:13px; background:rgba(255,255,255,0.05); color:#fff; border-right:1px solid rgba(255,255,255,0.2);">${gun}</td>`;
+                    rowsHtml += `<td style="padding:0; vertical-align:top; border-right:1px solid rgba(255,255,255,0.2);">
+                                    <table style="width:100%; border-collapse:collapse;">
+                                        <thead><tr>${leftData.sortedUnivs.map(u => `<th style="background:rgba(255,255,255,0.1); font-size:12px; padding:6px;">${u}</th>`).join('')}</tr></thead>
+                                        <tbody><tr>${renderTableCols(leftData.sortedUnivs, leftData.matches, gun)}</tr></tbody>
+                                    </table>
+                                 </td>`;
+                    
+                    if (isFirst) rowsHtml += `<td rowspan="4" style="width:40px; text-align:center; color:#e74c3c; font-size:20px; font-weight:bold; border-right:1px solid rgba(255,255,255,0.2); background:rgba(0,0,0,0.1);">▶</td>`;
+                    rowsHtml += `<td style="width:30px; text-align:center; font-weight:bold; font-size:13px; background:rgba(255,255,255,0.05); color:#fff; border-right:1px solid rgba(255,255,255,0.2);">${gun}</td>`;
+                    rowsHtml += `<td style="padding:0; vertical-align:top;">
+                                    <table style="width:100%; border-collapse:collapse;">
+                                        <thead><tr>${rightData.sortedUnivs.map(u => `<th style="background:rgba(52, 152, 219, 0.2); font-size:12px; padding:6px;">${u}</th>`).join('')}</tr></thead>
+                                        <tbody><tr>${renderTableCols(rightData.sortedUnivs, rightData.matches, gun)}</tr></tbody>
+                                    </table>
+                                 </td>`;
+                    rowsHtml += `</tr>`;
                 }
             });
-            gridHtml += `</table>`;
 
-            document.getElementById('sim-grid-render-area').innerHTML = gridHtml;
-        };
+            const myBaseScore = Math.round((st.kor+st.math+st.avgTam)*10)/10;
+            const btnSty = "background:rgba(255,255,255,0.05); color:rgba(255,255,255,0.6); border:1px solid rgba(255,255,255,0.1); border-radius:4px; padding:3px 8px; font-size:11px; cursor:pointer; font-weight:bold; margin-right:3px;";
+            const actSty = "background:#f1c40f; color:#000; border:1px solid #f1c40f;";
 
-        // UI 기본 틀 렌더링
-        area.innerHTML = `
-            <div style="background:#1e222b; border-radius:10px; overflow:hidden; box-shadow:0 10px 20px rgba(0,0,0,0.3); border:2px solid #2c3e50;">
-                <div style="background:#15181e; padding:12px 20px; border-bottom:1px solid #3d4554; display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:10px;">
-                    <div style="color:#fff; font-size:15px; font-weight:bold;">🎯 정시 지원 시뮬레이션 <span style="font-size:11px; color:#95a5a6; font-weight:normal;">(백분위 기반)</span></div>
-                    <div style="color:#f1c40f; font-size:12px; font-weight:bold; background:#2b303b; padding:4px 10px; border-radius:6px;">
-                        응시: <span style="color:#e74c3c;">${mathChoice||'수학'}</span> + <span style="color:#2ecc71;">${tamType}</span>
-                    </div>
-                </div>
-                
-                <div style="background:#2b303b; padding:10px 20px; border-bottom:1px solid #3d4554; display:flex; gap:10px; align-items:center; flex-wrap:wrap;">
-                    <div style="display:flex; align-items:center; gap:5px;">
-                        <span style="color:#95a5a6; font-size:12px;">조정점수:</span>
-                        <input type="number" value="0" oninput="window.__currentSimStatus.scoreDiff=Number(this.value); window.runUniversitySimulation()" style="width:50px; background:#111; border:1px solid #f1c40f; color:#f1c40f; text-align:center; padding:2px; border-radius:4px; font-weight:bold;">
-                    </div>
-                    <div style="display:flex; align-items:center; gap:5px; margin-left:10px;">
-                        <span style="color:#95a5a6; font-size:12px;">검색:</span>
-                        <input type="text" placeholder="대학/학과" oninput="window.__currentSimStatus.search=this.value; window.runUniversitySimulation()" style="width:120px; background:#111; border:1px solid #3498db; color:#3498db; padding:2px 6px; border-radius:4px;">
+            area.innerHTML = `
+                <div style="background:#0a0f19; border-radius:10px; overflow:hidden; border:2px solid #f1c40f;">
+                    <div style="background:#0a0f19; border-bottom:2px solid #f1c40f; display:flex; justify-content:space-between; padding:8px 12px; align-items:center;">
+                        <div style="color:#fff; font-weight:800; font-size:14px;">▣ 정시 지원가능 대학 & 학과 시뮬레이션 <span style="font-size:11px; opacity:0.6; font-weight:normal;">(백분위 합산 기준)</span></div>
+                        <div style="background:#f1c40f; color:#000; padding:2px 10px; font-weight:900; font-size:12px; border-radius:2px;">실제 응시: <span style="color:#c0392b; margin-left:4px;">${st.mathType}+${st.tamType}</span></div>
                     </div>
                     
-                    <div style="margin-left:auto; color:#fff; font-size:12px;">
-                        국 <b style="color:#3498db;">${korPct}</b> | 수 <b style="color:#e74c3c;">${mathPct}</b> | 탐(평) <b style="color:#2ecc71;">${avgTam}</b>
+                    <div style="display:flex; align-items:center; gap:10px; padding:8px 12px; background:rgba(142, 68, 173, 0.2); border-bottom:1px dashed rgba(142, 68, 173, 0.4); flex-wrap:wrap;">
+                        <div style="color:#fff; font-weight:bold; font-size:13px;">🛠️ 시뮬레이션 조정 패널</div>
+                        
+                        <div style="display:flex; align-items:center; gap:5px; margin-left:10px;">
+                            <span style="color:rgba(255,255,255,0.7); font-size:12px;">목표 백분위:</span>
+                            <input type="number" value="${st.targetScore}" step="0.1" onchange="window.__currentSimStatus.targetScore=Number(this.value); window.runUniversitySimulation()" style="width:65px; background:rgba(0,0,0,0.5); border:1px solid rgba(241,196,15,0.6); color:#f1c40f; font-size:15px; font-weight:900; text-align:center; outline:none; padding:4px 6px; border-radius:4px; cursor:pointer;">
+                        </div>
+
+                        <div style="display:flex; align-items:center; gap:5px; margin-left:10px;">
+                            <span style="color:rgba(255,255,255,0.7); font-size:12px;">🎯 타겟 검색:</span>
+                            <input type="text" placeholder="대학/학과 검색" value="${st.search}" oninput="window.__currentSimStatus.search=this.value; window.runUniversitySimulation()" style="width:150px; background:rgba(0,0,0,0.5); border:1px solid rgba(52, 152, 219, 0.6); color:#3498db; font-size:13px; outline:none; padding:4px 8px; border-radius:4px; font-weight:bold;">
+                        </div>
+
+                        <div style="margin-left:auto; color:#fff; font-size:12px; font-weight:bold; background:rgba(0,0,0,0.4); padding:4px 8px; border-radius:4px;">
+                            국 <span style="color:#3498db;">${st.kor}</span> | 수 <span style="color:#e74c3c;">${st.math}</span> | 탐(최고) <span style="color:#2ecc71;">${st.bestTam}</span> | 탐(평) <span style="color:#f1c40f;">${st.avgTam}</span>
+                        </div>
+                    </div>
+
+                    <div style="overflow-x:auto;">
+                        <table style="width:100%; border-collapse:collapse;"><tbody>${rowsHtml}</tbody></table>
                     </div>
                 </div>
+            `;
+        };
 
-                <div id="sim-grid-render-area" style="padding:10px; max-height:600px; overflow:auto;">
-                    </div>
-            </div>
-        `;
-
-        // 💡 최초 데이터 렌더링 실행!
+        // 최초 렌더링 실행
         window.runUniversitySimulation();
 
     } catch (err) {
