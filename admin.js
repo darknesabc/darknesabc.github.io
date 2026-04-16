@@ -501,7 +501,7 @@ window.__renderGradeSummaryTable = function() {
 
 
 // =========================================================
-// 💡 [최종] 정오표 데이터 호출 (단원별/행동영역별 완벽 분리 수집)
+// 💡 [최종 에러 수정본] 정오표 데이터 호출 (단원별/행동영역별 맵핑 및 수집)
 // =========================================================
 window.__loadGradeErrata = async function(examLabel) {
     const container = document.getElementById('grade-errata-area');
@@ -622,14 +622,15 @@ window.__loadGradeErrata = async function(examLabel) {
             let beh = String(q.behavior_domain || '').replace(/^\d+\.?\s*/, '').trim();
             
             let uKey = 9999;
-            let bKey = 9999; // 💡 행동영역 정렬 키 추가
+            let bKey = 9999; 
             const cleanTarget = unit.replace(/\s+/g, '');
-            const cleanBeh = beh.replace(/\s+/g, ''); 
+            // 💡 [에러 해결] 이름 충돌 방지를 위해 cleanTargetBeh 로 변경
+            const cleanTargetBeh = beh.replace(/\s+/g, ''); 
             
             if (window.__unitMap && window.__unitMap.length > 0) {
                 // 1. 단원명 매칭
                 const foundUnit = window.__unitMap.find(u => {
-                    const mapName = String(u.unit_name || u.unit || '').replace(/\s+/g, '');
+                    const mapName = String(u.unit_name || u.unit || u.name || u.title || '').replace(/\s+/g, '');
                     const mapSubj = String(u.subject || '').replace(/\s+/g, '');
                     const baseNorm = normSubj.replace(/[12ⅠⅡIIV]/g, '').replace(/과학/g, '').replace(/학/g, '');
                     const baseMap = mapSubj.replace(/[12ⅠⅡIIV]/g, '').replace(/과학/g, '').replace(/학/g, '');
@@ -639,13 +640,13 @@ window.__loadGradeErrata = async function(examLabel) {
                     return subjMatch && mapName && (mapName === cleanTarget || mapName.includes(cleanTarget) || cleanTarget.includes(mapName));
                 });
                 if (foundUnit) {
-                    unit = foundUnit.unit_name || unit; 
-                    const mappedKey = getSafeNum(foundUnit.unit_key ?? foundUnit.unit_code);
+                    unit = foundUnit.unit_name || foundUnit.unit || foundUnit.name || unit; 
+                    const mappedKey = getSafeNum(foundUnit.unit_key ?? foundUnit.unit_code ?? foundUnit.chapter_num ?? foundUnit.unit_num);
                     if (mappedKey !== 9999) uKey = mappedKey;
                 }
 
-                // 💡 2. 행동영역(eval_name & eval_key) 완벽 매칭
-                if (cleanBeh) {
+                // 2. 행동영역(eval_name & eval_key) 매칭
+                if (cleanTargetBeh) {
                     const foundBeh = window.__unitMap.find(u => {
                         const mapEvalName = String(u.eval_name || u.eval || '').replace(/\s+/g, '');
                         if (!mapEvalName) return false;
@@ -655,7 +656,7 @@ window.__loadGradeErrata = async function(examLabel) {
                         const isTamguMatch = baseNorm && baseMap && (baseNorm.includes(baseMap) || baseMap.includes(baseNorm)) && (normSubj.slice(-1) === mapSubj.slice(-1));
                         const subjMatch = !mapSubj || mapSubj.includes(normSubj) || normSubj.includes(mapSubj) || isTamguMatch;
                         
-                        return subjMatch && (mapEvalName === cleanBeh || mapEvalName.includes(cleanBeh) || cleanBeh.includes(mapEvalName));
+                        return subjMatch && (mapEvalName === cleanTargetBeh || mapEvalName.includes(cleanTargetBeh) || cleanTargetBeh.includes(mapEvalName));
                     });
                     if (foundBeh) {
                         beh = foundBeh.eval_name || foundBeh.eval || beh;
@@ -677,6 +678,7 @@ window.__loadGradeErrata = async function(examLabel) {
 
             let cleanUnit = unit;
             if (!cleanUnit || cleanUnit === '-' || cleanUnit === 'null') cleanUnit = '기타';
+            // 💡 여기서 에러가 발생하지 않도록 수정 완료
             let cleanBeh = beh;
             if (!cleanBeh || cleanBeh === '-' || cleanBeh === 'null') cleanBeh = '기타';
             
@@ -760,7 +762,7 @@ window.__loadGradeErrata = async function(examLabel) {
                 const u = unitInfo.unit;
                 const b = unitInfo.beh;
 
-                // 💡 [단원별 누적]
+                // 1. 단원별(units) 누적
                 if (!radarStats[majorCat].units[u]) radarStats[majorCat].units[u] = { o: 0, total: 0, qSubj: unitInfo.qSubj, unitKey: unitInfo.unitKey, details: {} };
                 radarStats[majorCat].units[u].total++;
                 if (isO) radarStats[majorCat].units[u].o++;
@@ -773,7 +775,7 @@ window.__loadGradeErrata = async function(examLabel) {
                 radarStats[majorCat].units[u].details[detailKeyUnitView].total++;
                 if (isO) radarStats[majorCat].units[u].details[detailKeyUnitView].o++;
 
-                // 💡 [행동영역별 누적]
+                // 2. 행동영역별(behaviors) 누적
                 if (b && b !== '-' && b !== 'null' && b !== '기타' && b !== '분류없음') {
                     if (!radarStats[majorCat].behaviors[b]) {
                         radarStats[majorCat].behaviors[b] = { o: 0, total: 0, behKey: unitInfo.behKey, details: {} };
@@ -781,7 +783,6 @@ window.__loadGradeErrata = async function(examLabel) {
                     radarStats[majorCat].behaviors[b].total++;
                     if (isO) radarStats[majorCat].behaviors[b].o++;
 
-                    // 행동영역의 하위 데이터는 '단원명'이 들어감
                     if (!radarStats[majorCat].behaviors[b].details[u]) radarStats[majorCat].behaviors[b].details[u] = { o: 0, total: 0 };
                     radarStats[majorCat].behaviors[b].details[u].total++;
                     if (isO) radarStats[majorCat].behaviors[b].details[u].o++;
