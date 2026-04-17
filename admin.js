@@ -504,7 +504,7 @@ window.__renderGradeSummaryUI = function() {
 
 // =========================================================
 // 💡 [수퍼베이스 완벽 이식판] 정시 지원 시뮬레이션 보드 렌더러
-// 🌟 (최종 마스터판) 수도권(경기/인천) 대학 완벽 서열화 적용
+// 🌟 (진짜 최종) 첨단학과 대학서열 하극상 버그 영구삭제 + 수도권 디테일 서열 적용
 // =========================================================
 window.__openUnivSimulation = async function() {
     const area = document.getElementById('univ-simulation-area');
@@ -633,54 +633,47 @@ window.__openUnivSimulation = async function() {
                 Object.keys(matches[g]).forEach(u => { matches[g][u].sort((a,b) => b.cut - a.cut); });
             });
 
-            // 💡 [핵심 업데이트 1] 서울/수도권 대학 마스터 서열표 (인가경 및 우수 분교 완벽 적용)
+            // 💡 [핵심 서열표] 선생님의 컨설팅 노하우가 담긴 절대 랭크표
             const univRankOrder = [
-                // 1티어: SKY
                 "서울대", "연세대", "고려대", 
-                // 2티어: 서성한
                 "서강대", "성균관대", "한양대", 
-                // 3티어: 중경외시이 (경기권 경희대 국제 포함)
                 "이화여대", "중앙대", "경희대", "한국외대", "서울시립대", 
-                // 4티어: 건동홍숙 (경기권 동국대 바이오메디 포함)
                 "건국대", "동국대", "홍익대", "숙명여대", 
-                // 5티어: 국숭세단 + 경기권 최상위(아주/인하/단국)
                 "국민대", "숭실대", "세종대", "단국대", "인하대", "아주대", 
-                // 6티어: 광명상가 + 경기권 우수(에리카/항공/외대글로벌)
                 "한양대(ERICA)", "항공대", "광운대", "명지대", "상명대", "가톨릭대", "한국외대(글로벌)", "서울과기대", 
-                // 7티어: 여대 및 인서울 중위
                 "성신여대", "동덕여대", "덕성여대", "서울여대", "삼육대", "한성대", "서경대", "한국교원대",
-                // 8티어: 인가경 (수도권 중위 - 가천대는 여기에 위치!)
                 "가천대", "경기대", "인천대"
             ];
             
             const getUnivRank = (uName) => {
-                // 이름이 살짝 다르게 DB에 들어간 분교들 핀포인트 매칭
+                // 특수 분교 및 캠퍼스 정확한 매칭
                 if (uName.includes("ERICA") || uName.includes("에리카")) return univRankOrder.indexOf("한양대(ERICA)");
                 if (uName.includes("외대") && uName.includes("글로벌")) return univRankOrder.indexOf("한국외대(글로벌)");
-                
+                if (uName.includes("항공")) return univRankOrder.indexOf("항공대");
+
                 const idx = univRankOrder.findIndex(u => uName.includes(u)); 
                 return idx !== -1 ? idx : 999; 
             };
 
             const getCategoryRank = (univ, dept, regionStr) => {
-                let cat = 50; 
-                
-                // 1. 메디컬/첨단학과는 대학 간판 무시하고 최상위 랭크
+                // 1. 메디컬만 유일하게 대학 간판을 씹어먹을 수 있음 (첨단/AI는 버프 삭제!)
                 if (/(의예|의학|의과)/.test(dept) && !/(식물|의공|의생명|의료|의과학)/.test(dept)) return 10;
                 if (/(치의예|치의학)/.test(dept)) return 11;
                 if (/(한의예|한의학)/.test(dept)) return 12;
                 if (/(수의예|수의과)/.test(dept)) return 13;
                 if (/(약학|약대)/.test(dept) && !/(신약|제약|약과학|한약)/.test(dept)) return 14;
-                if (/(반도체|지능형|인공지능|AI|모빌리티|스마트)/i.test(dept)) return 15;
-                if (/(자유전공|무전공|계열모집)/.test(dept)) return 18;
 
-                // 💡 [핵심 업데이트 2] 입결이 높은 우수 캠퍼스(ERICA, 글로벌 등)는 강등시키지 않음!
-                // 순수 지방 캠퍼스(원주, 세종, 천안 등)만 후순위(35)로 밀어냄.
-                if (/(미래|세종|천안|글로컬|WISE)/i.test(univ)) return 35;
+                // 2. 분교 강등 (에리카, 글로벌 등 우수분교는 제외)
+                if (/(미래|세종|천안|글로컬|WISE|다빈치)/i.test(univ)) return 35;
 
-                // 3. DB Region 데이터로 명확하게 지역 구분
+                // 💡 3. 절대 서열표(univRankOrder)에 이름이 있으면 무조건 1군(20)으로 묶어서 랭크 정렬에 맡김
+                // (경희대 국제, 동국대 바이오메디, ERICA, 아주/인하 모두 이 안에서 정상적으로 줄을 섬)
+                const isRanked = univRankOrder.some(u => univ.includes(u.replace(/\(.*\)/, '')));
+                if (isRanked) return 20;
+
+                // 4. 서열표에 없는 나머지 대학들은 DB Region 값으로 후순위 배치
                 const region = String(regionStr || "");
-                if (region.includes("서울")) return 20; 
+                if (region.includes("서울")) return 21; 
                 if (region.includes("경기") || region.includes("인천")) return 30; 
                 if (/(부산대|경북대|전남대|충남대|전북대|충북대|강원대|경상국립대|제주대)/.test(univ)) return 40;
                 
@@ -695,12 +688,12 @@ window.__openUnivSimulation = async function() {
                     if(matches[g][b] && matches[g][b][0]) { deptB = matches[g][b][0].dept; regB = matches[g][b][0].region; }
                 });
                 
-                // 1차 분류: 지역 및 메디컬 그룹 간의 서열 비교
+                // 1차 분류: 메디컬/서열포함/지방 등 큰 덩어리로 분류
                 const catA = getCategoryRank(a, deptA, regA);
                 const catB = getCategoryRank(b, deptB, regB);
                 if (catA !== catB) return catA - catB; 
                 
-                // 2차 분류: "같은 그룹(예: 모두 경기권)" 안에서의 완벽한 대학 랭킹 비교
+                // 2차 분류: 같은 덩어리 안에서 'univRankOrder'의 정확한 순서대로 완벽하게 줄 세우기
                 const rankA = getUnivRank(a);
                 const rankB = getUnivRank(b);
                 if (rankA !== rankB) return rankA - rankB; 
@@ -806,7 +799,7 @@ window.__openUnivSimulation = async function() {
                     
                     <div style="background:#fff; border-bottom:2px solid #dee2e6; display:flex; justify-content:space-between; padding:18px 25px; align-items:center; flex-wrap:wrap; gap:10px;">
                         <div style="color:#2c3e50; font-weight:900; font-size:17px; display:flex; align-items:center; gap:8px;">
-                            🎯 정시 지원 시뮬레이션 <span style="font-size:12px; color:#7f8c8d; font-weight:normal;">(수도권 서열 및 우수 분교 보호 완료)</span>
+                            🎯 정시 지원 시뮬레이션 <span style="font-size:12px; color:#7f8c8d; font-weight:normal;">(수도권 상세 서열표 완벽 적용)</span>
                         </div>
                         <div style="background:#e8f4f8; border:1px solid #3498db; color:#2980b9; padding:6px 15px; font-weight:bold; font-size:13px; border-radius:6px;">
                             실제 응시: <span style="color:#e74c3c; margin-left:4px;">${st.mathType}+${st.tamType}</span>
