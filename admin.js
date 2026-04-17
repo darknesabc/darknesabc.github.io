@@ -504,7 +504,7 @@ window.__renderGradeSummaryUI = function() {
 
 // =========================================================
 // 💡 [수퍼베이스 완벽 이식판] 정시 지원 시뮬레이션 보드 렌더러
-// 🌟 (최종) 기본 오프셋 0 시작 & 좌우 패널 모두 정밀 ±1점 탐색 적용!
+// 🌟 (최종) 좌측 ±1점 칼매칭 & 우측 오프셋 상향 전용(겹침 방지) 완벽 구현
 // =========================================================
 window.__openUnivSimulation = async function() {
     const area = document.getElementById('univ-simulation-area');
@@ -536,7 +536,7 @@ window.__openUnivSimulation = async function() {
     const mathType = (mathChoice.includes("미적") || mathChoice.includes("기하")) ? "미기" : "확통";
     const tamType = (sciCount > 0 && socCount === 0) ? "과탐" : (socCount > 0 && sciCount === 0) ? "사탐" : "사과탐";
 
-    // 💡 [핵심] 처음에 켤 때는 오프셋 0으로 시작 (오른쪽 패널 숨김)
+    // 💡 [핵심] 처음에 켤 때는 무조건 오프셋 0 (왼쪽 표만 나오게)
     window.__currentSimStatus = {
         kor: korPct, math: mathPct, bestTam: bestTam, avgTam: avgTam,
         mathType: mathType, tamType: tamType, search: "",
@@ -557,34 +557,37 @@ window.__openUnivSimulation = async function() {
                 if (!cutScore) return;
 
                 const reqTamCount = Number(c.tam_cnt_1) || 2; 
-                let myScoreForThisUniv = st.kor + st.math + (reqTamCount === 1 ? st.bestTam : st.avgTam);
+                // 소수점 방지를 위해 완벽히 반올림된 정수로 타겟 점수 세팅
+                const myScoreForThisUniv = Math.round(st.kor + st.math + (reqTamCount === 1 ? st.bestTam : st.avgTam));
 
                 const keyword = st.search.trim();
                 if (keyword) {
                     if (!String(c.univ_name).includes(keyword) && !String(c.dept_name).includes(keyword)) return;
                 } else {
-                    // 💡 [핵심 복구] 왼쪽 표는 순수 내 점수, 오른쪽 표는 오프셋을 더한 점수가 '타겟'이 됨
-                    let targetScore = isStrict ? myScoreForThisUniv : myScoreForThisUniv + st.scoreDiff;
-                    
-                    // 💡 타겟 점수를 기준으로 정확히 ±1.5점 내외(정수 기준 -1 ~ +1) 구간만 칼같이 필터링!
-                    if (cutScore < targetScore - 1.5 || cutScore > targetScore + 1.5) return;
+                    if (isStrict) { 
+                        // 💡 [핵심 수정 1] 왼쪽 표: 내 점수 기준 정확히 -1점 ~ +1점 구간만 허용
+                        if (cutScore < myScoreForThisUniv - 1 || cutScore > myScoreForThisUniv + 1) return;
+                    } else { 
+                        // 💡 [핵심 수정 2] 오른쪽 표: 겹침 방지! 왼쪽 표의 최고점(myScore+1)보다 무조건 높아야 함
+                        const targetScore = myScoreForThisUniv + st.scoreDiff;
+                        const minCut = myScoreForThisUniv + 2; // 최소 상향선 (왼쪽 표와 겹치지 않게)
+                        const maxCut = targetScore + 1; // 오프셋 타겟의 +1점까지 허용
+                        
+                        if (cutScore < minCut || cutScore > maxCut) return;
+                    }
                 }
 
+                // 💡 [핵심 수정 3] 누락되었던 대학들을 복구하기 위한 유연한 과목 컷팅 로직
                 const combo = String(c.reflect_combo || "");
-                if ((combo.includes("미/기") || combo.includes("미기")) && st.mathType !== "미기") return;
-                if ((combo.includes("[확]") || combo.includes("확통")) && st.mathType !== "확통") return;
+                if (st.mathType === "확통" && (combo.includes("미/기") || combo === "미기")) return;
+                if (st.mathType === "미기" && (combo.includes("[확]") || combo === "확통")) return;
                 
                 const tamReq = String(c.tam_reflect || "");
-                if (reqTamCount === 1) {
-                    if (tamReq === "과" && st.tamType === "사탐") return;
-                    if (tamReq === "사" && st.tamType === "과탐") return;
-                } else {
-                    if (tamReq === "과" && st.tamType !== "과탐") return;
-                    if (tamReq === "사" && st.tamType !== "사탐") return;
-                }
+                if (st.tamType === "사탐" && (tamReq === "과" || tamReq === "과탐")) return;
+                if (st.tamType === "과탐" && (tamReq === "사" || tamReq === "사탐")) return;
 
                 const badges = [];
-                if (reqTamCount === 1) badges.push(tamReq === "과" ? "과1" : tamReq === "사" ? "사1" : "탐1");
+                if (reqTamCount === 1) badges.push(tamReq === "과" || tamReq === "과탐" ? "과1" : tamReq === "사" || tamReq === "사탐" ? "사1" : "탐1");
                 if (c.note) badges.push(...c.note.split(" ")); 
 
                 const rK = Number(c.rate_kor) || 0; const rM = Number(c.rate_math) || 0; const rT = Number(c.rate_tam) || 0;
@@ -646,7 +649,7 @@ window.__openUnivSimulation = async function() {
                 else if (/(약학|약대)/.test(dept) && !/(신약|제약|약과학|한약)/.test(dept)) cat = 14;
                 else if (/(반도체|지능형|인공지능|AI|모빌리티|스마트)/i.test(dept)) cat = 15;
                 else if (/(자유전공|무전공|계열모집)/.test(dept)) cat = 18;
-                else if (["서울"].some(r => String(region).includes(r)) || /(성균관대|경희대)/.test(univ)) cat = 20;
+                else if (["서울"].some(r => String(region).includes(r)) || /(성균관대|경희대|동국대|이화여대|중앙대|서울시립대)/.test(univ)) cat = 20;
                 else if (["경기", "인천"].some(r => String(region).includes(r))) cat = 30;
                 else if (/(부산대|경북대|전남대|충남대|전북대|충북대|강원대|경상국립대|제주대)/.test(univ)) cat = 40;
                 
@@ -681,7 +684,7 @@ window.__openUnivSimulation = async function() {
             const st = window.__currentSimStatus;
             const leftData = getMatches(true);
             
-            // 💡 오프셋(scoreDiff)이 0보다 클 때만 오른쪽 데이터(상향 라인)를 계산함!
+            // 💡 오프셋(scoreDiff)이 0 초과일 때만 오른쪽 데이터(상향 라인) 계산
             const rightData = st.scoreDiff > 0 ? getMatches(false) : { matches: {}, sortedUnivs: [] };
             
             const ALL_GROUPS = ['가', '나', '다', '군외'];
@@ -717,7 +720,7 @@ window.__openUnivSimulation = async function() {
                 let html = '';
                 univs.forEach(u => {
                     const data = matchDict[gun][u];
-                    html += `<td style="vertical-align:top; padding:8px; border:1px solid #ecf0f1; min-width:110px; background:#fdfdfd;">${renderCards(data)}</td>`;
+                    html += `<td style="vertical-align:top; padding:8px; border:1px solid #ecf0f1; min-width:130px; background:#fdfdfd;">${renderCards(data)}</td>`;
                 });
                 return html;
             };
@@ -736,13 +739,13 @@ window.__openUnivSimulation = async function() {
                     
                     let leftTableHtml = hasLeft ? 
                         `<table style="width:100%; border-collapse:collapse;">
-                            <thead><tr>${gunLeftUnivs.map(u => `<th style="background:#fbfbfc; color:#34495e; font-size:13px; padding:10px; border-bottom:1px solid #dee2e6; border-right:1px solid #ecf0f1;">${u}</th>`).join('')}</tr></thead>
+                            <thead><tr>${gunLeftUnivs.map(u => `<th style="background:#fbfbfc; color:#34495e; font-size:13px; padding:10px; border-bottom:1px solid #dee2e6; border-right:1px solid #ecf0f1; white-space:nowrap;">${u}</th>`).join('')}</tr></thead>
                             <tbody><tr>${renderTableCols(gunLeftUnivs, leftData.matches, gun)}</tr></tbody>
                          </table>` : `<div style="padding:20px; color:#bdc3c7; text-align:center; font-size:12px; font-weight:bold;">조건에 맞는 대학 없음</div>`;
                          
                     let rightTableHtml = hasRight ? 
                         `<table style="width:100%; border-collapse:collapse;">
-                            <thead><tr>${gunRightUnivs.map(u => `<th style="background:#fef9e7; color:#d35400; font-size:13px; padding:10px; border-bottom:1px solid #dee2e6; border-right:1px solid #ecf0f1;">${u}</th>`).join('')}</tr></thead>
+                            <thead><tr>${gunRightUnivs.map(u => `<th style="background:#fef9e7; color:#d35400; font-size:13px; padding:10px; border-bottom:1px solid #dee2e6; border-right:1px solid #ecf0f1; white-space:nowrap;">${u}</th>`).join('')}</tr></thead>
                             <tbody><tr>${renderTableCols(gunRightUnivs, rightData.matches, gun)}</tr></tbody>
                          </table>` : `<div style="padding:20px; color:#f5b041; text-align:center; font-size:12px; font-weight:bold;">조건에 맞는 상향 대학 없음</div>`;
 
@@ -769,7 +772,7 @@ window.__openUnivSimulation = async function() {
                     
                     <div style="background:#fff; border-bottom:2px solid #dee2e6; display:flex; justify-content:space-between; padding:18px 25px; align-items:center; flex-wrap:wrap; gap:10px;">
                         <div style="color:#2c3e50; font-weight:900; font-size:17px; display:flex; align-items:center; gap:8px;">
-                            🎯 정시 지원 시뮬레이션 <span style="font-size:12px; color:#7f8c8d; font-weight:normal;">(±1점 정밀 탐색 모드)</span>
+                            🎯 정시 지원 시뮬레이션 <span style="font-size:12px; color:#7f8c8d; font-weight:normal;">(좌측 ±1점 고정, 우측 상향 전용)</span>
                         </div>
                         <div style="background:#e8f4f8; border:1px solid #3498db; color:#2980b9; padding:6px 15px; font-weight:bold; font-size:13px; border-radius:6px;">
                             실제 응시: <span style="color:#e74c3c; margin-left:4px;">${st.mathType}+${st.tamType}</span>
