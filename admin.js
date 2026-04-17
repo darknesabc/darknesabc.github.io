@@ -505,6 +505,7 @@ window.__renderGradeSummaryUI = function() {
 // =========================================================
 // 💡 [수퍼베이스 완벽 이식판] 정시 지원 시뮬레이션 보드 렌더러
 // 🌟 (최종) 하극상 차단 + 터치 지원 툴팁 + 가산점 절대 % 변환
+// 🌟 (추가) 동일 대학 내 본교(서울) ↔ 분교 정렬 순서 보정
 // =========================================================
 window.__openUnivSimulation = async function() {
     const area = document.getElementById('univ-simulation-area');
@@ -789,7 +790,8 @@ window.__openUnivSimulation = async function() {
                 if (/(수의예|수의과)/.test(dept)) return 13;
                 if (/(약학|약대)/.test(dept) && !/(신약|제약|약과학|한약)/.test(dept)) return 14;
 
-                if (/(미래|세종|천안|글로컬|WISE|다빈치|에리카)/i.test(univ)) return 35;
+                // 💡 [수정] 와이즈, 바이오 등 분교 키워드 보강
+                if (/(미래|세종|천안|글로컬|WISE|와이즈|다빈치|에리카|ERICA|바이오|글로벌|메디컬)/i.test(univ)) return 35;
 
                 const isRanked = univRankOrder.some(u => univ.startsWith(u) || univ === u);
                 if (isRanked) return 20;
@@ -809,6 +811,21 @@ window.__openUnivSimulation = async function() {
                     if(matches[g][b] && matches[g][b][0]) { deptB = matches[g][b][0].dept; regB = matches[g][b][0].region; }
                 });
                 
+                // 💡 [추가] 같은 대학 이름일 경우 서울/본교가 무조건 앞쪽으로 오게 설정 (하극상 완벽 차단)
+                const baseA = a.replace(/\(.*?\)/g, '').trim();
+                const baseB = b.replace(/\(.*?\)/g, '').trim();
+                
+                if (baseA === baseB && baseA.length > 0) {
+                    const isMainA = a.includes("서울") || (!a.includes("(") && !/(에리카|ERICA|와이즈|WISE|바이오|글로벌|글로컬|미래|세종|천안|다빈치|메디컬)/i.test(a));
+                    const isMainB = b.includes("서울") || (!b.includes("(") && !/(에리카|ERICA|와이즈|WISE|바이오|글로벌|글로컬|미래|세종|천안|다빈치|메디컬)/i.test(b));
+                    
+                    if (isMainA && !isMainB) return -1;
+                    if (!isMainA && isMainB) return 1;
+                    
+                    // 둘 다 분교거나 둘 다 본교면 그냥 가나다순 (예: 바이오 -> 와이즈)
+                    return a.localeCompare(b);
+                }
+
                 const catA = getCategoryRank(a, deptA, regA);
                 const catB = getCategoryRank(b, deptB, regB);
                 if (catA !== catB) return catA - catB; 
