@@ -504,7 +504,7 @@ window.__renderGradeSummaryUI = function() {
 
 // =========================================================
 // 💡 [수퍼베이스 완벽 이식판] 정시 지원 시뮬레이션 보드 렌더러
-// 🌟 (최종) 오른쪽 상위권 우선 + '-1등 하극상 버그' 완벽 차단 패치 적용
+// 🌟 (최종 통합판) 서열 정렬 유지 + 툴팁 추가 + 가산점 % 변환 적용
 // =========================================================
 window.__openUnivSimulation = async function() {
     const area = document.getElementById('univ-simulation-area');
@@ -550,15 +550,24 @@ window.__openUnivSimulation = async function() {
         }
     };
 
-    const allKor = (window.__currentStudentScores || []).map(s => Number(s.kor_exp_pct) || 0);
-    const allMath = (window.__currentStudentScores || []).map(s => Number(s.math_exp_pct) || 0);
-    const allT1 = (window.__currentStudentScores || []).map(s => Number(s.tam1_exp_pct) || 0);
-    const allT2 = (window.__currentStudentScores || []).map(s => Number(s.tam2_exp_pct) || 0);
+    // 💡 [추가] 툴팁을 위한 과목별 유효 응시 횟수 카운팅
+    const allKorScores = (window.__currentStudentScores || []).map(s => Number(s.kor_exp_pct) || 0).filter(s => s > 0);
+    const allMathScores = (window.__currentStudentScores || []).map(s => Number(s.math_exp_pct) || 0).filter(s => s > 0);
+    const allT1Scores = (window.__currentStudentScores || []).map(s => Number(s.tam1_exp_pct) || 0).filter(s => s > 0);
+    const allT2Scores = (window.__currentStudentScores || []).map(s => Number(s.tam2_exp_pct) || 0).filter(s => s > 0);
 
-    const avgKorPct = calcAdvancedAvg(allKor);
-    const avgMathPct = calcAdvancedAvg(allMath);
-    const avgT1Pct = calcAdvancedAvg(allT1);
-    const avgT2Pct = calcAdvancedAvg(allT2);
+    const kCnt = allKorScores.length;
+    const mCnt = allMathScores.length;
+    const t1Cnt = allT1Scores.length;
+    const t2Cnt = allT2Scores.length;
+
+    // 💡 [추가] 툴팁 메시지 생성 (HTML Entity 사용으로 줄바꿈 처리)
+    const tooltipMsg = `국(${kCnt}회) 수(${mCnt}회) 탐1(${t1Cnt}회) 탐2(${t2Cnt}회) 누적평균&#10;※ 4회 이상 응시 과목은 최고/최저 제외`;
+
+    const avgKorPct = calcAdvancedAvg(allKorScores);
+    const avgMathPct = calcAdvancedAvg(allMathScores);
+    const avgT1Pct = calcAdvancedAvg(allT1Scores);
+    const avgT2Pct = calcAdvancedAvg(allT2Scores);
 
     window.__currentSimStatus = {
         scoreMode: 'current',
@@ -603,7 +612,7 @@ window.__openUnivSimulation = async function() {
                     
                     <div style="display:flex; gap:4px; background:#ecf0f1; padding:4px; border-radius:8px;">
                         <button id="sim-btn-current" onclick="window.__setSimScoreMode('current')" style="padding:5px 12px; border-radius:6px; border:none; font-size:12px; font-weight:bold; cursor:pointer; transition:0.2s; background:#3498db; color:#fff; box-shadow:0 2px 4px rgba(0,0,0,0.1);">해당 모평</button>
-                        <button id="sim-btn-avg" onclick="window.__setSimScoreMode('avg')" style="padding:5px 12px; border-radius:6px; border:none; font-size:12px; font-weight:bold; cursor:pointer; transition:0.2s; background:transparent; color:#7f8c8d;" title="4회 이상 응시 시 최고/최저점 제외 산출">누적 평균</button>
+                        <button id="sim-btn-avg" onclick="window.__setSimScoreMode('avg')" title="${tooltipMsg}" style="padding:5px 12px; border-radius:6px; border:none; font-size:12px; font-weight:bold; cursor:help; transition:0.2s; background:transparent; color:#7f8c8d; text-decoration: underline dotted #bdc3c7; text-underline-offset: 3px;">누적 평균</button>
                     </div>
                     
                     <select onchange="window.__setSimStream(this.value)" style="padding:6px 10px; border-radius:6px; border:1px solid #bdc3c7; color:#2c3e50; font-size:13px; font-weight:bold; outline:none; background:#fff; cursor:pointer;">
@@ -689,25 +698,28 @@ window.__openUnivSimulation = async function() {
                 if (reqTamCount === 1) badges.push(tamReq === "과" || tamReq === "과탐" ? "[과1]" : tamReq === "사" || tamReq === "사탐" ? "[사1]" : "[탐1]");
                 if (c.note) badges.push(...c.note.split(" ")); 
 
-                let bMi = c.rate_math_mi ? String(c.rate_math_mi).trim() : "";
-                let bGi = c.rate_math_gi ? String(c.rate_math_gi).trim() : "";
-                let bGwa = c.rate_tam_gwa ? String(c.rate_tam_gwa).trim() : "";
-                let bSa = c.rate_tam_sa ? String(c.rate_tam_sa).trim() : "";
+                // 💡 [추가] 가산점 소수점을 퍼센트(%)로 스마트하게 변환하는 로직
+                const formatBonus = (val) => {
+                    let num = Number(val);
+                    if (isNaN(num) || num <= 0) return "";
+                    // 0.05 같은 소수면 * 100을 해서 5로 만듦. 이미 5로 입력되어 있으면 그냥 5 사용.
+                    return num < 1 ? Math.round(num * 100) : Math.round(num);
+                };
+
+                let fMi = formatBonus(c.rate_math_mi);
+                let fGi = formatBonus(c.rate_math_gi);
+                let fGwa = formatBonus(c.rate_tam_gwa);
+                let fSa = formatBonus(c.rate_tam_sa);
                 
-                if(bMi === "0" || bMi === "-") bMi = "";
-                if(bGi === "0" || bGi === "-") bGi = "";
-                if(bGwa === "0" || bGwa === "-") bGwa = "";
-                if(bSa === "0" || bSa === "-") bSa = "";
-                
-                if (bMi && bMi === bGi) badges.push(`[미기+${bMi}%]`);
+                if (fMi && fMi === fGi) badges.push(`[미기+${fMi}%]`);
                 else {
-                    if (bMi) badges.push(`[미적+${bMi}%]`);
-                    if (bGi) badges.push(`[기하+${bGi}%]`);
+                    if (fMi) badges.push(`[미적+${fMi}%]`);
+                    if (fGi) badges.push(`[기하+${fGi}%]`);
                 }
-                if (bGwa && bGwa === bSa) badges.push(`[사과+${bGwa}%]`);
+                if (fGwa && fGwa === fSa) badges.push(`[사과+${fGwa}%]`);
                 else {
-                    if (bGwa) badges.push(`[과탐+${bGwa}%]`);
-                    if (bSa) badges.push(`[사탐+${bSa}%]`);
+                    if (fGwa) badges.push(`[과탐+${fGwa}%]`);
+                    if (fSa) badges.push(`[사탐+${fSa}%]`);
                 }
 
                 const rK = Number(c.rate_kor) || 0; const rM = Number(c.rate_math) || 0; const rT = Number(c.rate_tam) || 0;
@@ -743,12 +755,12 @@ window.__openUnivSimulation = async function() {
                 Object.keys(matches[g]).forEach(u => { matches[g][u].sort((a,b) => b.cut - a.cut); });
             });
 
-            // 💡 [버그 완벽 차단 패치] 에리카, 글로벌 등 배열에 명시적으로 추가!
+            // 💡 선생님께서 작성해주신 하극상 방지 로직 (원본 100% 유지)
             const univRankOrder = [
                 "서울대", "연세대", "고려대", "서강대", "성균관대", "한양대", 
                 "이화여대", "중앙대", "경희대", "한국외대", "서울시립대", 
                 "건국대", "동국대", "홍익대", "숙명여대", "국민대", "숭실대", "세종대", "단국대", 
-                "인하대", "아주대", "한양대(에리카)", "항공대", "가천대", "광운대", "명지대", "상명대", 
+                "인하대", "아주대", "한양대(ERICA)", "항공대", "가천대", "광운대", "명지대", "상명대", 
                 "가톨릭대", "한국외대(글로벌)", "서울과기대", "성신여대", "동덕여대", "덕성여대", "서울여대", 
                 "삼육대", "한성대", "서경대", "한국교원대", "경기대", "인천대"
             ];
@@ -834,9 +846,11 @@ window.__openUnivSimulation = async function() {
                 if(st.scoreMode === 'current') {
                     btnCur.style.background = '#3498db'; btnCur.style.color = '#fff'; btnCur.style.boxShadow = '0 2px 4px rgba(0,0,0,0.1)';
                     btnAvg.style.background = 'transparent'; btnAvg.style.color = '#7f8c8d'; btnAvg.style.boxShadow = 'none';
+                    btnAvg.style.textDecoration = 'underline dotted #bdc3c7'; // 💡 툴팁 안내선 유지
                 } else {
                     btnAvg.style.background = '#3498db'; btnAvg.style.color = '#fff'; btnAvg.style.boxShadow = '0 2px 4px rgba(0,0,0,0.1)';
                     btnCur.style.background = 'transparent'; btnCur.style.color = '#7f8c8d'; btnCur.style.boxShadow = 'none';
+                    btnAvg.style.textDecoration = 'none';
                 }
             }
 
