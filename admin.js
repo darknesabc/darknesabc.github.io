@@ -504,7 +504,7 @@ window.__renderGradeSummaryUI = function() {
 
 // =========================================================
 // 💡 [수퍼베이스 완벽 이식판] 정시 지원 시뮬레이션 보드 렌더러
-// 🌟 (최종) '-1등 하극상 버그' 해결 및 좌/우 패널 검색 동기화 완료
+// 🌟 (최종) 오른쪽 패널(상향/검색) 상위권 대학 우선 노출 고정
 // =========================================================
 window.__openUnivSimulation = async function() {
     const area = document.getElementById('univ-simulation-area');
@@ -591,7 +591,7 @@ window.__openUnivSimulation = async function() {
             <div style="background:#fff; border-radius:12px; overflow:hidden; border:1px solid #dee2e6; box-shadow:0 6px 12px rgba(0,0,0,0.04); margin-top:20px;">
                 <div style="background:#fff; border-bottom:2px solid #dee2e6; display:flex; justify-content:space-between; padding:18px 25px; align-items:center; flex-wrap:wrap; gap:10px;">
                     <div style="color:#2c3e50; font-weight:900; font-size:17px; display:flex; align-items:center; gap:8px;">
-                        🎯 정시 지원 시뮬레이션 <span style="font-size:12px; color:#7f8c8d; font-weight:normal;">(서열 최적화 및 좌/우 검색 동기화 완료)</span>
+                        🎯 정시 지원 시뮬레이션 <span style="font-size:12px; color:#7f8c8d; font-weight:normal;">(좌측 철벽 고정 / 우측 최상위권 우선 정렬)</span>
                     </div>
                     <div style="background:#e8f4f8; border:1px solid #3498db; color:#2980b9; padding:6px 15px; font-weight:bold; font-size:13px; border-radius:6px;">
                         실제 응시: <span style="color:#e74c3c; margin-left:4px;">${mathType}+${tamType}</span>
@@ -645,7 +645,9 @@ window.__openUnivSimulation = async function() {
             const st = window.__currentSimStatus;
             const matches = { '가': {}, '나': {}, '다': {}, '군외': {} };
             const univSet = new Set();
-            const keyword = st.search.trim();
+
+            // 왼쪽 패널(isStrict)일 때는 검색어(keyword)를 무조건 비웁니다.
+            const keyword = isStrict ? "" : st.search.trim();
 
             cutoffs.forEach(c => {
                 const cutScore = Number(c.cut_total) || 0;
@@ -656,24 +658,18 @@ window.__openUnivSimulation = async function() {
                     if (!typeStr.includes(st.streamFilter)) return;
                 }
 
-                // 💡 [좌우 패널 동기화] 양쪽 표 모두 검색어가 있으면 무조건 해당 검색어로 학과 필터링 적용!
-                if (keyword) {
-                    if (!String(c.univ_name).includes(keyword) && !String(c.dept_name).includes(keyword)) return;
-                }
-
                 const reqTamCount = Number(c.tam_cnt_1) || 2; 
                 const myScoreForThisUniv = Math.round(aKor + aMath + (reqTamCount === 1 ? aBestTam : aAvgTam));
 
-                // 💡 양쪽 표 점수 기준 완전 분리
-                if (isStrict) { 
-                    // 왼쪽 표: 오직 '내 점수 ±1점'인 학과만 노출 (검색 결과 중에서도 점수가 맞는 것만 나옴)
-                    if (cutScore < myScoreForThisUniv - 1 || cutScore > myScoreForThisUniv + 1) return;
-                } else { 
-                    if (keyword) {
-                        // 오른쪽 표(검색 중): 내 점수보다 높은(+2점 이상) 상향 대학 모두 노출 (서연고 등장 구역)
-                        if (cutScore < myScoreForThisUniv + 2) return;
-                    } else {
-                        // 오른쪽 표(검색 안함): 상향 오프셋으로 설정된 점수 구간만 노출
+                if (keyword) {
+                    // 오른쪽 표에서 검색어가 있을 경우 점수 무시하고 해당 대학/학과를 모두 찾아줌
+                    if (!String(c.univ_name).includes(keyword) && !String(c.dept_name).includes(keyword)) return;
+                } else {
+                    if (isStrict) { 
+                        // 왼쪽 표: 오직 점수 ±1점 필터링만 작용
+                        if (cutScore < myScoreForThisUniv - 1 || cutScore > myScoreForThisUniv + 1) return;
+                    } else { 
+                        // 오른쪽 표: 오프셋 반영 (상향 점수만)
                         const targetScore = myScoreForThisUniv + st.scoreDiff;
                         const minCut = myScoreForThisUniv + 2; 
                         const maxCut = targetScore + 1; 
@@ -747,13 +743,12 @@ window.__openUnivSimulation = async function() {
                 Object.keys(matches[g]).forEach(u => { matches[g][u].sort((a,b) => b.cut - a.cut); });
             });
 
-            // 💡 [핵심 버그 수정] 에리카, 외대글로벌을 반드시 배열에 포함시켜 indexOf 에러 방지!
             const univRankOrder = [
                 "서울대", "연세대", "고려대", "서강대", "성균관대", "한양대", 
                 "이화여대", "중앙대", "경희대", "한국외대", "서울시립대", 
                 "건국대", "동국대", "홍익대", "숙명여대", "국민대", "숭실대", "세종대", "단국대", 
-                "인하대", "아주대", "한양대(ERICA)", "항공대", "가천대", "광운대", "명지대", "상명대", 
-                "가톨릭대", "한국외대(글로벌)", "서울과기대", "성신여대", "동덕여대", "덕성여대", "서울여대", 
+                "인하대", "아주대", "항공대", "가천대", "광운대", "명지대", "상명대", 
+                "가톨릭대", "서울과기대", "성신여대", "동덕여대", "덕성여대", "서울여대", 
                 "삼육대", "한성대", "서경대", "한국교원대", "경기대", "인천대"
             ];
             
@@ -793,6 +788,7 @@ window.__openUnivSimulation = async function() {
                     if(matches[g][b] && matches[g][b][0]) { deptB = matches[g][b][0].dept; regB = matches[g][b][0].region; }
                 });
                 
+                // 💡 대학 정렬: 카테고리(지역/메디컬) -> 서열표(univRankOrder) -> 가나다 순 고정
                 const catA = getCategoryRank(a, deptA, regA);
                 const catB = getCategoryRank(b, deptB, regB);
                 if (catA !== catB) return catA - catB; 
@@ -869,7 +865,7 @@ window.__openUnivSimulation = async function() {
                     });
 
                     let dispDept = d.dept;
-                    if (regex) dispDept = dispDept.replace(regex, `<span style="background:#f1c40f; color:#000; padding:0 2px; border-radius:2px;">$1</span>`);
+                    if (isSearchResult && regex) dispDept = dispDept.replace(regex, `<span style="background:#f1c40f; color:#000; padding:0 2px; border-radius:2px;">$1</span>`);
 
                     return `
                         <div style="background:#fff; border:1px solid #ecf0f1; border-radius:8px; padding:10px; margin-bottom:6px; text-align:center; box-shadow:0 2px 4px rgba(0,0,0,0.02); transition:0.2s;">
@@ -904,7 +900,7 @@ window.__openUnivSimulation = async function() {
 
                 univs.forEach(u => {
                     let dispU = u;
-                    if (regex) dispU = dispU.replace(regex, `<span style="background:#f1c40f; color:#000; padding:0 2px; border-radius:2px;">$1</span>`);
+                    if (isSearchResult && regex) dispU = dispU.replace(regex, `<span style="background:#f1c40f; color:#000; padding:0 2px; border-radius:2px;">$1</span>`);
                     
                     const tableHtml = `<table style="width:100%; border-collapse:collapse; height:100%;">
                                         <thead><tr><th style="background:rgba(0,0,0,0.03); color:#34495e; font-size:13px; padding:10px; border-bottom:1px solid #dee2e6; border-right:1px solid #ecf0f1; white-space:nowrap; position:sticky; top:0; z-index:2;">${dispU}</th></tr></thead>
