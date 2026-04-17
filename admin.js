@@ -504,7 +504,7 @@ window.__renderGradeSummaryUI = function() {
 
 // =========================================================
 // 💡 [수퍼베이스 완벽 이식판] 정시 지원 시뮬레이션 보드 렌더러
-// 🌟 (진짜 최종 마스터 버전) 4회 이상 응시 시 최고/최저 제외 누적 평균 공식 완벽 적용!
+// 🌟 (진짜 최종) 누적평균 텍스트 변경 + 검색 시 왼쪽 고정(독립) + 검색 시 점수무시 로직 적용
 // =========================================================
 window.__openUnivSimulation = async function() {
     const area = document.getElementById('univ-simulation-area');
@@ -533,45 +533,32 @@ window.__openUnivSimulation = async function() {
     const mathType = (mathChoice.includes("미적") || mathChoice.includes("기하")) ? "미기" : "확통";
     const tamType = (sciCount > 0 && socCount === 0) ? "과탐" : (socCount > 0 && sciCount === 0) ? "사탐" : "사과탐";
 
-    // ============================================================================
-    // 💡 [핵심 복원] 전문가용 누적 평균 계산기 (최고/최저 제외 절사평균 적용)
-    // ============================================================================
+    // 💡 최고/최저 제외 절사평균 함수
     const calcAdvancedAvg = (scoresArray) => {
-        // 0보다 큰 유효한 점수만 걸러냄
         const validScores = scoresArray.filter(s => s > 0);
         const count = validScores.length;
-        
         if (count === 0) return 0;
-        
-        // 💡 4회 이상 응시한 경우: 최고점과 최저점을 제외하고 평균 계산
         if (count >= 4) {
-            validScores.sort((a, b) => a - b); // 오름차순 정렬
-            validScores.pop(); // 최고점 1개 제외
-            validScores.shift(); // 최저점 1개 제외
-            
+            validScores.sort((a, b) => a - b);
+            validScores.pop(); 
+            validScores.shift(); 
             const sum = validScores.reduce((a, b) => a + b, 0);
             return sum / validScores.length;
-        } 
-        // 💡 3회 이하 응시한 경우: 단순 평균 계산
-        else {
+        } else {
             const sum = validScores.reduce((a, b) => a + b, 0);
             return sum / count;
         }
     };
 
-    // 모든 시험 데이터에서 각 과목별 백분위만 쏙쏙 뽑아서 배열로 만듦
     const allKor = (window.__currentStudentScores || []).map(s => Number(s.kor_exp_pct) || 0);
     const allMath = (window.__currentStudentScores || []).map(s => Number(s.math_exp_pct) || 0);
     const allT1 = (window.__currentStudentScores || []).map(s => Number(s.tam1_exp_pct) || 0);
     const allT2 = (window.__currentStudentScores || []).map(s => Number(s.tam2_exp_pct) || 0);
 
-    // 특수 공식이 적용된 과목별 누적 평균 점수 산출
     const avgKorPct = calcAdvancedAvg(allKor);
     const avgMathPct = calcAdvancedAvg(allMath);
     const avgT1Pct = calcAdvancedAvg(allT1);
     const avgT2Pct = calcAdvancedAvg(allT2);
-
-    // ============================================================================
 
     window.__currentSimStatus = {
         scoreMode: 'current',
@@ -604,7 +591,7 @@ window.__openUnivSimulation = async function() {
             <div style="background:#fff; border-radius:12px; overflow:hidden; border:1px solid #dee2e6; box-shadow:0 6px 12px rgba(0,0,0,0.04); margin-top:20px;">
                 <div style="background:#fff; border-bottom:2px solid #dee2e6; display:flex; justify-content:space-between; padding:18px 25px; align-items:center; flex-wrap:wrap; gap:10px;">
                     <div style="color:#2c3e50; font-weight:900; font-size:17px; display:flex; align-items:center; gap:8px;">
-                        🎯 정시 지원 시뮬레이션 <span style="font-size:12px; color:#7f8c8d; font-weight:normal;">(4회 이상 최고/최저 제외 누적평균 적용)</span>
+                        🎯 정시 지원 시뮬레이션 <span style="font-size:12px; color:#7f8c8d; font-weight:normal;">(검색 시 좌측 고정 & 점수무시 적용)</span>
                     </div>
                     <div style="background:#e8f4f8; border:1px solid #3498db; color:#2980b9; padding:6px 15px; font-weight:bold; font-size:13px; border-radius:6px;">
                         실제 응시: <span style="color:#e74c3c; margin-left:4px;">${mathType}+${tamType}</span>
@@ -654,10 +641,14 @@ window.__openUnivSimulation = async function() {
         window.__setSimOffset = function(val) { window.__currentSimStatus.scoreDiff = Math.max(0, Number(val)); window.runUniversitySimulation(); };
         window.__setSimSearch = function(val) { window.__currentSimStatus.search = val; window.runUniversitySimulation(); };
 
+        // 💡 [핵심 수정 1] 왼쪽(적정)은 검색어 무시하고 무조건 ±1점 고정, 오른쪽(타겟)만 검색어 반영!
         const getMatches = (isStrict, aKor, aMath, aBestTam, aAvgTam) => {
             const st = window.__currentSimStatus;
             const matches = { '가': {}, '나': {}, '다': {}, '군외': {} };
             const univSet = new Set();
+
+            // 왼쪽 패널(isStrict = true)일 때는 검색어를 강제로 무시합니다.
+            const keyword = isStrict ? "" : st.search.trim();
 
             cutoffs.forEach(c => {
                 const cutScore = Number(c.cut_total) || 0;
@@ -671,13 +662,16 @@ window.__openUnivSimulation = async function() {
                 const reqTamCount = Number(c.tam_cnt_1) || 2; 
                 const myScoreForThisUniv = Math.round(aKor + aMath + (reqTamCount === 1 ? aBestTam : aAvgTam));
 
-                const keyword = st.search.trim();
+                // 💡 [핵심 수정 2] 검색어가 있을 경우 점수 조건(컷오프 필터링)을 완전히 무시하고 통과시킵니다.
                 if (keyword) {
                     if (!String(c.univ_name).includes(keyword) && !String(c.dept_name).includes(keyword)) return;
                 } else {
+                    // 검색어가 없을 때만 기존의 점수 로직을 탑니다.
                     if (isStrict) { 
+                        // 왼쪽 표: 무조건 ±1점
                         if (cutScore < myScoreForThisUniv - 1 || cutScore > myScoreForThisUniv + 1) return;
                     } else { 
+                        // 오른쪽 표: 오프셋 반영 (겹침 방지)
                         const targetScore = myScoreForThisUniv + st.scoreDiff;
                         const minCut = myScoreForThisUniv + 2; 
                         const maxCut = targetScore + 1; 
@@ -694,7 +688,7 @@ window.__openUnivSimulation = async function() {
                 if (tamType === "과탐" && (tamReq === "사" || tamReq === "사탐")) return;
 
                 const badges = [];
-                // 💡 [가산점 뱃지 대괄호 디자인 복구]
+                // 💡 [수정] 대괄호 뱃지 디자인 유지
                 if (reqTamCount === 1) badges.push(tamReq === "과" || tamReq === "과탐" ? "[과1]" : tamReq === "사" || tamReq === "사탐" ? "[사1]" : "[탐1]");
                 if (c.note) badges.push(...c.note.split(" ")); 
 
@@ -823,6 +817,9 @@ window.__openUnivSimulation = async function() {
             const aAvgTam = aTamCnt > 0 ? (aT1 + aT2) / aTamCnt : 0;
             const sumScore = Math.round(aKor + aMath + aAvgTam); 
 
+            // 💡 [수정 3] 점수 제목 변경 (누적 평균 모드일 때 텍스트 교체)
+            const scoreTitle = st.scoreMode === 'avg' ? '누적<br>평균' : '내<br>점<br>수';
+
             const korEl = document.getElementById('sim-score-kor');
             if (korEl) {
                 korEl.innerText = Math.round(aKor * 10) / 10;
@@ -842,16 +839,27 @@ window.__openUnivSimulation = async function() {
             }
 
             const leftData = getMatches(true, aKor, aMath, aBestTam, aAvgTam);
-            const rightData = st.scoreDiff > 0 ? getMatches(false, aKor, aMath, aBestTam, aAvgTam) : { matches: {}, sortedUnivs: [] };
+            
+            // 💡 [수정 4] 검색어가 입력되었을 때는 오프셋이 0이더라도 우측 표(검색 결과)를 렌더링해야 함!
+            const shouldShowRight = st.scoreDiff > 0 || st.search.trim() !== "";
+            const rightData = shouldShowRight ? getMatches(false, aKor, aMath, aBestTam, aAvgTam) : { matches: {}, sortedUnivs: [] };
             
             const ALL_GROUPS = ['가', '나', '다', '군외'];
             
             const renderCards = (univData) => {
                 if(!univData || univData.length === 0) return '';
-                const slicedData = univData.slice(0, 6);
+                // 검색어 하이라이트 처리를 위해 정규식 준비
+                const keyword = st.search.trim();
+                const regex = keyword ? new RegExp(`(${keyword})`, 'gi') : null;
+
+                // 💡 [추가 기능] 검색 모드일 때는 최대 표시 학과 개수를 6개에서 20개로 늘려서 여유있게 보여줌!
+                const limit = keyword ? 20 : 6;
+                const slicedData = univData.slice(0, limit);
+
                 let html = slicedData.map(d => {
                     const diffColor = d.diff > 0 ? '#2ecc71' : (d.diff < 0 ? '#e74c3c' : '#f39c12');
                     const diffStr = d.diff > 0 ? `+${d.diff}` : (d.diff === 0 ? '±0' : d.diff);
+                    
                     let badgeHtml = "";
                     d.badges.forEach(b => {
                         let bg = "#f1f2f6"; let color = "#7f8c8d"; let bo = "1px solid #dfe6e9";
@@ -861,23 +869,43 @@ window.__openUnivSimulation = async function() {
                         else if(b.includes("과탐") || b.includes("과1") || b.includes("사1") || b.includes("탐1")) { bg = "#eaf2f8"; color = "#2980b9"; bo="1px solid #d4e6f1"; }
                         badgeHtml += `<span style="background:${bg}; border:${bo}; color:${color}; padding:2px 6px; border-radius:4px; font-size:10px; font-weight:bold; display:inline-block; margin:2px 1px;">${b}</span>`;
                     });
+
+                    // 검색어 하이라이트
+                    let dispDept = d.dept;
+                    if (regex) dispDept = dispDept.replace(regex, `<span style="background:#f1c40f; color:#000; padding:0 2px; border-radius:2px;">$1</span>`);
+
                     return `
                         <div style="background:#fff; border:1px solid #ecf0f1; border-radius:8px; padding:10px; margin-bottom:6px; text-align:center; box-shadow:0 2px 4px rgba(0,0,0,0.02); transition:0.2s;">
                             <div style="font-size:11px; color:#95a5a6; margin-bottom:2px;">[${d.type}]</div>
-                            <div style="font-size:13px; color:#2c3e50; font-weight:bold; margin-bottom:6px; word-break:keep-all; line-height:1.3;">${d.dept}</div>
+                            <div style="font-size:13px; color:#2c3e50; font-weight:bold; margin-bottom:6px; word-break:keep-all; line-height:1.3;">${dispDept}</div>
                             <div style="font-size:15px; color:${diffColor}; font-weight:900;">${d.cut} <span style="font-size:11px; color:#7f8c8d; font-weight:normal;">(${diffStr})</span></div>
                             ${badgeHtml ? `<div style="margin-top:6px;">${badgeHtml}</div>` : ''}
                         </div>
                     `;
                 }).join('');
-                if (univData.length > 6) html += `<div style="font-size:11px; color:#95a5a6; padding:6px 0 2px 0; font-weight:bold;">...외 ${univData.length - 6}개 학과 숨김</div>`;
+                
+                if (univData.length > limit) {
+                    html += `<div style="font-size:11px; color:#95a5a6; padding:6px 0 2px 0; font-weight:bold;">...외 ${univData.length - limit}개 학과 숨김</div>`;
+                }
                 return html;
             };
 
             const renderTableCols = (univs, matchDict, gun) => {
                 let html = '';
+                // 검색어 하이라이트 준비
+                const keyword = st.search.trim();
+                const regex = keyword ? new RegExp(`(${keyword})`, 'gi') : null;
+
                 univs.forEach(u => {
-                    html += `<td style="vertical-align:top; padding:8px; border:1px solid #ecf0f1; min-width:130px; background:#fdfdfd;">${renderCards(matchDict[gun][u])}</td>`;
+                    let dispU = u;
+                    if (regex) dispU = dispU.replace(regex, `<span style="background:#f1c40f; color:#000; padding:0 2px; border-radius:2px;">$1</span>`);
+                    
+                    // 💡 [수정] 헤더에 검색어 하이라이팅 적용
+                    const tableHtml = `<table style="width:100%; border-collapse:collapse; height:100%;">
+                                        <thead><tr><th style="background:rgba(0,0,0,0.03); color:#34495e; font-size:13px; padding:10px; border-bottom:1px solid #dee2e6; border-right:1px solid #ecf0f1; white-space:nowrap; position:sticky; top:0; z-index:2;">${dispU}</th></tr></thead>
+                                        <tbody><tr><td style="vertical-align:top; padding:8px; border:1px solid #ecf0f1; min-width:130px; background:#fdfdfd;">${renderCards(matchDict[gun][u])}</td></tr></tbody>
+                                       </table>`;
+                    html += `<td style="padding:0; border:none; vertical-align:top;">${tableHtml}</td>`;
                 });
                 return html;
             };
@@ -885,32 +913,37 @@ window.__openUnivSimulation = async function() {
             let rowsHtml = '';
             ALL_GROUPS.forEach((gun, idx) => {
                 const isFirst = (idx === 0);
-                const gunLeftUnivs = leftData.sortedUnivs.filter(u => leftData.matches[gun][u] && leftData.matches[gun][u].length > 0).slice(0, 6);
-                const gunRightUnivs = rightData.sortedUnivs.filter(u => rightData.matches[gun][u] && rightData.matches[gun][u].length > 0).slice(0, 6);
+                
+                const limit = st.search.trim() ? 20 : 6;
+                const gunLeftUnivs = leftData.sortedUnivs.filter(u => leftData.matches[gun][u] && leftData.matches[gun][u].length > 0).slice(0, limit);
+                const gunRightUnivs = rightData.sortedUnivs.filter(u => rightData.matches[gun][u] && rightData.matches[gun][u].length > 0).slice(0, limit);
                 
                 let hasLeft = gunLeftUnivs.length > 0;
-                let hasRight = st.scoreDiff > 0 && gunRightUnivs.length > 0; 
+                let hasRight = shouldShowRight && gunRightUnivs.length > 0; 
                 
                 if (hasLeft || hasRight) {
+                    
                     let leftTableHtml = hasLeft ? 
-                        `<table style="width:100%; border-collapse:collapse;">
-                            <thead><tr>${gunLeftUnivs.map(u => `<th style="background:#fbfbfc; color:#34495e; font-size:13px; padding:10px; border-bottom:1px solid #dee2e6; border-right:1px solid #ecf0f1; white-space:nowrap;">${u}</th>`).join('')}</tr></thead>
+                        `<table style="width:100%; border-collapse:collapse; height:100%;">
                             <tbody><tr>${renderTableCols(gunLeftUnivs, leftData.matches, gun)}</tr></tbody>
                          </table>` : `<div style="padding:20px; color:#bdc3c7; text-align:center; font-size:12px; font-weight:bold;">조건에 맞는 대학 없음</div>`;
                          
                     let rightTableHtml = hasRight ? 
-                        `<table style="width:100%; border-collapse:collapse;">
-                            <thead><tr>${gunRightUnivs.map(u => `<th style="background:#fef9e7; color:#d35400; font-size:13px; padding:10px; border-bottom:1px solid #dee2e6; border-right:1px solid #ecf0f1; white-space:nowrap;">${u}</th>`).join('')}</tr></thead>
+                        `<table style="width:100%; border-collapse:collapse; height:100%;">
                             <tbody><tr>${renderTableCols(gunRightUnivs, rightData.matches, gun)}</tr></tbody>
-                         </table>` : `<div style="padding:20px; color:#f5b041; text-align:center; font-size:12px; font-weight:bold;">조건에 맞는 상향 대학 없음</div>`;
+                         </table>` : `<div style="padding:20px; color:#f5b041; text-align:center; font-size:12px; font-weight:bold;">조건에 맞는 검색/상향 대학 없음</div>`;
 
                     rowsHtml += `<tr style="border-bottom:1px solid #dee2e6;">`;
-                    if (isFirst) rowsHtml += `<td rowspan="4" style="width:50px; background:#e8f4f8; color:#2980b9; text-align:center; font-weight:900; font-size:14px; border-right:1px solid #dee2e6; border-bottom:1px solid #dee2e6;">내<br>점<br>수<br><br><span style="font-size:18px; color:#e74c3c;">${sumScore}</span></td>`;
+                    
+                    // 왼쪽 영역
+                    if (isFirst) rowsHtml += `<td rowspan="4" style="width:50px; background:#e8f4f8; color:#2980b9; text-align:center; font-weight:900; font-size:14px; border-right:1px solid #dee2e6; border-bottom:1px solid #dee2e6;">${scoreTitle}<br><br><span style="font-size:18px; color:#e74c3c;">${sumScore}</span></td>`;
                     rowsHtml += `<td style="width:35px; text-align:center; font-weight:bold; font-size:14px; background:#f8f9fa; color:#2c3e50; border-right:1px solid #dee2e6; border-bottom:1px solid #dee2e6;">${gun}</td>`;
                     rowsHtml += `<td style="padding:0; vertical-align:top; border-right:1px solid #dee2e6; background:#fff;">${leftTableHtml}</td>`;
                     
-                    if (st.scoreDiff > 0) {
-                        if (isFirst) rowsHtml += `<td rowspan="4" style="width:45px; text-align:center; color:#e74c3c; font-size:22px; font-weight:bold; border-right:1px solid #dee2e6; background:#fdf3f2; border-bottom:1px solid #dee2e6;">▶<br><span style="font-size:11px; color:#e74c3c; display:block; margin-top:8px;">상향<br>지원</span></td>`;
+                    // 오른쪽 영역
+                    if (shouldShowRight) {
+                        const rightTitle = st.search.trim() ? "검색<br>결과" : "상향<br>지원";
+                        if (isFirst) rowsHtml += `<td rowspan="4" style="width:45px; text-align:center; color:#e74c3c; font-size:18px; font-weight:bold; border-right:1px solid #dee2e6; background:#fdf3f2; border-bottom:1px solid #dee2e6;">▶<br><span style="font-size:11px; color:#e74c3c; display:block; margin-top:8px;">${rightTitle}</span></td>`;
                         rowsHtml += `<td style="width:35px; text-align:center; font-weight:bold; font-size:14px; background:#f8f9fa; color:#2c3e50; border-right:1px solid #dee2e6; border-bottom:1px solid #dee2e6;">${gun}</td>`;
                         rowsHtml += `<td style="padding:0; vertical-align:top; background:#fff;">${rightTableHtml}</td>`;
                     }
@@ -920,7 +953,7 @@ window.__openUnivSimulation = async function() {
 
             const tableContainer = document.getElementById('sim-tables-container');
             if (tableContainer) {
-                tableContainer.innerHTML = `<table style="width:100%; border-collapse:collapse; min-width:900px;"><tbody>${rowsHtml}</tbody></table>`;
+                tableContainer.innerHTML = `<table style="width:100%; border-collapse:collapse; min-width:900px; height:100%;"><tbody>${rowsHtml}</tbody></table>`;
             }
         };
 
