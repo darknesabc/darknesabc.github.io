@@ -504,7 +504,7 @@ window.__renderGradeSummaryUI = function() {
 
 // =========================================================
 // 💡 [수퍼베이스 완벽 이식판] 정시 지원 시뮬레이션 보드 렌더러
-// 🌟 (최종) 오른쪽 패널(상향/검색) 상위권 대학 우선 노출 고정
+// 🌟 (최종) 오른쪽 상위권 우선 + '-1등 하극상 버그' 완벽 차단 패치 적용
 // =========================================================
 window.__openUnivSimulation = async function() {
     const area = document.getElementById('univ-simulation-area');
@@ -743,21 +743,25 @@ window.__openUnivSimulation = async function() {
                 Object.keys(matches[g]).forEach(u => { matches[g][u].sort((a,b) => b.cut - a.cut); });
             });
 
+            // 💡 [버그 완벽 차단 패치] 에리카, 글로벌 등 배열에 명시적으로 추가!
             const univRankOrder = [
                 "서울대", "연세대", "고려대", "서강대", "성균관대", "한양대", 
                 "이화여대", "중앙대", "경희대", "한국외대", "서울시립대", 
                 "건국대", "동국대", "홍익대", "숙명여대", "국민대", "숭실대", "세종대", "단국대", 
-                "인하대", "아주대", "항공대", "가천대", "광운대", "명지대", "상명대", 
-                "가톨릭대", "서울과기대", "성신여대", "동덕여대", "덕성여대", "서울여대", 
+                "인하대", "아주대", "한양대(ERICA)", "항공대", "가천대", "광운대", "명지대", "상명대", 
+                "가톨릭대", "한국외대(글로벌)", "서울과기대", "성신여대", "동덕여대", "덕성여대", "서울여대", 
                 "삼육대", "한성대", "서경대", "한국교원대", "경기대", "인천대"
             ];
             
             const getUnivRank = (uName) => {
-                if (uName.includes("ERICA") || uName.includes("에리카")) return univRankOrder.indexOf("한양대(ERICA)");
-                if (uName.includes("외대") && uName.includes("글로벌")) return univRankOrder.indexOf("한국외대(글로벌)");
-                if (uName.includes("항공")) return univRankOrder.indexOf("항공대");
+                let safeIdx = -1;
+                // 명시적으로 처리 후, 안전하게 인덱스를 반환.
+                if (uName.includes("ERICA") || uName.includes("에리카")) safeIdx = univRankOrder.indexOf("한양대(ERICA)");
+                else if (uName.includes("외대") && uName.includes("글로벌")) safeIdx = univRankOrder.indexOf("한국외대(글로벌)");
+                else if (uName.includes("항공")) safeIdx = univRankOrder.indexOf("항공대");
+                else safeIdx = univRankOrder.findIndex(u => uName.startsWith(u) || uName === u);
                 
-                const safeIdx = univRankOrder.findIndex(u => uName.startsWith(u) || uName === u);
+                // -1등(에러)이 0등(서울대)보다 위로 올라가는 하극상 원천 차단!
                 return safeIdx !== -1 ? safeIdx : 999;
             };
 
