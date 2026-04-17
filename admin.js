@@ -504,14 +504,14 @@ window.__renderGradeSummaryUI = function() {
 
 // =========================================================
 // 💡 [수퍼베이스 완벽 이식판] 정시 지원 시뮬레이션 보드 렌더러
-// 🌟 (최종) 좌측 ±1점 칼매칭 & 우측 오프셋 상향 전용(겹침 방지) 완벽 구현
+// 🌟 (최종) 수퍼베이스 1000줄 제한 해제 (전체 데이터 무한 로딩 적용)
 // =========================================================
 window.__openUnivSimulation = async function() {
     const area = document.getElementById('univ-simulation-area');
     if (area.style.display === 'block') { area.style.display = 'none'; return; }
     
     area.style.display = 'block';
-    area.innerHTML = `<div style="text-align:center; padding:50px; background:#fff; color:#3498db; font-weight:bold; border-radius:12px; border:1px solid #dee2e6;">⏳ 수퍼베이스에서 마스터 배치표 데이터를 분석 중입니다...</div>`;
+    area.innerHTML = `<div style="text-align:center; padding:50px; background:#fff; color:#3498db; font-weight:bold; border-radius:12px; border:1px solid #dee2e6;">⏳ 마스터 배치표 데이터를 끝까지 불러오는 중입니다... (잠시만 기다려주세요)</div>`;
 
     const score = window.__currentStudentScores.find(s => s.exam_label === window.__currentSummaryExam) || {};
     const korPct = Number(score.kor_exp_pct) || 0;
@@ -536,7 +536,6 @@ window.__openUnivSimulation = async function() {
     const mathType = (mathChoice.includes("미적") || mathChoice.includes("기하")) ? "미기" : "확통";
     const tamType = (sciCount > 0 && socCount === 0) ? "과탐" : (socCount > 0 && sciCount === 0) ? "사탐" : "사과탐";
 
-    // 💡 [핵심] 처음에 켤 때는 무조건 오프셋 0 (왼쪽 표만 나오게)
     window.__currentSimStatus = {
         kor: korPct, math: mathPct, bestTam: bestTam, avgTam: avgTam,
         mathType: mathType, tamType: tamType, search: "",
@@ -544,8 +543,26 @@ window.__openUnivSimulation = async function() {
     };
 
     try {
-        const { data: cutoffs, error } = await _supabase.from('univ_cutoffs').select('*');
-        if (error || !cutoffs) throw new Error("배치표 DB 로드 실패");
+        // 💡 [핵심 버그 수정] 수퍼베이스 1000줄 읽기 제한 해제 로직 (페이지네이션)
+        let cutoffs = [];
+        let fetchMore = true; 
+        let startIdx = 0;
+        
+        while(fetchMore) {
+            const { data, error } = await _supabase.from('univ_cutoffs').select('*').range(startIdx, startIdx + 999);
+            if (error) throw new Error("배치표 DB 로드 실패: " + error.message);
+            
+            if (data && data.length > 0) { 
+                cutoffs = cutoffs.concat(data); 
+                startIdx += 1000; 
+                // 가져온 데이터가 1000개 미만이면 더 이상 불러올 데이터가 없다는 뜻이므로 루프 종료
+                if(data.length < 1000) fetchMore = false; 
+            } else {
+                fetchMore = false;
+            }
+        }
+
+        if (cutoffs.length === 0) throw new Error("DB에 배치표 데이터가 존재하지 않습니다.");
 
         const getMatches = (isStrict = false) => {
             const st = window.__currentSimStatus;
@@ -557,7 +574,6 @@ window.__openUnivSimulation = async function() {
                 if (!cutScore) return;
 
                 const reqTamCount = Number(c.tam_cnt_1) || 2; 
-                // 소수점 방지를 위해 완벽히 반올림된 정수로 타겟 점수 세팅
                 const myScoreForThisUniv = Math.round(st.kor + st.math + (reqTamCount === 1 ? st.bestTam : st.avgTam));
 
                 const keyword = st.search.trim();
@@ -565,19 +581,15 @@ window.__openUnivSimulation = async function() {
                     if (!String(c.univ_name).includes(keyword) && !String(c.dept_name).includes(keyword)) return;
                 } else {
                     if (isStrict) { 
-                        // 💡 [핵심 수정 1] 왼쪽 표: 내 점수 기준 정확히 -1점 ~ +1점 구간만 허용
                         if (cutScore < myScoreForThisUniv - 1 || cutScore > myScoreForThisUniv + 1) return;
                     } else { 
-                        // 💡 [핵심 수정 2] 오른쪽 표: 겹침 방지! 왼쪽 표의 최고점(myScore+1)보다 무조건 높아야 함
                         const targetScore = myScoreForThisUniv + st.scoreDiff;
-                        const minCut = myScoreForThisUniv + 2; // 최소 상향선 (왼쪽 표와 겹치지 않게)
-                        const maxCut = targetScore + 1; // 오프셋 타겟의 +1점까지 허용
-                        
+                        const minCut = myScoreForThisUniv + 2; 
+                        const maxCut = targetScore + 1; 
                         if (cutScore < minCut || cutScore > maxCut) return;
                     }
                 }
 
-                // 💡 [핵심 수정 3] 누락되었던 대학들을 복구하기 위한 유연한 과목 컷팅 로직
                 const combo = String(c.reflect_combo || "");
                 if (st.mathType === "확통" && (combo.includes("미/기") || combo === "미기")) return;
                 if (st.mathType === "미기" && (combo.includes("[확]") || combo === "확통")) return;
@@ -683,8 +695,6 @@ window.__openUnivSimulation = async function() {
         window.runUniversitySimulation = function() {
             const st = window.__currentSimStatus;
             const leftData = getMatches(true);
-            
-            // 💡 오프셋(scoreDiff)이 0 초과일 때만 오른쪽 데이터(상향 라인) 계산
             const rightData = st.scoreDiff > 0 ? getMatches(false) : { matches: {}, sortedUnivs: [] };
             
             const ALL_GROUPS = ['가', '나', '다', '군외'];
@@ -751,12 +761,12 @@ window.__openUnivSimulation = async function() {
 
                     rowsHtml += `<tr style="border-bottom:1px solid #dee2e6;">`;
                     
-                    // 왼쪽 영역 (적정 라인)
+                    // 왼쪽 영역
                     if (isFirst) rowsHtml += `<td rowspan="4" style="width:50px; background:#e8f4f8; color:#2980b9; text-align:center; font-weight:900; font-size:14px; border-right:1px solid #dee2e6; border-bottom:1px solid #dee2e6;">내<br>점<br>수<br><br><span style="font-size:18px; color:#e74c3c;">${Math.round((st.kor+st.math+st.avgTam)*10)/10}</span></td>`;
                     rowsHtml += `<td style="width:35px; text-align:center; font-weight:bold; font-size:14px; background:#f8f9fa; color:#2c3e50; border-right:1px solid #dee2e6; border-bottom:1px solid #dee2e6;">${gun}</td>`;
                     rowsHtml += `<td style="padding:0; vertical-align:top; border-right:1px solid #dee2e6; background:#fff;">${leftTableHtml}</td>`;
                     
-                    // 오른쪽 영역 (조건부 렌더링)
+                    // 오른쪽 영역
                     if (st.scoreDiff > 0) {
                         if (isFirst) rowsHtml += `<td rowspan="4" style="width:45px; text-align:center; color:#e74c3c; font-size:22px; font-weight:bold; border-right:1px solid #dee2e6; background:#fdf3f2; border-bottom:1px solid #dee2e6;">▶<br><span style="font-size:11px; color:#e74c3c; display:block; margin-top:8px;">상향<br>지원</span></td>`;
                         rowsHtml += `<td style="width:35px; text-align:center; font-weight:bold; font-size:14px; background:#f8f9fa; color:#2c3e50; border-right:1px solid #dee2e6; border-bottom:1px solid #dee2e6;">${gun}</td>`;
