@@ -767,15 +767,17 @@ window.__openUnivSimulation = async function() {
                 "서울대", "연세대", "고려대", "서강대", "성균관대", "한양대", 
                 "이화여대", "중앙대", "경희대", "한국외대", "서울시립대", 
                 "건국대", "동국대", "홍익대", "숙명여대", "국민대", "숭실대", "세종대", "단국대", 
-                "인하대", "아주대", "한양대(ERICA)", "항공대", "가천대", "광운대", "명지대", "상명대", 
+                "인하대", "아주대", "한양대(에리카)", "항공대", "가천대", "광운대", "명지대", "상명대", 
                 "가톨릭대", "한국외대(글로벌)", "서울과기대", "성신여대", "동덕여대", "덕성여대", "서울여대", 
                 "삼육대", "한성대", "서경대", "한국교원대", "경기대", "인천대"
             ];
             
             const getUnivRank = (uName) => {
                 let safeIdx = -1;
-                if (uName.includes("ERICA") || uName.includes("에리카")) safeIdx = univRankOrder.indexOf("한양대(ERICA)");
+                if (uName.includes("ERICA") || uName.includes("에리카")) safeIdx = univRankOrder.indexOf("한양대(에리카)");
                 else if (uName.includes("외대") && uName.includes("글로벌")) safeIdx = univRankOrder.indexOf("한국외대(글로벌)");
+                else if (uName.includes("동국대") && uName.includes("바이오")) safeIdx = univRankOrder.indexOf("동국대");
+                else if (uName.includes("동국대") && uName.includes("와이즈")) safeIdx = univRankOrder.indexOf("동국대");
                 else if (uName.includes("항공")) safeIdx = univRankOrder.indexOf("항공대");
                 else safeIdx = univRankOrder.findIndex(u => uName.startsWith(u) || uName === u);
                 
