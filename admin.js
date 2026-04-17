@@ -504,7 +504,7 @@ window.__renderGradeSummaryUI = function() {
 
 // =========================================================
 // 💡 [수퍼베이스 완벽 이식판] 정시 지원 시뮬레이션 보드 렌더러
-// 🌟 (최종) 하극상 차단 + 터치 지원 툴팁 + 가산점 절대 % 변환
+// 🌟 (최종) 에리카 하극상 완벽 차단! (정밀 텍스트 매칭 알고리즘 도입)
 // =========================================================
 window.__openUnivSimulation = async function() {
     const area = document.getElementById('univ-simulation-area');
@@ -550,7 +550,7 @@ window.__openUnivSimulation = async function() {
         }
     };
 
-    // 💡 툴팁을 위한 과목별 유효 응시 횟수 카운팅
+    // 💡 [유지] 툴팁을 위한 과목별 유효 응시 횟수 카운팅
     const allKorScores = (window.__currentStudentScores || []).map(s => Number(s.kor_exp_pct) || 0).filter(s => s > 0);
     const allMathScores = (window.__currentStudentScores || []).map(s => Number(s.math_exp_pct) || 0).filter(s => s > 0);
     const allT1Scores = (window.__currentStudentScores || []).map(s => Number(s.tam1_exp_pct) || 0).filter(s => s > 0);
@@ -561,7 +561,7 @@ window.__openUnivSimulation = async function() {
     const t1Cnt = allT1Scores.length;
     const t2Cnt = allT2Scores.length;
 
-    // 💡 [수정] 모바일/PC 모두 완벽하게 보이는 스마트 툴팁 텍스트 (줄바꿈 <br> 적용)
+    // 💡 [유지] 툴팁 메시지 생성
     const tooltipMsg = `국(${kCnt}회) 수(${mCnt}회) 탐1(${t1Cnt}회) 탐2(${t2Cnt}회) 누적평균<br>※ 4회 이상 응시 과목은 최고/최저 제외`;
 
     const avgKorPct = calcAdvancedAvg(allKorScores);
@@ -600,7 +600,7 @@ window.__openUnivSimulation = async function() {
             <div style="background:#fff; border-radius:12px; overflow:hidden; border:1px solid #dee2e6; box-shadow:0 6px 12px rgba(0,0,0,0.04); margin-top:20px;">
                 <div style="background:#fff; border-bottom:2px solid #dee2e6; display:flex; justify-content:space-between; padding:18px 25px; align-items:center; flex-wrap:wrap; gap:10px;">
                     <div style="color:#2c3e50; font-weight:900; font-size:17px; display:flex; align-items:center; gap:8px;">
-                        🎯 정시 지원 시뮬레이션 <span style="font-size:12px; color:#7f8c8d; font-weight:normal;">(가산점 완벽 변환 및 터치 툴팁 적용)</span>
+                        🎯 정시 지원 시뮬레이션 <span style="font-size:12px; color:#7f8c8d; font-weight:normal;">(에리카 하극상 완벽 차단 패치 적용)</span>
                     </div>
                     <div style="background:#e8f4f8; border:1px solid #3498db; color:#2980b9; padding:6px 15px; font-weight:bold; font-size:13px; border-radius:6px;">
                         실제 응시: <span style="color:#e74c3c; margin-left:4px;">${mathType}+${tamType}</span>
@@ -663,7 +663,6 @@ window.__openUnivSimulation = async function() {
             const st = window.__currentSimStatus;
             const matches = { '가': {}, '나': {}, '다': {}, '군외': {} };
             const univSet = new Set();
-
             const keyword = isStrict ? "" : st.search.trim();
 
             cutoffs.forEach(c => {
@@ -675,15 +674,19 @@ window.__openUnivSimulation = async function() {
                     if (!typeStr.includes(st.streamFilter)) return;
                 }
 
+                if (keyword) {
+                    if (!String(c.univ_name).includes(keyword) && !String(c.dept_name).includes(keyword)) return;
+                }
+
                 const reqTamCount = Number(c.tam_cnt_1) || 2; 
                 const myScoreForThisUniv = Math.round(aKor + aMath + (reqTamCount === 1 ? aBestTam : aAvgTam));
 
-                if (keyword) {
-                    if (!String(c.univ_name).includes(keyword) && !String(c.dept_name).includes(keyword)) return;
-                } else {
-                    if (isStrict) { 
-                        if (cutScore < myScoreForThisUniv - 1 || cutScore > myScoreForThisUniv + 1) return;
-                    } else { 
+                if (isStrict) { 
+                    if (cutScore < myScoreForThisUniv - 1 || cutScore > myScoreForThisUniv + 1) return;
+                } else { 
+                    if (keyword) {
+                        if (cutScore < myScoreForThisUniv + 2) return;
+                    } else {
                         const targetScore = myScoreForThisUniv + st.scoreDiff;
                         const minCut = myScoreForThisUniv + 2; 
                         const maxCut = targetScore + 1; 
@@ -702,7 +705,6 @@ window.__openUnivSimulation = async function() {
                 const badges = [];
                 if (reqTamCount === 1) badges.push(tamReq === "과" || tamReq === "과탐" ? "[과1]" : tamReq === "사" || tamReq === "사탐" ? "[사1]" : "[탐1]");
                 
-                // 💡 [수정] DB의 '비고(note)' 필드에 소수점이 적혀있을 경우 여기서 미리 1차 박멸!
                 if (c.note) {
                     let nStr = String(c.note).replace(/0\.\d+/g, m => Math.round(Number(m) * 100) + "%").replace(/%%/g, "%");
                     badges.push(...nStr.split(" ")); 
@@ -763,6 +765,7 @@ window.__openUnivSimulation = async function() {
                 Object.keys(matches[g]).forEach(u => { matches[g][u].sort((a,b) => b.cut - a.cut); });
             });
 
+            // 💡 대한민국 절대 서열표
             const univRankOrder = [
                 "서울대", "연세대", "고려대", "서강대", "성균관대", "한양대", 
                 "이화여대", "중앙대", "경희대", "한국외대", "서울시립대", 
@@ -772,14 +775,22 @@ window.__openUnivSimulation = async function() {
                 "삼육대", "한성대", "서경대", "한국교원대", "경기대", "인천대"
             ];
             
+            // 💡 [핵심 버그 수정] 대충 앞글자만 맞추지 않고, 서열표 단어 중 '가장 길게 일치하는' 단어의 순위를 가져옵니다!
+            // 이렇게 하면 "한양대(ERICA)"는 무조건 "한양대(ERICA)"로 인식되고, "한양대"로 둔갑하지 못합니다!
             const getUnivRank = (uName) => {
-                let safeIdx = -1;
-                if (uName.includes("ERICA") || uName.includes("에리카")) safeIdx = univRankOrder.indexOf("한양대(ERICA)");
-                else if (uName.includes("외대") && uName.includes("글로벌")) safeIdx = univRankOrder.indexOf("한국외대(글로벌)");
-                else if (uName.includes("항공")) safeIdx = univRankOrder.indexOf("항공대");
-                else safeIdx = univRankOrder.findIndex(u => uName.startsWith(u) || uName === u);
-                
-                return safeIdx !== -1 ? safeIdx : 999;
+                let bestMatchIdx = 999;
+                let maxMatchLength = 0;
+
+                for (let i = 0; i < univRankOrder.length; i++) {
+                    const rankName = univRankOrder[i];
+                    if (uName.includes(rankName)) {
+                        if (rankName.length > maxMatchLength) {
+                            maxMatchLength = rankName.length;
+                            bestMatchIdx = i;
+                        }
+                    }
+                }
+                return bestMatchIdx;
             };
 
             const getCategoryRank = (univ, dept, regionStr) => {
@@ -789,9 +800,9 @@ window.__openUnivSimulation = async function() {
                 if (/(수의예|수의과)/.test(dept)) return 13;
                 if (/(약학|약대)/.test(dept) && !/(신약|제약|약과학|한약)/.test(dept)) return 14;
 
-                if (/(미래|세종|천안|글로컬|WISE|다빈치|에리카)/i.test(univ)) return 35;
+                if (/(미래|세종|천안|글로컬|WISE|다빈치)/i.test(univ)) return 35;
 
-                const isRanked = univRankOrder.some(u => univ.startsWith(u) || univ === u);
+                const isRanked = getUnivRank(univ) !== 999; 
                 if (isRanked) return 20;
 
                 const region = String(regionStr || "");
@@ -809,14 +820,17 @@ window.__openUnivSimulation = async function() {
                     if(matches[g][b] && matches[g][b][0]) { deptB = matches[g][b][0].dept; regB = matches[g][b][0].region; }
                 });
                 
+                // 1차: 카테고리 (메디컬 > 인서울 서열 > 지방 등)
                 const catA = getCategoryRank(a, deptA, regA);
                 const catB = getCategoryRank(b, deptB, regB);
                 if (catA !== catB) return catA - catB; 
                 
+                // 2차: 서열표 순위 (정밀 매칭 적용)
                 const rankA = getUnivRank(a);
                 const rankB = getUnivRank(b);
                 if (rankA !== rankB) return rankA - rankB; 
                 
+                // 3차: 만약 같은 서열(예: 점수가 똑같은 동일 대학의 다른 캠퍼스)이라면 본교 이름이 무조건 짧으므로 본교 우선!
                 if (a.includes(b) && a.length > b.length) return 1;
                 if (b.includes(a) && b.length > a.length) return -1;
                 
@@ -853,7 +867,7 @@ window.__openUnivSimulation = async function() {
                 if(st.scoreMode === 'current') {
                     btnCur.style.background = '#3498db'; btnCur.style.color = '#fff'; btnCur.style.boxShadow = '0 2px 4px rgba(0,0,0,0.1)';
                     btnAvg.style.background = 'transparent'; btnAvg.style.color = '#7f8c8d'; btnAvg.style.boxShadow = 'none';
-                    btnAvg.style.textDecoration = 'underline dotted #bdc3c7'; 
+                    btnAvg.style.textDecoration = 'underline dotted #bdc3c7';
                 } else {
                     btnAvg.style.background = '#3498db'; btnAvg.style.color = '#fff'; btnAvg.style.boxShadow = '0 2px 4px rgba(0,0,0,0.1)';
                     btnCur.style.background = 'transparent'; btnCur.style.color = '#7f8c8d'; btnCur.style.boxShadow = 'none';
@@ -881,15 +895,12 @@ window.__openUnivSimulation = async function() {
                     
                     let badgeHtml = "";
                     d.badges.forEach(b => {
-                        // 💡 [절대 방어막 2] 어떤 경로로 들어온 소수점이든 화면에 그리기 직전에 5%, 10%로 무조건 분쇄!
-                        let badgeText = String(b).replace(/0\.\d+/g, match => Math.round(Number(match) * 100) + "%").replace(/%%/g, "%");
-
                         let bg = "#f1f2f6"; let color = "#7f8c8d"; let bo = "1px solid #dfe6e9";
-                        if(badgeText.includes("🟢")) { bg = "#e8f8f5"; color = "#27ae60"; bo = "1px solid #2ecc71"; }
-                        else if(badgeText.includes("🔴")) { bg = "#fdedec"; color = "#c0392b"; bo = "1px solid #e74c3c"; }
-                        else if(badgeText.includes("미적") || badgeText.includes("기하") || badgeText.includes("미기")) { bg = "#fdf3f2"; color = "#e74c3c"; bo="1px solid #fadbd8"; }
-                        else if(badgeText.includes("과탐") || badgeText.includes("과1") || badgeText.includes("사1") || badgeText.includes("탐1")) { bg = "#eaf2f8"; color = "#2980b9"; bo="1px solid #d4e6f1"; }
-                        badgeHtml += `<span style="background:${bg}; border:${bo}; color:${color}; padding:2px 6px; border-radius:4px; font-size:10px; font-weight:bold; display:inline-block; margin:2px 1px;">${badgeText}</span>`;
+                        if(b.includes("🟢")) { bg = "#e8f8f5"; color = "#27ae60"; bo = "1px solid #2ecc71"; }
+                        else if(b.includes("🔴")) { bg = "#fdedec"; color = "#c0392b"; bo = "1px solid #e74c3c"; }
+                        else if(b.includes("미적") || b.includes("기하") || b.includes("미기")) { bg = "#fdf3f2"; color = "#e74c3c"; bo="1px solid #fadbd8"; }
+                        else if(b.includes("과탐") || b.includes("과1") || b.includes("사1") || b.includes("탐1")) { bg = "#eaf2f8"; color = "#2980b9"; bo="1px solid #d4e6f1"; }
+                        badgeHtml += `<span style="background:${bg}; border:${bo}; color:${color}; padding:2px 6px; border-radius:4px; font-size:10px; font-weight:bold; display:inline-block; margin:2px 1px;">${b}</span>`;
                     });
 
                     let dispDept = d.dept;
