@@ -504,7 +504,8 @@ window.__renderGradeSummaryUI = function() {
 
 // =========================================================
 // 💡 [수퍼베이스 완벽 이식판] 정시 지원 시뮬레이션 보드 렌더러
-// 🌟 (최종 통합판) 서열 정렬 유지 + 툴팁 추가 + 가산점 % 변환 적용
+// 🌟 (최종) 오른쪽 상위권 우선 + '-1등 하극상 버그' 완벽 차단 패치 적용
+// + [추가] 가산점 % 변환 및 본교(짧은 이름) 절대 우위 정렬 추가
 // =========================================================
 window.__openUnivSimulation = async function() {
     const area = document.getElementById('univ-simulation-area');
@@ -550,7 +551,7 @@ window.__openUnivSimulation = async function() {
         }
     };
 
-    // 💡 [추가] 툴팁을 위한 과목별 유효 응시 횟수 카운팅
+    // 💡 [유지] 툴팁을 위한 과목별 유효 응시 횟수 카운팅
     const allKorScores = (window.__currentStudentScores || []).map(s => Number(s.kor_exp_pct) || 0).filter(s => s > 0);
     const allMathScores = (window.__currentStudentScores || []).map(s => Number(s.math_exp_pct) || 0).filter(s => s > 0);
     const allT1Scores = (window.__currentStudentScores || []).map(s => Number(s.tam1_exp_pct) || 0).filter(s => s > 0);
@@ -561,7 +562,7 @@ window.__openUnivSimulation = async function() {
     const t1Cnt = allT1Scores.length;
     const t2Cnt = allT2Scores.length;
 
-    // 💡 [추가] 툴팁 메시지 생성 (HTML Entity 사용으로 줄바꿈 처리)
+    // 💡 [유지] 툴팁 메시지 생성 (HTML Entity 사용으로 줄바꿈 처리)
     const tooltipMsg = `국(${kCnt}회) 수(${mCnt}회) 탐1(${t1Cnt}회) 탐2(${t2Cnt}회) 누적평균&#10;※ 4회 이상 응시 과목은 최고/최저 제외`;
 
     const avgKorPct = calcAdvancedAvg(allKorScores);
@@ -667,9 +668,6 @@ window.__openUnivSimulation = async function() {
                     if (!typeStr.includes(st.streamFilter)) return;
                 }
 
-                const reqTamCount = Number(c.tam_cnt_1) || 2; 
-                const myScoreForThisUniv = Math.round(aKor + aMath + (reqTamCount === 1 ? aBestTam : aAvgTam));
-
                 if (keyword) {
                     // 오른쪽 표에서 검색어가 있을 경우 점수 무시하고 해당 대학/학과를 모두 찾아줌
                     if (!String(c.univ_name).includes(keyword) && !String(c.dept_name).includes(keyword)) return;
@@ -698,7 +696,7 @@ window.__openUnivSimulation = async function() {
                 if (reqTamCount === 1) badges.push(tamReq === "과" || tamReq === "과탐" ? "[과1]" : tamReq === "사" || tamReq === "사탐" ? "[사1]" : "[탐1]");
                 if (c.note) badges.push(...c.note.split(" ")); 
 
-                // 💡 [추가] 가산점 소수점을 퍼센트(%)로 스마트하게 변환하는 로직
+                // 💡 [추가] 가산점 소수점을 퍼센트(%)로 스마트하게 변환하는 로직!
                 const formatBonus = (val) => {
                     let num = Number(val);
                     if (isNaN(num) || num <= 0) return "";
@@ -755,12 +753,11 @@ window.__openUnivSimulation = async function() {
                 Object.keys(matches[g]).forEach(u => { matches[g][u].sort((a,b) => b.cut - a.cut); });
             });
 
-            // 💡 선생님께서 작성해주신 하극상 방지 로직 (원본 100% 유지)
             const univRankOrder = [
                 "서울대", "연세대", "고려대", "서강대", "성균관대", "한양대", 
                 "이화여대", "중앙대", "경희대", "한국외대", "서울시립대", 
                 "건국대", "동국대", "홍익대", "숙명여대", "국민대", "숭실대", "세종대", "단국대", 
-                "인하대", "아주대", "한양대(에리카)", "항공대", "가천대", "광운대", "명지대", "상명대", 
+                "인하대", "아주대", "한양대(ERICA)", "항공대", "가천대", "광운대", "명지대", "상명대", 
                 "가톨릭대", "한국외대(글로벌)", "서울과기대", "성신여대", "동덕여대", "덕성여대", "서울여대", 
                 "삼육대", "한성대", "서경대", "한국교원대", "경기대", "인천대"
             ];
@@ -812,6 +809,10 @@ window.__openUnivSimulation = async function() {
                 const rankA = getUnivRank(a);
                 const rankB = getUnivRank(b);
                 if (rankA !== rankB) return rankA - rankB; 
+
+                // 💡 [본교 우선 정렬 패치] 포함관계일 때 짧은 이름(본교)이 무조건 앞으로!
+                if (a.includes(b) && a.length > b.length) return 1;  // a가 에리카고 b가 본교면 a가 뒤로
+                if (b.includes(a) && b.length > a.length) return -1; // b가 에리카고 a가 본교면 b가 뒤로
                 
                 return a.localeCompare(b); 
             });
