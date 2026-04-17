@@ -504,7 +504,7 @@ window.__renderGradeSummaryUI = function() {
 
 // =========================================================
 // 💡 [수퍼베이스 완벽 이식판] 정시 지원 시뮬레이션 보드 렌더러
-// 🌟 (최종 완성본) 본교-분교(에리카 등) 하극상 원천 차단 알고리즘 적용
+// 🌟 (최종 마스터피스) 본교 절대 우위 알고리즘 + 툴팁 + 가산점 변환 적용
 // =========================================================
 window.__openUnivSimulation = async function() {
     const area = document.getElementById('univ-simulation-area');
@@ -550,7 +550,7 @@ window.__openUnivSimulation = async function() {
         }
     };
 
-    // 툴팁을 위한 과목별 유효 응시 횟수 카운팅
+    // 💡 툴팁을 위한 과목별 유효 응시 횟수 카운팅
     const allKorScores = (window.__currentStudentScores || []).map(s => Number(s.kor_exp_pct) || 0).filter(s => s > 0);
     const allMathScores = (window.__currentStudentScores || []).map(s => Number(s.math_exp_pct) || 0).filter(s => s > 0);
     const allT1Scores = (window.__currentStudentScores || []).map(s => Number(s.tam1_exp_pct) || 0).filter(s => s > 0);
@@ -561,7 +561,7 @@ window.__openUnivSimulation = async function() {
     const t1Cnt = allT1Scores.length;
     const t2Cnt = allT2Scores.length;
 
-    // 툴팁 메시지 생성
+    // 💡 툴팁 메시지 생성
     const tooltipMsg = `국(${kCnt}회) 수(${mCnt}회) 탐1(${t1Cnt}회) 탐2(${t2Cnt}회) 누적평균<br>※ 4회 이상 응시 과목은 최고/최저 제외`;
 
     const avgKorPct = calcAdvancedAvg(allKorScores);
@@ -600,7 +600,7 @@ window.__openUnivSimulation = async function() {
             <div style="background:#fff; border-radius:12px; overflow:hidden; border:1px solid #dee2e6; box-shadow:0 6px 12px rgba(0,0,0,0.04); margin-top:20px;">
                 <div style="background:#fff; border-bottom:2px solid #dee2e6; display:flex; justify-content:space-between; padding:18px 25px; align-items:center; flex-wrap:wrap; gap:10px;">
                     <div style="color:#2c3e50; font-weight:900; font-size:17px; display:flex; align-items:center; gap:8px;">
-                        🎯 정시 지원 시뮬레이션 <span style="font-size:12px; color:#7f8c8d; font-weight:normal;">(서열 절대 규칙 및 가산점 완벽 적용)</span>
+                        🎯 정시 지원 시뮬레이션 <span style="font-size:12px; color:#7f8c8d; font-weight:normal;">(본교 1순위 강제 고정 알고리즘 적용)</span>
                     </div>
                     <div style="background:#e8f4f8; border:1px solid #3498db; color:#2980b9; padding:6px 15px; font-weight:bold; font-size:13px; border-radius:6px;">
                         실제 응시: <span style="color:#e74c3c; margin-left:4px;">${mathType}+${tamType}</span>
@@ -663,7 +663,6 @@ window.__openUnivSimulation = async function() {
             const st = window.__currentSimStatus;
             const matches = { '가': {}, '나': {}, '다': {}, '군외': {} };
             const univSet = new Set();
-
             const keyword = isStrict ? "" : st.search.trim();
 
             cutoffs.forEach(c => {
@@ -675,15 +674,19 @@ window.__openUnivSimulation = async function() {
                     if (!typeStr.includes(st.streamFilter)) return;
                 }
 
+                if (keyword) {
+                    if (!String(c.univ_name).includes(keyword) && !String(c.dept_name).includes(keyword)) return;
+                }
+
                 const reqTamCount = Number(c.tam_cnt_1) || 2; 
                 const myScoreForThisUniv = Math.round(aKor + aMath + (reqTamCount === 1 ? aBestTam : aAvgTam));
 
-                if (keyword) {
-                    if (!String(c.univ_name).includes(keyword) && !String(c.dept_name).includes(keyword)) return;
-                } else {
-                    if (isStrict) { 
-                        if (cutScore < myScoreForThisUniv - 1 || cutScore > myScoreForThisUniv + 1) return;
-                    } else { 
+                if (isStrict) { 
+                    if (cutScore < myScoreForThisUniv - 1 || cutScore > myScoreForThisUniv + 1) return;
+                } else { 
+                    if (keyword) {
+                        if (cutScore < myScoreForThisUniv + 2) return;
+                    } else {
                         const targetScore = myScoreForThisUniv + st.scoreDiff;
                         const minCut = myScoreForThisUniv + 2; 
                         const maxCut = targetScore + 1; 
@@ -702,6 +705,7 @@ window.__openUnivSimulation = async function() {
                 const badges = [];
                 if (reqTamCount === 1) badges.push(tamReq === "과" || tamReq === "과탐" ? "[과1]" : tamReq === "사" || tamReq === "사탐" ? "[사1]" : "[탐1]");
                 
+                // 💡 [유지] 비고(note)란 가산점 0.05 -> 5% 변환
                 if (c.note) {
                     let nStr = String(c.note).replace(/0\.\d+/g, m => Math.round(Number(m) * 100) + "%").replace(/%%/g, "%");
                     badges.push(...nStr.split(" ")); 
@@ -762,7 +766,6 @@ window.__openUnivSimulation = async function() {
                 Object.keys(matches[g]).forEach(u => { matches[g][u].sort((a,b) => b.cut - a.cut); });
             });
 
-            // 💡 대한민국 절대 서열표 (SKY 서성한 중경외시...)
             const univRankOrder = [
                 "서울대", "연세대", "고려대", "서강대", "성균관대", "한양대", 
                 "이화여대", "중앙대", "경희대", "한국외대", "서울시립대", 
@@ -772,11 +775,13 @@ window.__openUnivSimulation = async function() {
                 "삼육대", "한성대", "서경대", "한국교원대", "경기대", "인천대"
             ];
             
-            // 💡 [핵심 로직 1] 분교/캠퍼스 괄호를 떼고 본교 이름을 추출합니다.
-            const getUnivRank = (baseName) => {
-                const idx = univRankOrder.findIndex(u => baseName === u || baseName.startsWith(u));
+            const getUnivRank = (uName) => {
+                const idx = univRankOrder.findIndex(u => uName.startsWith(u) || uName === u);
                 return idx !== -1 ? idx : 999;
             };
+
+            // 💡 [핵심 수정 1] 분교 필터링에 "에리카"와 "ERICA"를 완벽하게 추가!
+            const branchRegex = /(미래|세종|천안|글로컬|WISE|다빈치|에리카|ERICA)/i;
 
             const getCategoryRank = (univ, dept, regionStr) => {
                 if (/(의예|의학|의과)/.test(dept) && !/(식물|의공|의생명|의료|의과학)/.test(dept)) return 10;
@@ -784,44 +789,51 @@ window.__openUnivSimulation = async function() {
                 if (/(한의예|한의학)/.test(dept)) return 12;
                 if (/(수의예|수의과)/.test(dept)) return 13;
                 if (/(약학|약대)/.test(dept) && !/(신약|제약|약과학|한약)/.test(dept)) return 14;
-                return 50; 
+
+                if (branchRegex.test(univ)) return 35;
+
+                const isRanked = univRankOrder.some(u => univ.startsWith(u) || univ === u);
+                if (isRanked) return 20;
+
+                const region = String(regionStr || "");
+                if (region.includes("서울")) return 21; 
+                if (region.includes("경기") || region.includes("인천")) return 30; 
+                if (/(부산대|경북대|전남대|충남대|전북대|충북대|강원대|경상국립대|제주대)/.test(univ)) return 40;
+                
+                return 50;
             };
 
             const sortedUnivs = Array.from(univSet).sort((a, b) => {
-                // 💡 [핵심 로직 2] 이름에서 괄호를 분리하여 본교 이름을 찾습니다. (예: "한양대(에리카)" -> "한양대")
                 const baseA = a.split('(')[0].trim();
                 const baseB = b.split('(')[0].trim();
 
-                const rankA = getUnivRank(baseA);
-                const rankB = getUnivRank(baseB);
-
-                // 1. SKY 절대 서열 랭크를 무조건 1순위로 비교합니다!
-                if (rankA !== rankB) return rankA - rankB;
-
-                // 2. 만약 본교 이름이 같다면? (예: "한양대" vs "한양대(에리카)" 또는 "한양대(서울)" vs "한양대(에리카)")
+                // 💡 [핵심 수정 2] 본교-분교 하극상 원천 차단 철벽 방어선! (무조건 최상단 배치)
                 if (baseA === baseB) {
-                    const branchRegex = /(에리카|ERICA|글로벌|세종|미래|다빈치|국제|천안|글로컬|WISE)/i;
                     const isBranchA = branchRegex.test(a);
                     const isBranchB = branchRegex.test(b);
-
-                    // 본교(분교가 아님)가 분교를 무조건 이깁니다! (하극상 절대 금지)
-                    if (!isBranchA && isBranchB) return -1; 
-                    if (isBranchA && !isBranchB) return 1;  
-                    
-                    // 둘 다 본교거나 분교일 경우, 글자수가 짧은 것("한양대")이 먼저 나옵니다.
-                    if (a.length !== b.length) return a.length - b.length;
+                    if (!isBranchA && isBranchB) return -1; // 본교(A) 승리
+                    if (isBranchA && !isBranchB) return 1;  // 본교(B) 승리
+                    if (a.length !== b.length) return a.length - b.length; // 이름 짧은게 무조건 승리
                 }
 
-                // 3. 서열표에 없는 대학들의 메디컬 / 점수 순 정렬
-                let deptA = "", deptB = "", regA = "", regB = "";
+                // 💡 [핵심 수정 3] 특정 군(Gun)의 학과 때문에 카테고리가 오염되는 버그 수정
+                let catA = 50, catB = 50;
                 ['가','나','다','군외'].forEach(g => {
-                    if(matches[g][a] && matches[g][a][0]) { deptA = matches[g][a][0].dept; regA = matches[g][a][0].region; }
-                    if(matches[g][b] && matches[g][b][0]) { deptB = matches[g][b][0].dept; regB = matches[g][b][0].region; }
+                    if(matches[g][a] && matches[g][a][0]) { 
+                        let cA = getCategoryRank(a, matches[g][a][0].dept, matches[g][a][0].region);
+                        if (cA < catA) catA = cA; // 가장 높은(숫자가 낮은) 카테고리만 유지
+                    }
+                    if(matches[g][b] && matches[g][b][0]) { 
+                        let cB = getCategoryRank(b, matches[g][b][0].dept, matches[g][b][0].region);
+                        if (cB < catB) catB = cB; 
+                    }
                 });
                 
-                const catA = getCategoryRank(a, deptA, regA);
-                const catB = getCategoryRank(b, deptB, regB);
                 if (catA !== catB) return catA - catB; 
+                
+                const rankA = getUnivRank(a);
+                const rankB = getUnivRank(b);
+                if (rankA !== rankB) return rankA - rankB; 
                 
                 return a.localeCompare(b); 
             });
