@@ -506,6 +506,7 @@ window.__renderGradeSummaryUI = function() {
 // 💡 [수퍼베이스 완벽 이식판] 정시 지원 시뮬레이션 보드 렌더러
 // 🌟 (최종) 하극상 차단 + 터치 지원 툴팁 + 가산점 절대 % 변환
 // 🌟 (추가) 동일 대학 내 본교(서울) ↔ 분교 정렬 순서 보정
+// 🌟 (수정) 반영비 유불리(🟢/🔴) 배지 삭제 (백분위 모드 최적화)
 // =========================================================
 window.__openUnivSimulation = async function() {
     const area = document.getElementById('univ-simulation-area');
@@ -562,7 +563,6 @@ window.__openUnivSimulation = async function() {
     const t1Cnt = allT1Scores.length;
     const t2Cnt = allT2Scores.length;
 
-    // 💡 [수정] 모바일/PC 모두 완벽하게 보이는 스마트 툴팁 텍스트 (줄바꿈 <br> 적용)
     const tooltipMsg = `국(${kCnt}회) 수(${mCnt}회) 탐1(${t1Cnt}회) 탐2(${t2Cnt}회) 누적평균<br>※ 4회 이상 응시 과목은 최고/최저 제외`;
 
     const avgKorPct = calcAdvancedAvg(allKorScores);
@@ -683,6 +683,7 @@ window.__openUnivSimulation = async function() {
                     if (!String(c.univ_name).includes(keyword) && !String(c.dept_name).includes(keyword)) return;
                 } else {
                     if (isStrict) { 
+                        // 현재 ±1 오차 유지 (수정 없음)
                         if (cutScore < myScoreForThisUniv - 1 || cutScore > myScoreForThisUniv + 1) return;
                     } else { 
                         const targetScore = myScoreForThisUniv + st.scoreDiff;
@@ -703,7 +704,6 @@ window.__openUnivSimulation = async function() {
                 const badges = [];
                 if (reqTamCount === 1) badges.push(tamReq === "과" || tamReq === "과탐" ? "[과1]" : tamReq === "사" || tamReq === "사탐" ? "[사1]" : "[탐1]");
                 
-                // 💡 [수정] DB의 '비고(note)' 필드에 소수점이 적혀있을 경우 여기서 미리 1차 박멸!
                 if (c.note) {
                     let nStr = String(c.note).replace(/0\.\d+/g, m => Math.round(Number(m) * 100) + "%").replace(/%%/g, "%");
                     badges.push(...nStr.split(" ")); 
@@ -731,21 +731,7 @@ window.__openUnivSimulation = async function() {
                     if (fSa) badges.push(`[사탐+${fSa}%]`);
                 }
 
-                const rK = Number(c.rate_kor) || 0; const rM = Number(c.rate_math) || 0; const rT = Number(c.rate_tam) || 0;
-                if (rK > 0 && rM > 0 && rT > 0 && aKor > 0 && aMath > 0) {
-                    if (Math.max(rK, rM, rT) - Math.min(rK, rM, rT) >= 5) {
-                        const myT = reqTamCount === 1 ? aBestTam : aAvgTam;
-                        const scores = [{n:'국', s:aKor, w:rK}, {n:'수', s:aMath, w:rM}, {n:'탐', s:myT, w:rT}];
-                        scores.sort((a,b) => b.s - a.s);
-                        const bestSubj = scores[0].n; const worstSubj = scores[2].n;
-                        scores.sort((a,b) => b.w - a.w);
-                        const highestWeight = scores[0].n; const lowestWeight = scores[2].n;
-                        
-                        if (bestSubj === highestWeight && worstSubj === lowestWeight) badges.unshift("🟢극상(비율)");
-                        else if (bestSubj === highestWeight) badges.unshift("🟢유리(비율)");
-                        else if (worstSubj === highestWeight || bestSubj === lowestWeight) badges.unshift("🔴불리(비율)");
-                    }
-                }
+                // 💡 유불리 배지 로직 삭제 완료 💡
 
                 const gun = String(c.gun || "가").trim();
                 const univ = String(c.univ_name).trim();
@@ -790,7 +776,6 @@ window.__openUnivSimulation = async function() {
                 if (/(수의예|수의과)/.test(dept)) return 13;
                 if (/(약학|약대)/.test(dept) && !/(신약|제약|약과학|한약)/.test(dept)) return 14;
 
-                // 💡 [수정] 와이즈, 바이오 등 분교 키워드 보강
                 if (/(미래|세종|천안|글로컬|WISE|와이즈|다빈치|에리카|ERICA|바이오|글로벌|메디컬)/i.test(univ)) return 35;
 
                 const isRanked = univRankOrder.some(u => univ.startsWith(u) || univ === u);
@@ -811,7 +796,6 @@ window.__openUnivSimulation = async function() {
                     if(matches[g][b] && matches[g][b][0]) { deptB = matches[g][b][0].dept; regB = matches[g][b][0].region; }
                 });
                 
-                // 💡 [추가] 같은 대학 이름일 경우 서울/본교가 무조건 앞쪽으로 오게 설정 (하극상 완벽 차단)
                 const baseA = a.replace(/\(.*?\)/g, '').trim();
                 const baseB = b.replace(/\(.*?\)/g, '').trim();
                 
@@ -822,7 +806,6 @@ window.__openUnivSimulation = async function() {
                     if (isMainA && !isMainB) return -1;
                     if (!isMainA && isMainB) return 1;
                     
-                    // 둘 다 분교거나 둘 다 본교면 그냥 가나다순 (예: 바이오 -> 와이즈)
                     return a.localeCompare(b);
                 }
 
@@ -898,7 +881,6 @@ window.__openUnivSimulation = async function() {
                     
                     let badgeHtml = "";
                     d.badges.forEach(b => {
-                        // 💡 [절대 방어막 2] 어떤 경로로 들어온 소수점이든 화면에 그리기 직전에 5%, 10%로 무조건 분쇄!
                         let badgeText = String(b).replace(/0\.\d+/g, match => Math.round(Number(match) * 100) + "%").replace(/%%/g, "%");
 
                         let bg = "#f1f2f6"; let color = "#7f8c8d"; let bo = "1px solid #dfe6e9";
