@@ -504,7 +504,7 @@ window.__renderGradeSummaryUI = function() {
 
 // =========================================================
 // 💡 [수퍼베이스 완벽 이식판] 정시 지원 시뮬레이션 보드 렌더러
-// 🌟 (최종 무결점판) 왼쪽 패널 고정 버그 완벽 수정 및 모든 기능(스크롤, 누적, 서열) 통합
+// 🌟 (궁극의 마스터 버전) 검색 시 현실적인 상향(점수 오름차순) 정렬 적용!
 // =========================================================
 window.__openUnivSimulation = async function() {
     const area = document.getElementById('univ-simulation-area');
@@ -533,7 +533,7 @@ window.__openUnivSimulation = async function() {
     const mathType = (mathChoice.includes("미적") || mathChoice.includes("기하")) ? "미기" : "확통";
     const tamType = (sciCount > 0 && socCount === 0) ? "과탐" : (socCount > 0 && sciCount === 0) ? "사탐" : "사과탐";
 
-    // 💡 최고/최저 제외 절사평균 함수 (선생님 공식 적용)
+    // 최고/최저 제외 절사평균 함수
     const calcAdvancedAvg = (scoresArray) => {
         const validScores = scoresArray.filter(s => s > 0);
         const count = validScores.length;
@@ -591,7 +591,7 @@ window.__openUnivSimulation = async function() {
             <div style="background:#fff; border-radius:12px; overflow:hidden; border:1px solid #dee2e6; box-shadow:0 6px 12px rgba(0,0,0,0.04); margin-top:20px;">
                 <div style="background:#fff; border-bottom:2px solid #dee2e6; display:flex; justify-content:space-between; padding:18px 25px; align-items:center; flex-wrap:wrap; gap:10px;">
                     <div style="color:#2c3e50; font-weight:900; font-size:17px; display:flex; align-items:center; gap:8px;">
-                        🎯 정시 지원 시뮬레이션 <span style="font-size:12px; color:#7f8c8d; font-weight:normal;">(좌측 철벽 고정 및 모든 버그 수정 완료)</span>
+                        🎯 정시 지원 시뮬레이션 <span style="font-size:12px; color:#7f8c8d; font-weight:normal;">(가장 현실적인 상향부터 스마트 정렬)</span>
                     </div>
                     <div style="background:#e8f4f8; border:1px solid #3498db; color:#2980b9; padding:6px 15px; font-weight:bold; font-size:13px; border-radius:6px;">
                         실제 응시: <span style="color:#e74c3c; margin-left:4px;">${mathType}+${tamType}</span>
@@ -646,8 +646,7 @@ window.__openUnivSimulation = async function() {
             const matches = { '가': {}, '나': {}, '다': {}, '군외': {} };
             const univSet = new Set();
 
-            // 💡 [버그 수정 완료] 왼쪽(isStrict) 패널일 때는 검색어(keyword)를 무조건 비워버립니다!
-            // 이렇게 해야 왼쪽 표가 어떤 검색에도 흔들리지 않고 내 점수(±1)에 맞는 대학을 고정으로 보여줍니다.
+            // 왼쪽(isStrict) 표는 검색어를 철저히 무시합니다.
             const keyword = isStrict ? "" : st.search.trim();
 
             cutoffs.forEach(c => {
@@ -663,11 +662,11 @@ window.__openUnivSimulation = async function() {
                 const myScoreForThisUniv = Math.round(aKor + aMath + (reqTamCount === 1 ? aBestTam : aAvgTam));
 
                 if (keyword) {
-                    // 오른쪽 표에서 검색어가 있을 경우 점수 무시하고 찾아줌
                     if (!String(c.univ_name).includes(keyword) && !String(c.dept_name).includes(keyword)) return;
+                    // 💡 [핵심 솔루션 1] 오른쪽 패널에서 검색 시, 내 점수 기준 무조건 +2점 이상의 '진짜 상향'만 가져옵니다!
+                    if (cutScore < myScoreForThisUniv + 2) return; 
                 } else {
                     if (isStrict) { 
-                        // 왼쪽 표: 오직 점수 ±1점 필터링만 작용 (굳건히 고정됨!)
                         if (cutScore < myScoreForThisUniv - 1 || cutScore > myScoreForThisUniv + 1) return;
                     } else { 
                         const targetScore = myScoreForThisUniv + st.scoreDiff;
@@ -686,7 +685,6 @@ window.__openUnivSimulation = async function() {
                 if (tamType === "과탐" && (tamReq === "사" || tamReq === "사탐")) return;
 
                 const badges = [];
-                // 대괄호 뱃지 디자인 유지
                 if (reqTamCount === 1) badges.push(tamReq === "과" || tamReq === "과탐" ? "[과1]" : tamReq === "사" || tamReq === "사탐" ? "[사1]" : "[탐1]");
                 if (c.note) badges.push(...c.note.split(" ")); 
 
@@ -757,8 +755,6 @@ window.__openUnivSimulation = async function() {
                 if (uName.includes("ERICA") || uName.includes("에리카")) return univRankOrder.indexOf("한양대(ERICA)");
                 if (uName.includes("외대") && uName.includes("글로벌")) return univRankOrder.indexOf("한국외대(글로벌)");
                 if (uName.includes("항공")) return univRankOrder.indexOf("항공대");
-                
-                // 💡 [남서울대 하극상 방지] 앞글자가 정확히 일치할 때만 순위 인정! (includes 남발 방지)
                 const safeIdx = univRankOrder.findIndex(u => uName.startsWith(u) || uName === u);
                 return safeIdx !== -1 ? safeIdx : 999;
             };
@@ -785,11 +781,27 @@ window.__openUnivSimulation = async function() {
 
             const sortedUnivs = Array.from(univSet).sort((a, b) => {
                 let deptA = "", deptB = "", regA = "", regB = "";
+                let cutA = 9999, cutB = 9999;
+                
                 ['가','나','다','군외'].forEach(g => {
-                    if(matches[g][a] && matches[g][a][0]) { deptA = matches[g][a][0].dept; regA = matches[g][a][0].region; }
-                    if(matches[g][b] && matches[g][b][0]) { deptB = matches[g][b][0].dept; regB = matches[g][b][0].region; }
+                    if(matches[g][a] && matches[g][a].length > 0) { 
+                        deptA = matches[g][a][0].dept; regA = matches[g][a][0].region; 
+                        const minC = Math.min(...matches[g][a].map(x => x.cut));
+                        if (minC < cutA) cutA = minC;
+                    }
+                    if(matches[g][b] && matches[g][b].length > 0) { 
+                        deptB = matches[g][b][0].dept; regB = matches[g][b][0].region; 
+                        const minC = Math.min(...matches[g][b].map(x => x.cut));
+                        if (minC < cutB) cutB = minC;
+                    }
                 });
                 
+                // 💡 [핵심 솔루션 2] 오른쪽 검색 결과는 점수가 오름차순(내 점수와 가장 가까운 순서)으로 노출됩니다!
+                if (!isStrict && keyword) {
+                    if (cutA !== cutB) return cutA - cutB; 
+                }
+                
+                // 검색이 아니거나 왼쪽 패널일 경우 기존 절대 서열표를 따름
                 const catA = getCategoryRank(a, deptA, regA);
                 const catB = getCategoryRank(b, deptB, regB);
                 if (catA !== catB) return catA - catB; 
@@ -817,7 +829,6 @@ window.__openUnivSimulation = async function() {
             const aAvgTam = aTamCnt > 0 ? (aT1 + aT2) / aTamCnt : 0;
             const sumScore = Math.round(aKor + aMath + aAvgTam); 
 
-            // 상태 텍스트
             const scoreTitle = st.scoreMode === 'avg' ? '누적<br>평균' : '내<br>점<br>수';
 
             const korEl = document.getElementById('sim-score-kor');
@@ -879,7 +890,6 @@ window.__openUnivSimulation = async function() {
                     `;
                 }).join('');
                 
-                // 💡 오른쪽 패널 검색 시 내부 스크롤바 유지
                 if (isSearchResult && univData.length > 6) {
                     return `<div class="dept-scroll" style="max-height: 480px; overflow-y: auto; overflow-x: hidden; padding-right: 4px; margin-right: -4px;">
                               <style>
@@ -937,7 +947,7 @@ window.__openUnivSimulation = async function() {
                     let rightTableHtml = hasRight ? 
                         `<table style="width:100%; border-collapse:collapse; height:100%;">
                             <tbody><tr>${renderTableCols(gunRightUnivs, rightData.matches, gun, true)}</tr></tbody>
-                         </table>` : `<div style="padding:20px; color:#f5b041; text-align:center; font-size:12px; font-weight:bold;">조건에 맞는 검색/상향 대학 없음</div>`;
+                         </table>` : `<div style="padding:20px; color:#f5b041; text-align:center; font-size:12px; font-weight:bold;">조건에 맞는 상향 대학 없음</div>`;
 
                     rowsHtml += `<tr style="border-bottom:1px solid #dee2e6;">`;
                     
