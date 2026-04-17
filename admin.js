@@ -767,14 +767,16 @@ window.__openUnivSimulation = async function() {
                 "서울대", "연세대", "고려대", "서강대", "성균관대", "한양대", 
                 "이화여대", "중앙대", "경희대", "한국외대", "서울시립대", 
                 "건국대", "동국대", "홍익대", "숙명여대", "국민대", "숭실대", "세종대", "단국대", 
-                "인하대", "아주대", "한양대(에리카)", "항공대", "가천대", "광운대", "명지대", "상명대", 
+                "인하대", "아주대", "한양대(ERICA)", "항공대", "가천대", "광운대", "명지대", "상명대", 
                 "가톨릭대", "한국외대(글로벌)", "서울과기대", "성신여대", "동덕여대", "덕성여대", "서울여대", 
                 "삼육대", "한성대", "서경대", "한국교원대", "경기대", "인천대"
             ];
             
             const getUnivRank = (uName) => {
                 let safeIdx = -1;
-                if (uName.includes("항공")) safeIdx = univRankOrder.indexOf("항공대");
+                if (uName.includes("ERICA") || uName.includes("에리카")) safeIdx = univRankOrder.indexOf("한양대(ERICA)");
+                else if (uName.includes("외대") && uName.includes("글로벌")) safeIdx = univRankOrder.indexOf("한국외대(글로벌)");
+                else if (uName.includes("항공")) safeIdx = univRankOrder.indexOf("항공대");
                 else safeIdx = univRankOrder.findIndex(u => uName.startsWith(u) || uName === u);
                 
                 return safeIdx !== -1 ? safeIdx : 999;
@@ -787,7 +789,7 @@ window.__openUnivSimulation = async function() {
                 if (/(수의예|수의과)/.test(dept)) return 13;
                 if (/(약학|약대)/.test(dept) && !/(신약|제약|약과학|한약)/.test(dept)) return 14;
 
-                if (/(미래|세종|천안|글로컬|와이즈|다빈치|에리카)/i.test(univ)) return 35;
+                if (/(미래|세종|천안|글로컬|WISE|다빈치|에리카)/i.test(univ)) return 35;
 
                 const isRanked = univRankOrder.some(u => univ.startsWith(u) || univ === u);
                 if (isRanked) return 20;
