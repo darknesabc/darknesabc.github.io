@@ -504,7 +504,7 @@ window.__renderGradeSummaryUI = function() {
 
 // =========================================================
 // 💡 [수퍼베이스 완벽 이식판] 정시 지원 시뮬레이션 보드 렌더러
-// 🌟 (최종) 오른쪽 상위권 우선 + '-1등 하극상 버그' 완벽 차단 패치 적용
+// 🌟 (진짜 최종 오브 최종) 누적평균 툴팁 복원 + 우측 명문대 우선 정렬
 // =========================================================
 window.__openUnivSimulation = async function() {
     const area = document.getElementById('univ-simulation-area');
@@ -533,32 +533,40 @@ window.__openUnivSimulation = async function() {
     const mathType = (mathChoice.includes("미적") || mathChoice.includes("기하")) ? "미기" : "확통";
     const tamType = (sciCount > 0 && socCount === 0) ? "과탐" : (socCount > 0 && sciCount === 0) ? "사탐" : "사과탐";
 
+    // 💡 [툴팁을 위한 데이터 추출] 과목별 '유효 응시 횟수'를 정확히 카운트합니다.
+    const allKorScores = (window.__currentStudentScores || []).map(s => Number(s.kor_exp_pct) || 0).filter(s => s > 0);
+    const allMathScores = (window.__currentStudentScores || []).map(s => Number(s.math_exp_pct) || 0).filter(s => s > 0);
+    const allT1Scores = (window.__currentStudentScores || []).map(s => Number(s.tam1_exp_pct) || 0).filter(s => s > 0);
+    const allT2Scores = (window.__currentStudentScores || []).map(s => Number(s.tam2_exp_pct) || 0).filter(s => s > 0);
+
+    const kCnt = allKorScores.length;
+    const mCnt = allMathScores.length;
+    const t1Cnt = allT1Scores.length;
+    const t2Cnt = allT2Scores.length;
+
     // 최고/최저 제외 절사평균 함수
-    const calcAdvancedAvg = (scoresArray) => {
-        const validScores = scoresArray.filter(s => s > 0);
+    const calcAdvancedAvg = (validScores) => {
         const count = validScores.length;
         if (count === 0) return 0;
         if (count >= 4) {
-            validScores.sort((a, b) => a - b);
-            validScores.pop(); 
-            validScores.shift(); 
-            const sum = validScores.reduce((a, b) => a + b, 0);
-            return sum / validScores.length;
+            let sorted = [...validScores].sort((a, b) => a - b);
+            sorted.pop(); 
+            sorted.shift(); 
+            const sum = sorted.reduce((a, b) => a + b, 0);
+            return sum / sorted.length;
         } else {
             const sum = validScores.reduce((a, b) => a + b, 0);
             return sum / count;
         }
     };
 
-    const allKor = (window.__currentStudentScores || []).map(s => Number(s.kor_exp_pct) || 0);
-    const allMath = (window.__currentStudentScores || []).map(s => Number(s.math_exp_pct) || 0);
-    const allT1 = (window.__currentStudentScores || []).map(s => Number(s.tam1_exp_pct) || 0);
-    const allT2 = (window.__currentStudentScores || []).map(s => Number(s.tam2_exp_pct) || 0);
+    const avgKorPct = calcAdvancedAvg(allKorScores);
+    const avgMathPct = calcAdvancedAvg(allMathScores);
+    const avgT1Pct = calcAdvancedAvg(allT1Scores);
+    const avgT2Pct = calcAdvancedAvg(allT2Scores);
 
-    const avgKorPct = calcAdvancedAvg(allKor);
-    const avgMathPct = calcAdvancedAvg(allMath);
-    const avgT1Pct = calcAdvancedAvg(allT1);
-    const avgT2Pct = calcAdvancedAvg(allT2);
+    // 💡 [툴팁 메시지 생성] 이미지와 100% 동일한 안내 문구 구성
+    const tooltipMsg = `국(${kCnt}회) 수(${mCnt}회) 탐1(${t1Cnt}회) 탐2(${t2Cnt}회) 누적평균&#10;※ 4회 이상 응시 과목은 최고/최저 제외`;
 
     window.__currentSimStatus = {
         scoreMode: 'current',
@@ -591,7 +599,7 @@ window.__openUnivSimulation = async function() {
             <div style="background:#fff; border-radius:12px; overflow:hidden; border:1px solid #dee2e6; box-shadow:0 6px 12px rgba(0,0,0,0.04); margin-top:20px;">
                 <div style="background:#fff; border-bottom:2px solid #dee2e6; display:flex; justify-content:space-between; padding:18px 25px; align-items:center; flex-wrap:wrap; gap:10px;">
                     <div style="color:#2c3e50; font-weight:900; font-size:17px; display:flex; align-items:center; gap:8px;">
-                        🎯 정시 지원 시뮬레이션 <span style="font-size:12px; color:#7f8c8d; font-weight:normal;">(좌측 철벽 고정 / 우측 최상위권 우선 정렬)</span>
+                        🎯 정시 지원 시뮬레이션 <span style="font-size:12px; color:#7f8c8d; font-weight:normal;">(누적평균 툴팁 기능 복원 완료)</span>
                     </div>
                     <div style="background:#e8f4f8; border:1px solid #3498db; color:#2980b9; padding:6px 15px; font-weight:bold; font-size:13px; border-radius:6px;">
                         실제 응시: <span style="color:#e74c3c; margin-left:4px;">${mathType}+${tamType}</span>
@@ -603,7 +611,8 @@ window.__openUnivSimulation = async function() {
                     
                     <div style="display:flex; gap:4px; background:#ecf0f1; padding:4px; border-radius:8px;">
                         <button id="sim-btn-current" onclick="window.__setSimScoreMode('current')" style="padding:5px 12px; border-radius:6px; border:none; font-size:12px; font-weight:bold; cursor:pointer; transition:0.2s; background:#3498db; color:#fff; box-shadow:0 2px 4px rgba(0,0,0,0.1);">해당 모평</button>
-                        <button id="sim-btn-avg" onclick="window.__setSimScoreMode('avg')" style="padding:5px 12px; border-radius:6px; border:none; font-size:12px; font-weight:bold; cursor:pointer; transition:0.2s; background:transparent; color:#7f8c8d;" title="4회 이상 응시 시 최고/최저점 제외 산출">누적 평균</button>
+                        
+                        <button id="sim-btn-avg" onclick="window.__setSimScoreMode('avg')" title="${tooltipMsg}" style="padding:5px 12px; border-radius:6px; border:none; font-size:12px; font-weight:bold; cursor:help; transition:0.2s; background:transparent; color:#7f8c8d; text-decoration: underline dotted #bdc3c7; text-underline-offset: 3px;">누적 평균</button>
                     </div>
                     
                     <select onchange="window.__setSimStream(this.value)" style="padding:6px 10px; border-radius:6px; border:1px solid #bdc3c7; color:#2c3e50; font-size:13px; font-weight:bold; outline:none; background:#fff; cursor:pointer;">
@@ -645,8 +654,6 @@ window.__openUnivSimulation = async function() {
             const st = window.__currentSimStatus;
             const matches = { '가': {}, '나': {}, '다': {}, '군외': {} };
             const univSet = new Set();
-
-            // 왼쪽 패널(isStrict)일 때는 검색어(keyword)를 무조건 비웁니다.
             const keyword = isStrict ? "" : st.search.trim();
 
             cutoffs.forEach(c => {
@@ -658,18 +665,19 @@ window.__openUnivSimulation = async function() {
                     if (!typeStr.includes(st.streamFilter)) return;
                 }
 
+                if (keyword) {
+                    if (!String(c.univ_name).includes(keyword) && !String(c.dept_name).includes(keyword)) return;
+                }
+
                 const reqTamCount = Number(c.tam_cnt_1) || 2; 
                 const myScoreForThisUniv = Math.round(aKor + aMath + (reqTamCount === 1 ? aBestTam : aAvgTam));
 
-                if (keyword) {
-                    // 오른쪽 표에서 검색어가 있을 경우 점수 무시하고 해당 대학/학과를 모두 찾아줌
-                    if (!String(c.univ_name).includes(keyword) && !String(c.dept_name).includes(keyword)) return;
-                } else {
-                    if (isStrict) { 
-                        // 왼쪽 표: 오직 점수 ±1점 필터링만 작용
-                        if (cutScore < myScoreForThisUniv - 1 || cutScore > myScoreForThisUniv + 1) return;
-                    } else { 
-                        // 오른쪽 표: 오프셋 반영 (상향 점수만)
+                if (isStrict) { 
+                    if (cutScore < myScoreForThisUniv - 1 || cutScore > myScoreForThisUniv + 1) return;
+                } else { 
+                    if (keyword) {
+                        if (cutScore < myScoreForThisUniv + 2) return;
+                    } else {
                         const targetScore = myScoreForThisUniv + st.scoreDiff;
                         const minCut = myScoreForThisUniv + 2; 
                         const maxCut = targetScore + 1; 
@@ -743,7 +751,6 @@ window.__openUnivSimulation = async function() {
                 Object.keys(matches[g]).forEach(u => { matches[g][u].sort((a,b) => b.cut - a.cut); });
             });
 
-            // 💡 [버그 완벽 차단 패치] 에리카, 글로벌 등 배열에 명시적으로 추가!
             const univRankOrder = [
                 "서울대", "연세대", "고려대", "서강대", "성균관대", "한양대", 
                 "이화여대", "중앙대", "경희대", "한국외대", "서울시립대", 
@@ -755,13 +762,11 @@ window.__openUnivSimulation = async function() {
             
             const getUnivRank = (uName) => {
                 let safeIdx = -1;
-                // 명시적으로 처리 후, 안전하게 인덱스를 반환.
                 if (uName.includes("ERICA") || uName.includes("에리카")) safeIdx = univRankOrder.indexOf("한양대(ERICA)");
                 else if (uName.includes("외대") && uName.includes("글로벌")) safeIdx = univRankOrder.indexOf("한국외대(글로벌)");
                 else if (uName.includes("항공")) safeIdx = univRankOrder.indexOf("항공대");
                 else safeIdx = univRankOrder.findIndex(u => uName.startsWith(u) || uName === u);
                 
-                // -1등(에러)이 0등(서울대)보다 위로 올라가는 하극상 원천 차단!
                 return safeIdx !== -1 ? safeIdx : 999;
             };
 
@@ -792,7 +797,6 @@ window.__openUnivSimulation = async function() {
                     if(matches[g][b] && matches[g][b][0]) { deptB = matches[g][b][0].dept; regB = matches[g][b][0].region; }
                 });
                 
-                // 💡 대학 정렬: 카테고리(지역/메디컬) -> 서열표(univRankOrder) -> 가나다 순 고정
                 const catA = getCategoryRank(a, deptA, regA);
                 const catB = getCategoryRank(b, deptB, regB);
                 if (catA !== catB) return catA - catB; 
@@ -834,9 +838,11 @@ window.__openUnivSimulation = async function() {
                 if(st.scoreMode === 'current') {
                     btnCur.style.background = '#3498db'; btnCur.style.color = '#fff'; btnCur.style.boxShadow = '0 2px 4px rgba(0,0,0,0.1)';
                     btnAvg.style.background = 'transparent'; btnAvg.style.color = '#7f8c8d'; btnAvg.style.boxShadow = 'none';
+                    btnAvg.style.textDecoration = 'underline dotted #bdc3c7'; // 툴팁 유도 점선
                 } else {
                     btnAvg.style.background = '#3498db'; btnAvg.style.color = '#fff'; btnAvg.style.boxShadow = '0 2px 4px rgba(0,0,0,0.1)';
                     btnCur.style.background = 'transparent'; btnCur.style.color = '#7f8c8d'; btnCur.style.boxShadow = 'none';
+                    btnAvg.style.textDecoration = 'none';
                 }
             }
 
@@ -869,7 +875,7 @@ window.__openUnivSimulation = async function() {
                     });
 
                     let dispDept = d.dept;
-                    if (isSearchResult && regex) dispDept = dispDept.replace(regex, `<span style="background:#f1c40f; color:#000; padding:0 2px; border-radius:2px;">$1</span>`);
+                    if (regex) dispDept = dispDept.replace(regex, `<span style="background:#f1c40f; color:#000; padding:0 2px; border-radius:2px;">$1</span>`);
 
                     return `
                         <div style="background:#fff; border:1px solid #ecf0f1; border-radius:8px; padding:10px; margin-bottom:6px; text-align:center; box-shadow:0 2px 4px rgba(0,0,0,0.02); transition:0.2s;">
@@ -904,7 +910,7 @@ window.__openUnivSimulation = async function() {
 
                 univs.forEach(u => {
                     let dispU = u;
-                    if (isSearchResult && regex) dispU = dispU.replace(regex, `<span style="background:#f1c40f; color:#000; padding:0 2px; border-radius:2px;">$1</span>`);
+                    if (regex) dispU = dispU.replace(regex, `<span style="background:#f1c40f; color:#000; padding:0 2px; border-radius:2px;">$1</span>`);
                     
                     const tableHtml = `<table style="width:100%; border-collapse:collapse; height:100%;">
                                         <thead><tr><th style="background:rgba(0,0,0,0.03); color:#34495e; font-size:13px; padding:10px; border-bottom:1px solid #dee2e6; border-right:1px solid #ecf0f1; white-space:nowrap; position:sticky; top:0; z-index:2;">${dispU}</th></tr></thead>
