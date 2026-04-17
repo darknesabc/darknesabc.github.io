@@ -504,7 +504,7 @@ window.__renderGradeSummaryUI = function() {
 
 // =========================================================
 // 💡 [수퍼베이스 완벽 이식판] 정시 지원 시뮬레이션 보드 렌더러
-// 🌟 (최종 기능 완성) 검색창 포커스 버그 해결 + 누적평균 & 계열 필터 도입
+// 🌟 (진짜 최종 마스터 버전) 4회 이상 응시 시 최고/최저 제외 누적 평균 공식 완벽 적용!
 // =========================================================
 window.__openUnivSimulation = async function() {
     const area = document.getElementById('univ-simulation-area');
@@ -513,7 +513,6 @@ window.__openUnivSimulation = async function() {
     area.style.display = 'block';
     area.innerHTML = `<div style="text-align:center; padding:50px; background:#fff; color:#3498db; font-weight:bold; border-radius:12px; border:1px solid #dee2e6;">⏳ 마스터 배치표 데이터를 끝까지 불러오는 중입니다... (잠시만 기다려주세요)</div>`;
 
-    // 현재 모평 점수 세팅
     const score = window.__currentStudentScores.find(s => s.exam_label === window.__currentSummaryExam) || {};
     const korPct = Number(score.kor_exp_pct) || 0;
     const mathPct = Number(score.math_exp_pct) || 0;
@@ -534,25 +533,49 @@ window.__openUnivSimulation = async function() {
     const mathType = (mathChoice.includes("미적") || mathChoice.includes("기하")) ? "미기" : "확통";
     const tamType = (sciCount > 0 && socCount === 0) ? "과탐" : (socCount > 0 && sciCount === 0) ? "사탐" : "사과탐";
 
-    // 💡 [추가] 누적 평균 데이터 계산
-    let sKor=0, sMath=0, sT1=0, sT2=0;
-    let cKor=0, cMath=0, cT1=0, cT2=0;
-    (window.__currentStudentScores || []).forEach(s => {
-        let k = Number(s.kor_exp_pct)||0, m = Number(s.math_exp_pct)||0, pt1 = Number(s.tam1_exp_pct)||0, pt2 = Number(s.tam2_exp_pct)||0;
-        if(k > 0) { sKor += k; cKor++; }
-        if(m > 0) { sMath += m; cMath++; }
-        if(pt1 > 0) { sT1 += pt1; cT1++; }
-        if(pt2 > 0) { sT2 += pt2; cT2++; }
-    });
-    const avgKorPct = cKor > 0 ? sKor / cKor : 0;
-    const avgMathPct = cMath > 0 ? sMath / cMath : 0;
-    const avgT1Pct = cT1 > 0 ? sT1 / cT1 : 0;
-    const avgT2Pct = cT2 > 0 ? sT2 / cT2 : 0;
+    // ============================================================================
+    // 💡 [핵심 복원] 전문가용 누적 평균 계산기 (최고/최저 제외 절사평균 적용)
+    // ============================================================================
+    const calcAdvancedAvg = (scoresArray) => {
+        // 0보다 큰 유효한 점수만 걸러냄
+        const validScores = scoresArray.filter(s => s > 0);
+        const count = validScores.length;
+        
+        if (count === 0) return 0;
+        
+        // 💡 4회 이상 응시한 경우: 최고점과 최저점을 제외하고 평균 계산
+        if (count >= 4) {
+            validScores.sort((a, b) => a - b); // 오름차순 정렬
+            validScores.pop(); // 최고점 1개 제외
+            validScores.shift(); // 최저점 1개 제외
+            
+            const sum = validScores.reduce((a, b) => a + b, 0);
+            return sum / validScores.length;
+        } 
+        // 💡 3회 이하 응시한 경우: 단순 평균 계산
+        else {
+            const sum = validScores.reduce((a, b) => a + b, 0);
+            return sum / count;
+        }
+    };
 
-    // 💡 초기 상태에 모드 및 필터 값 추가
+    // 모든 시험 데이터에서 각 과목별 백분위만 쏙쏙 뽑아서 배열로 만듦
+    const allKor = (window.__currentStudentScores || []).map(s => Number(s.kor_exp_pct) || 0);
+    const allMath = (window.__currentStudentScores || []).map(s => Number(s.math_exp_pct) || 0);
+    const allT1 = (window.__currentStudentScores || []).map(s => Number(s.tam1_exp_pct) || 0);
+    const allT2 = (window.__currentStudentScores || []).map(s => Number(s.tam2_exp_pct) || 0);
+
+    // 특수 공식이 적용된 과목별 누적 평균 점수 산출
+    const avgKorPct = calcAdvancedAvg(allKor);
+    const avgMathPct = calcAdvancedAvg(allMath);
+    const avgT1Pct = calcAdvancedAvg(allT1);
+    const avgT2Pct = calcAdvancedAvg(allT2);
+
+    // ============================================================================
+
     window.__currentSimStatus = {
-        scoreMode: 'current', // 'current' 또는 'avg'
-        streamFilter: '전체', // '전체', '인문', '자연', '공통', '예체능'
+        scoreMode: 'current',
+        streamFilter: '전체', 
         scoreDiff: 0,
         search: ""
     };
@@ -577,12 +600,11 @@ window.__openUnivSimulation = async function() {
 
         if (cutoffs.length === 0) throw new Error("DB에 배치표 데이터가 존재하지 않습니다.");
 
-        // 💡 HTML 구조(검색창 포함)를 먼저 한 번만 그리고, 안에 표만 업데이트 되게 분리!
         area.innerHTML = `
             <div style="background:#fff; border-radius:12px; overflow:hidden; border:1px solid #dee2e6; box-shadow:0 6px 12px rgba(0,0,0,0.04); margin-top:20px;">
                 <div style="background:#fff; border-bottom:2px solid #dee2e6; display:flex; justify-content:space-between; padding:18px 25px; align-items:center; flex-wrap:wrap; gap:10px;">
                     <div style="color:#2c3e50; font-weight:900; font-size:17px; display:flex; align-items:center; gap:8px;">
-                        🎯 정시 지원 시뮬레이션 <span style="font-size:12px; color:#7f8c8d; font-weight:normal;">(계열 선택 및 누적 평균 지원)</span>
+                        🎯 정시 지원 시뮬레이션 <span style="font-size:12px; color:#7f8c8d; font-weight:normal;">(4회 이상 최고/최저 제외 누적평균 적용)</span>
                     </div>
                     <div style="background:#e8f4f8; border:1px solid #3498db; color:#2980b9; padding:6px 15px; font-weight:bold; font-size:13px; border-radius:6px;">
                         실제 응시: <span style="color:#e74c3c; margin-left:4px;">${mathType}+${tamType}</span>
@@ -594,7 +616,7 @@ window.__openUnivSimulation = async function() {
                     
                     <div style="display:flex; gap:4px; background:#ecf0f1; padding:4px; border-radius:8px;">
                         <button id="sim-btn-current" onclick="window.__setSimScoreMode('current')" style="padding:5px 12px; border-radius:6px; border:none; font-size:12px; font-weight:bold; cursor:pointer; transition:0.2s; background:#3498db; color:#fff; box-shadow:0 2px 4px rgba(0,0,0,0.1);">해당 모평</button>
-                        <button id="sim-btn-avg" onclick="window.__setSimScoreMode('avg')" style="padding:5px 12px; border-radius:6px; border:none; font-size:12px; font-weight:bold; cursor:pointer; transition:0.2s; background:transparent; color:#7f8c8d;">누적 평균</button>
+                        <button id="sim-btn-avg" onclick="window.__setSimScoreMode('avg')" style="padding:5px 12px; border-radius:6px; border:none; font-size:12px; font-weight:bold; cursor:pointer; transition:0.2s; background:transparent; color:#7f8c8d;" title="4회 이상 응시 시 최고/최저점 제외 산출">누적 평균</button>
                     </div>
                     
                     <select onchange="window.__setSimStream(this.value)" style="padding:6px 10px; border-radius:6px; border:1px solid #bdc3c7; color:#2c3e50; font-size:13px; font-weight:bold; outline:none; background:#fff; cursor:pointer;">
@@ -627,13 +649,11 @@ window.__openUnivSimulation = async function() {
             </div>
         `;
 
-        // UI 이벤트 핸들러 등록
         window.__setSimScoreMode = function(mode) { window.__currentSimStatus.scoreMode = mode; window.runUniversitySimulation(); };
         window.__setSimStream = function(val) { window.__currentSimStatus.streamFilter = val; window.runUniversitySimulation(); };
         window.__setSimOffset = function(val) { window.__currentSimStatus.scoreDiff = Math.max(0, Number(val)); window.runUniversitySimulation(); };
         window.__setSimSearch = function(val) { window.__currentSimStatus.search = val; window.runUniversitySimulation(); };
 
-        // 매칭 계산 로직 (점수를 동적으로 받아오도록 수정)
         const getMatches = (isStrict, aKor, aMath, aBestTam, aAvgTam) => {
             const st = window.__currentSimStatus;
             const matches = { '가': {}, '나': {}, '다': {}, '군외': {} };
@@ -643,7 +663,6 @@ window.__openUnivSimulation = async function() {
                 const cutScore = Number(c.cut_total) || 0;
                 if (!cutScore) return;
 
-                // 💡 [추가] 계열 필터링 적용
                 if (st.streamFilter !== '전체') {
                     const typeStr = String(c.type || "");
                     if (!typeStr.includes(st.streamFilter)) return;
@@ -675,8 +694,30 @@ window.__openUnivSimulation = async function() {
                 if (tamType === "과탐" && (tamReq === "사" || tamReq === "사탐")) return;
 
                 const badges = [];
-                if (reqTamCount === 1) badges.push(tamReq === "과" || tamReq === "과탐" ? "과1" : tamReq === "사" || tamReq === "사탐" ? "사1" : "탐1");
+                // 💡 [가산점 뱃지 대괄호 디자인 복구]
+                if (reqTamCount === 1) badges.push(tamReq === "과" || tamReq === "과탐" ? "[과1]" : tamReq === "사" || tamReq === "사탐" ? "[사1]" : "[탐1]");
                 if (c.note) badges.push(...c.note.split(" ")); 
+
+                let bMi = c.rate_math_mi ? String(c.rate_math_mi).trim() : "";
+                let bGi = c.rate_math_gi ? String(c.rate_math_gi).trim() : "";
+                let bGwa = c.rate_tam_gwa ? String(c.rate_tam_gwa).trim() : "";
+                let bSa = c.rate_tam_sa ? String(c.rate_tam_sa).trim() : "";
+                
+                if(bMi === "0" || bMi === "-") bMi = "";
+                if(bGi === "0" || bGi === "-") bGi = "";
+                if(bGwa === "0" || bGwa === "-") bGwa = "";
+                if(bSa === "0" || bSa === "-") bSa = "";
+                
+                if (bMi && bMi === bGi) badges.push(`[미기+${bMi}%]`);
+                else {
+                    if (bMi) badges.push(`[미적+${bMi}%]`);
+                    if (bGi) badges.push(`[기하+${bGi}%]`);
+                }
+                if (bGwa && bGwa === bSa) badges.push(`[사과+${bGwa}%]`);
+                else {
+                    if (bGwa) badges.push(`[과탐+${bGwa}%]`);
+                    if (bSa) badges.push(`[사탐+${bSa}%]`);
+                }
 
                 const rK = Number(c.rate_kor) || 0; const rM = Number(c.rate_math) || 0; const rT = Number(c.rate_tam) || 0;
                 if (rK > 0 && rM > 0 && rT > 0 && aKor > 0 && aMath > 0) {
@@ -769,22 +810,19 @@ window.__openUnivSimulation = async function() {
             return { matches, sortedUnivs };
         };
 
-        // 💡 렌더링 함수 메인 (테이블 및 점수 UI만 업데이트)
         window.runUniversitySimulation = function() {
             const st = window.__currentSimStatus;
             
-            // 현재 모드에 따른 점수 세팅
-            const aKor = st.scoreMode === 'avg' && cKor > 0 ? avgKorPct : korPct;
-            const aMath = st.scoreMode === 'avg' && cMath > 0 ? avgMathPct : mathPct;
-            const aT1 = st.scoreMode === 'avg' && cT1 > 0 ? avgT1Pct : t1;
-            const aT2 = st.scoreMode === 'avg' && cT2 > 0 ? avgT2Pct : t2;
+            const aKor = st.scoreMode === 'avg' ? avgKorPct : korPct;
+            const aMath = st.scoreMode === 'avg' ? avgMathPct : mathPct;
+            const aT1 = st.scoreMode === 'avg' ? avgT1Pct : t1;
+            const aT2 = st.scoreMode === 'avg' ? avgT2Pct : t2;
             
             const aBestTam = Math.max(aT1, aT2);
             const aTamCnt = (aT1 > 0 ? 1 : 0) + (aT2 > 0 ? 1 : 0);
             const aAvgTam = aTamCnt > 0 ? (aT1 + aT2) / aTamCnt : 0;
-            const sumScore = Math.round(aKor + aMath + aAvgTam); // 내 점수 총합
+            const sumScore = Math.round(aKor + aMath + aAvgTam); 
 
-            // 💡 점수 패널 DOM 업데이트 (검색창 포커스를 잃지 않게 안전하게 텍스트만 교체)
             const korEl = document.getElementById('sim-score-kor');
             if (korEl) {
                 korEl.innerText = Math.round(aKor * 10) / 10;
@@ -880,7 +918,6 @@ window.__openUnivSimulation = async function() {
                 }
             });
 
-            // 테이블 껍데기 안에 내용만 갈아끼우기 (검색창 포커스 유지)
             const tableContainer = document.getElementById('sim-tables-container');
             if (tableContainer) {
                 tableContainer.innerHTML = `<table style="width:100%; border-collapse:collapse; min-width:900px;"><tbody>${rowsHtml}</tbody></table>`;
