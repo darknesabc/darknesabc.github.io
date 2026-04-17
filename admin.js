@@ -504,8 +504,7 @@ window.__renderGradeSummaryUI = function() {
 
 // =========================================================
 // 💡 [수퍼베이스 완벽 이식판] 정시 지원 시뮬레이션 보드 렌더러
-// 🌟 (최종) 오른쪽 상위권 우선 + '-1등 하극상 버그' 완벽 차단 패치 적용
-// + [추가] 가산점 % 변환 및 본교(짧은 이름) 절대 우위 정렬 추가
+// 🌟 (최종 마스터피스) 하극상 차단 + 툴팁 + 가산점 변환 + 에러 완벽 수정
 // =========================================================
 window.__openUnivSimulation = async function() {
     const area = document.getElementById('univ-simulation-area');
@@ -551,7 +550,7 @@ window.__openUnivSimulation = async function() {
         }
     };
 
-    // 💡 [유지] 툴팁을 위한 과목별 유효 응시 횟수 카운팅
+    // 툴팁을 위한 과목별 유효 응시 횟수 카운팅
     const allKorScores = (window.__currentStudentScores || []).map(s => Number(s.kor_exp_pct) || 0).filter(s => s > 0);
     const allMathScores = (window.__currentStudentScores || []).map(s => Number(s.math_exp_pct) || 0).filter(s => s > 0);
     const allT1Scores = (window.__currentStudentScores || []).map(s => Number(s.tam1_exp_pct) || 0).filter(s => s > 0);
@@ -562,7 +561,7 @@ window.__openUnivSimulation = async function() {
     const t1Cnt = allT1Scores.length;
     const t2Cnt = allT2Scores.length;
 
-    // 💡 [유지] 툴팁 메시지 생성 (HTML Entity 사용으로 줄바꿈 처리)
+    // 툴팁 메시지 생성
     const tooltipMsg = `국(${kCnt}회) 수(${mCnt}회) 탐1(${t1Cnt}회) 탐2(${t2Cnt}회) 누적평균&#10;※ 4회 이상 응시 과목은 최고/최저 제외`;
 
     const avgKorPct = calcAdvancedAvg(allKorScores);
@@ -601,7 +600,7 @@ window.__openUnivSimulation = async function() {
             <div style="background:#fff; border-radius:12px; overflow:hidden; border:1px solid #dee2e6; box-shadow:0 6px 12px rgba(0,0,0,0.04); margin-top:20px;">
                 <div style="background:#fff; border-bottom:2px solid #dee2e6; display:flex; justify-content:space-between; padding:18px 25px; align-items:center; flex-wrap:wrap; gap:10px;">
                     <div style="color:#2c3e50; font-weight:900; font-size:17px; display:flex; align-items:center; gap:8px;">
-                        🎯 정시 지원 시뮬레이션 <span style="font-size:12px; color:#7f8c8d; font-weight:normal;">(좌측 철벽 고정 / 우측 최상위권 우선 정렬)</span>
+                        🎯 정시 지원 시뮬레이션 <span style="font-size:12px; color:#7f8c8d; font-weight:normal;">(명문대 우위 정렬 및 툴팁 완벽 적용)</span>
                     </div>
                     <div style="background:#e8f4f8; border:1px solid #3498db; color:#2980b9; padding:6px 15px; font-weight:bold; font-size:13px; border-radius:6px;">
                         실제 응시: <span style="color:#e74c3c; margin-left:4px;">${mathType}+${tamType}</span>
@@ -655,9 +654,9 @@ window.__openUnivSimulation = async function() {
             const st = window.__currentSimStatus;
             const matches = { '가': {}, '나': {}, '다': {}, '군외': {} };
             const univSet = new Set();
-
-            // 왼쪽 패널(isStrict)일 때는 검색어(keyword)를 무조건 비웁니다.
-            const keyword = isStrict ? "" : st.search.trim();
+            
+            // 💡 양쪽 표 모두 검색어가 있으면 적용합니다!
+            const keyword = st.search.trim();
 
             cutoffs.forEach(c => {
                 const cutScore = Number(c.cut_total) || 0;
@@ -669,14 +668,22 @@ window.__openUnivSimulation = async function() {
                 }
 
                 if (keyword) {
-                    // 오른쪽 표에서 검색어가 있을 경우 점수 무시하고 해당 대학/학과를 모두 찾아줌
                     if (!String(c.univ_name).includes(keyword) && !String(c.dept_name).includes(keyword)) return;
-                } else {
-                    if (isStrict) { 
-                        // 왼쪽 표: 오직 점수 ±1점 필터링만 작용
-                        if (cutScore < myScoreForThisUniv - 1 || cutScore > myScoreForThisUniv + 1) return;
-                    } else { 
-                        // 오른쪽 표: 오프셋 반영 (상향 점수만)
+                }
+
+                // 🚨 [절대 삭제 금지] 이 두 줄이 지워지면 myScoreForThisUniv is not defined 에러가 납니다!
+                const reqTamCount = Number(c.tam_cnt_1) || 2; 
+                const myScoreForThisUniv = Math.round(aKor + aMath + (reqTamCount === 1 ? aBestTam : aAvgTam));
+
+                if (isStrict) { 
+                    // 왼쪽 표: 오직 점수 ±1점 필터링만 작용
+                    if (cutScore < myScoreForThisUniv - 1 || cutScore > myScoreForThisUniv + 1) return;
+                } else { 
+                    if (keyword) {
+                        // 오른쪽 표에서 검색 중일 땐 내 점수 이상의 상위 대학 모두 노출
+                        if (cutScore < myScoreForThisUniv + 2) return;
+                    } else {
+                        // 오른쪽 표 일반 상태일 땐 오프셋 반영된 점수 구간만 노출
                         const targetScore = myScoreForThisUniv + st.scoreDiff;
                         const minCut = myScoreForThisUniv + 2; 
                         const maxCut = targetScore + 1; 
@@ -696,11 +703,10 @@ window.__openUnivSimulation = async function() {
                 if (reqTamCount === 1) badges.push(tamReq === "과" || tamReq === "과탐" ? "[과1]" : tamReq === "사" || tamReq === "사탐" ? "[사1]" : "[탐1]");
                 if (c.note) badges.push(...c.note.split(" ")); 
 
-                // 💡 [추가] 가산점 소수점을 퍼센트(%)로 스마트하게 변환하는 로직!
+                // 💡 가산점 % 변환 로직 (ex: 0.05 -> 5)
                 const formatBonus = (val) => {
                     let num = Number(val);
                     if (isNaN(num) || num <= 0) return "";
-                    // 0.05 같은 소수면 * 100을 해서 5로 만듦. 이미 5로 입력되어 있으면 그냥 5 사용.
                     return num < 1 ? Math.round(num * 100) : Math.round(num);
                 };
 
@@ -764,13 +770,11 @@ window.__openUnivSimulation = async function() {
             
             const getUnivRank = (uName) => {
                 let safeIdx = -1;
-                // 명시적으로 처리 후, 안전하게 인덱스를 반환.
                 if (uName.includes("ERICA") || uName.includes("에리카")) safeIdx = univRankOrder.indexOf("한양대(ERICA)");
                 else if (uName.includes("외대") && uName.includes("글로벌")) safeIdx = univRankOrder.indexOf("한국외대(글로벌)");
                 else if (uName.includes("항공")) safeIdx = univRankOrder.indexOf("항공대");
                 else safeIdx = univRankOrder.findIndex(u => uName.startsWith(u) || uName === u);
                 
-                // -1등(에러)이 0등(서울대)보다 위로 올라가는 하극상 원천 차단!
                 return safeIdx !== -1 ? safeIdx : 999;
             };
 
@@ -781,7 +785,7 @@ window.__openUnivSimulation = async function() {
                 if (/(수의예|수의과)/.test(dept)) return 13;
                 if (/(약학|약대)/.test(dept) && !/(신약|제약|약과학|한약)/.test(dept)) return 14;
 
-                if (/(미래|세종|천안|글로컬|WISE|다빈치|에리카)/i.test(univ)) return 35;
+                if (/(미래|세종|천안|글로컬|WISE|다빈치)/i.test(univ)) return 35;
 
                 const isRanked = univRankOrder.some(u => univ.startsWith(u) || univ === u);
                 if (isRanked) return 20;
@@ -801,7 +805,6 @@ window.__openUnivSimulation = async function() {
                     if(matches[g][b] && matches[g][b][0]) { deptB = matches[g][b][0].dept; regB = matches[g][b][0].region; }
                 });
                 
-                // 💡 대학 정렬: 카테고리(지역/메디컬) -> 서열표(univRankOrder) -> 가나다 순 고정
                 const catA = getCategoryRank(a, deptA, regA);
                 const catB = getCategoryRank(b, deptB, regB);
                 if (catA !== catB) return catA - catB; 
@@ -809,10 +812,10 @@ window.__openUnivSimulation = async function() {
                 const rankA = getUnivRank(a);
                 const rankB = getUnivRank(b);
                 if (rankA !== rankB) return rankA - rankB; 
-
+                
                 // 💡 [본교 우선 정렬 패치] 포함관계일 때 짧은 이름(본교)이 무조건 앞으로!
-                if (a.includes(b) && a.length > b.length) return 1;  // a가 에리카고 b가 본교면 a가 뒤로
-                if (b.includes(a) && b.length > a.length) return -1; // b가 에리카고 a가 본교면 b가 뒤로
+                if (a.includes(b) && a.length > b.length) return 1;
+                if (b.includes(a) && b.length > a.length) return -1;
                 
                 return a.localeCompare(b); 
             });
@@ -847,7 +850,7 @@ window.__openUnivSimulation = async function() {
                 if(st.scoreMode === 'current') {
                     btnCur.style.background = '#3498db'; btnCur.style.color = '#fff'; btnCur.style.boxShadow = '0 2px 4px rgba(0,0,0,0.1)';
                     btnAvg.style.background = 'transparent'; btnAvg.style.color = '#7f8c8d'; btnAvg.style.boxShadow = 'none';
-                    btnAvg.style.textDecoration = 'underline dotted #bdc3c7'; // 💡 툴팁 안내선 유지
+                    btnAvg.style.textDecoration = 'underline dotted #bdc3c7';
                 } else {
                     btnAvg.style.background = '#3498db'; btnAvg.style.color = '#fff'; btnAvg.style.boxShadow = '0 2px 4px rgba(0,0,0,0.1)';
                     btnCur.style.background = 'transparent'; btnCur.style.color = '#7f8c8d'; btnCur.style.boxShadow = 'none';
