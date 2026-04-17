@@ -784,7 +784,7 @@ window.__openUnivSimulation = async function() {
                 if (/(수의예|수의과)/.test(dept)) return 13;
                 if (/(약학|약대)/.test(dept) && !/(신약|제약|약과학|한약)/.test(dept)) return 14;
 
-                if (/(미래|세종|천안|글로컬|WISE|다빈치)/i.test(univ)) return 35;
+                if (/(미래|세종|천안|글로컬|WISE|다빈치|에리카)/i.test(univ)) return 35;
 
                 const isRanked = univRankOrder.some(u => univ.startsWith(u) || univ === u);
                 if (isRanked) return 20;
