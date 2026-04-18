@@ -147,35 +147,35 @@ async function init() {
         `;
 
         // 💡 [핵심 추가] 1000개 제한을 무한대로 뚫어주는 마법의 도우미 함수
-        const fetchAll = async (buildQueryFn) => {
-            let allData = [];
-            let start = 0;
-            while (true) {
-                // 매 반복마다 쿼리를 새로 생성해서 1000개씩 이어서 가져옴
-                const { data, error } = await buildQueryFn().range(start, start + 999);
-                if (error) throw error;
-                if (!data || data.length === 0) break;
-                allData = allData.concat(data);
-                if (data.length < 1000) break; // 1000개 미만이면 끝에 도달한 것
-                start += 1000;
-            }
-            return { data: allData };
-        };
+        const fetchAll = async (buildQueryFn) => {
+            let allData = [];
+            let start = 0;
+            while (true) {
+                // 매 반복마다 쿼리를 새로 생성해서 1000개씩 이어서 가져옴
+                const { data, error } = await buildQueryFn().range(start, start + 999);
+                if (error) throw error;
+                if (!data || data.length === 0) break;
+                allData = allData.concat(data);
+                if (data.length < 1000) break; // 1000개 미만이면 끝에 도달한 것
+                start += 1000;
+            }
+            return { data: allData };
+        };
 
-        // 💡 기존의 단일 쿼리들을 fetchAll() 함수로 감싸서 무제한 호출로 변경!
-        const [resStudents, resAtt, resSleep, resMove, resEdu, resSurvey] = await Promise.all([
-            fetchAll(() => {
-                let q = _supabase.from('student').select('*');
-                if (loggedInId === 'admin_4F') return q.ilike('seat_no', '4-%');
-                if (loggedInRole !== 'super') return q.eq('teacher_name', loggedInManager);
-                return q;
-            }),
-            fetchAll(() => _supabase.from('attendance').select('*').eq('attendance_date', today)),
-            fetchAll(() => _supabase.from('sleep_log').select('*').eq('sleep_date', today)),
-            fetchAll(() => _supabase.from('move_log').select('*').eq('move_date', today).order('move_time', { ascending: false })),
-            fetchAll(() => _supabase.from('edu_score_log').select('*')), // 전체 누적 벌점도 무제한으로!
-            fetchAll(() => _supabase.from('survey_log').select('*').eq('survey_date', today))
-        ]);
+        // 💡 기존의 단일 쿼리들을 fetchAll() 함수로 감싸서 무제한 호출로 변경!
+        const [resStudents, resAtt, resSleep, resMove, resEdu, resSurvey] = await Promise.all([
+            fetchAll(() => {
+                let q = _supabase.from('student').select('*');
+                if (loggedInId === 'admin_4F') return q.ilike('seat_no', '4-%');
+                if (loggedInRole !== 'super') return q.eq('teacher_name', loggedInManager);
+                return q;
+            }),
+            fetchAll(() => _supabase.from('attendance').select('*').eq('attendance_date', today)),
+            fetchAll(() => _supabase.from('sleep_log').select('*').eq('sleep_date', today)),
+            fetchAll(() => _supabase.from('move_log').select('*').eq('move_date', today).order('move_time', { ascending: false })),
+            fetchAll(() => _supabase.from('edu_score_log').select('*')), // 전체 누적 벌점도 무제한으로!
+            fetchAll(() => _supabase.from('survey_log').select('*').eq('survey_date', today))
+        ]);
 
         let students = resStudents.data.filter(s => s.name && s.name !== '배정금지');
 
