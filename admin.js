@@ -154,12 +154,13 @@ async function init() {
             query = query.eq('teacher_name', loggedInManager);
         }
 
+        // 1. 기존 출석 쿼리에서 .eq('period', currentP)를 제거하여 오늘 전체 출결 데이터를 가져옵니다.
         const [resStudents, resAtt, resSleep, resMove, resEdu, resSurvey] = await Promise.all([
             query,
-            _supabase.from('attendance').select('*').eq('attendance_date', today).eq('period', currentP),
+            _supabase.from('attendance').select('*').eq('attendance_date', today), // 👈 수정됨: 오늘 전체 기간
             _supabase.from('sleep_log').select('*').eq('sleep_date', today),
             _supabase.from('move_log').select('*').eq('move_date', today).order('move_time', { ascending: false }),
-            _supabase.from('edu_score_log').select('*'),
+            _supabase.from('edu_score_log').select('*'), // 기존 유지
             _supabase.from('survey_log').select('*').eq('survey_date', today)
         ]);
 
@@ -178,7 +179,8 @@ async function init() {
         const curPInt = parseInt(currentP, 10);
 
         students.forEach(s => {
-            const att = resAtt.data.find(a => a.student_id === s.student_id);
+            // 2. 현재 교시의 출결 데이터만 추출 (메인 상태 배지용)
+            const att = resAtt.data.find(a => a.student_id === s.student_id && a.period === currentP);
             const move = resMove.data.find(ml => ml.student_id === s.student_id);
             const isOut = move && (move.return_period === "복귀안함" || parseInt(move.return_period) >= curPInt);
             const validMove = (isOut && move.reason !== "화장실/정수기") ? move.reason : "";
@@ -200,8 +202,29 @@ async function init() {
                 }
             }
             
+            // 기존 카운트 로직
             const todaySleep = resSleep.data.filter(sl => sl.student_id === s.student_id).reduce((acc, cur) => acc + (cur.count || 1), 0);
             const totalEduScore = resEdu.data.filter(el => el.student_id === s.student_id).reduce((acc, cur) => acc + (EDU_SCORE_MAP[cur.reason] || 0), 0);
+
+            // 💡 [추가] 3. 신규 아이콘 카운트 로직
+            
+            // ① 오늘 화장실/정수기 카운트
+            const restroomCount = resMove.data.filter(m => m.student_id === s.student_id && m.reason === "화장실/정수기").length;
+            
+            // ② 오늘 지각 총합 (출석코드 2 + 메모 지각 + 교육점수 지각)
+            const attLate = resAtt.data.filter(a => a.student_id === s.student_id && (a.status_code === '2' || (a.memo && a.memo.includes('지각')))).length;
+            const eduLate = resEdu.data.filter(e => e.student_id === s.student_id && e.score_date === today && e.reason.includes('지각')).length;
+            const totalLate = attLate + eduLate;
+            
+            // ③ 현재 교시 이전의 "찐 무단 결석" 내역 카운트 (공결 제외)
+            const prevAbsCount = resAtt.data.filter(a => {
+                if (a.student_id !== s.student_id) return false;
+                const p = parseInt(a.period, 10);
+                if (p >= curPInt) return false; // 현재 교시 이전만
+                
+                const hasValidMemo = a.memo && a.memo.trim() !== '' && a.memo.trim() !== '-';
+                return (a.status_code === '3') && !hasValidMemo; // 결석이면서 스케줄 사유(메모)가 없는 경우만 카운트
+            }).length;
 
             let status = "미입력", sub = "", color = "none", code = att ? att.status_code : "";
             if (code === "1") { 
@@ -213,15 +236,21 @@ async function init() {
             else if (att && att.memo) { status = att.memo; color = "schedule"; }
             else { status = code === "3" ? "결석" : (code === "2" ? "지각" : "미입력"); color = code || "none"; }
 
+            // 💡 [추가] 4. 신규 배지 HTML 렌더링
             dashboard.innerHTML += `
                 <div class="card status-${color}" style="position:relative; cursor:pointer;" onclick="window.__loadStudentDetail(window.__dashboardItems.find(x => x.studentId === '${s.student_id}'))">
                     <div class="seat" style="font-size:11px; opacity:0.7;">${s.seat_no}</div>
                     <div class="name" style="font-size:18px; margin: 5px 0;">${s.name}</div>
                     <div class="status-badge badge-${color}" style="font-size:13px; font-weight:900;">${status}</div>
                     ${sub ? `<div style="font-size:11px; color:#2c3e50; font-weight:bold; margin-top:4px; background:rgba(0,0,0,0.05); padding:2px 6px; border-radius:4px;">${sub}</div>` : ''}
-                    <div style="display:flex; gap:3px; margin-top:5px; justify-content:center;">
-                        ${todaySleep > 0 ? `<span style="background:#ffeaa7; padding:1px 4px; border-radius:3px; font-size:10px;">💤${todaySleep}</span>` : ''}
-                        ${totalEduScore > 0 ? `<span style="background:#fab1a0; padding:1px 4px; border-radius:3px; font-size:10px;">🚨${totalEduScore}</span>` : ''}
+                    
+                    <div style="display:flex; gap:3px; margin-top:5px; justify-content:center; flex-wrap:wrap;">
+                        ${todaySleep > 0 ? `<span style="background:#ffeaa7; padding:1px 4px; border-radius:3px; font-size:10px; color:#2d3436;">💤${todaySleep}</span>` : ''}
+                        ${totalEduScore > 0 ? `<span style="background:#fab1a0; padding:1px 4px; border-radius:3px; font-size:10px; color:#2d3436;">🚨${totalEduScore}</span>` : ''}
+                        
+                        ${totalLate > 0 ? `<span style="background:#f39c12; color:white; padding:1px 4px; border-radius:3px; font-size:10px;">🏃지각${totalLate}</span>` : ''}
+                        ${restroomCount > 0 ? `<span style="background:#81ecec; color:#2d3436; padding:1px 4px; border-radius:3px; font-size:10px;">🚰${restroomCount}</span>` : ''}
+                        ${prevAbsCount > 0 ? `<span style="background:#e74c3c; color:white; padding:1px 4px; border-radius:3px; font-size:10px;">❌결석${prevAbsCount}</span>` : ''}
                     </div>
                 </div>
             `;
