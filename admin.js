@@ -217,7 +217,9 @@ async function init() {
                 <div class="card status-${color}" style="position:relative; cursor:pointer;" onclick="window.__loadStudentDetail(window.__dashboardItems.find(x => x.studentId === '${s.student_id}'))">
                     <div class="seat" style="font-size:11px; opacity:0.7;">${s.seat_no}</div>
                     <div class="name" style="font-size:18px; margin: 5px 0;">${s.name}</div>
-                    <div class="status-badge badge-${color}" style="font-size:13px; font-weight:900;">${status}</div>
+                   <div class="status-badge badge-${color}" style="font-size:12px; font-weight:900; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; display: block; width: 100%;">
+                    ${status}
+                    </div>
                     ${sub ? `<div style="font-size:11px; color:#2c3e50; font-weight:bold; margin-top:4px; background:rgba(0,0,0,0.05); padding:2px 6px; border-radius:4px;">${sub}</div>` : ''}
                     <div style="display:flex; gap:3px; margin-top:5px; justify-content:center;">
                         ${todaySleep > 0 ? `<span style="background:#ffeaa7; padding:1px 4px; border-radius:3px; font-size:12px;">💤${todaySleep}</span>` : ''}
