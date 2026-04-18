@@ -118,137 +118,115 @@ function getCurrentPeriod() {
 // 2. 메인 화면 초기화 (바둑판 카드)
 // =========================================================
 async function init() {
-    if (!loggedInManager) {
-        document.getElementById('login-section').style.display = 'flex';
-        document.getElementById('admin-content').style.display = 'none';
-        return;
-    }
-    document.getElementById('login-section').style.display = 'none';
-    document.getElementById('admin-content').style.display = 'block';
-    document.getElementById('welcome-msg').innerText = `${loggedInManager} 선생님, 환영합니다`;
+    if (!loggedInManager) {
+        document.getElementById('login-section').style.display = 'flex';
+        document.getElementById('admin-content').style.display = 'none';
+        return;
+    }
+    document.getElementById('login-section').style.display = 'none';
+    document.getElementById('admin-content').style.display = 'block';
+    document.getElementById('welcome-msg').innerText = `${loggedInManager} 선생님, 환영합니다`;
 
-    const dashboard = document.getElementById('dashboard');
-    const summary = document.getElementById('status-summary');
+    const dashboard = document.getElementById('dashboard');
+    const summary = document.getElementById('status-summary');
 
-    try {
-        const now = new Date();
-        const today = new Date(now.getTime() - (now.getTimezoneOffset() * 60000)).toISOString().split('T')[0];
-        const currentP = getCurrentPeriod();
+    try {
+        const now = new Date();
+        const today = new Date(now.getTime() - (now.getTimezoneOffset() * 60000)).toISOString().split('T')[0];
+        const currentP = getCurrentPeriod();
 
-        summary.innerHTML = `
-            <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:10px; margin-bottom:15px;">
-                <div style="font-size:18px; font-weight:bold; color:#2c3e50;">현재 ${currentP}교시 현황판 (${today})</div>
-                <div style="display:flex; gap:5px; background:#eee; padding:4px; border-radius:8px;">
-                    <button onclick="window.__changeSort('seat')" style="padding:6px 15px; border-radius:6px; border:none; cursor:pointer; font-size:13px; font-weight:bold; transition:0.2s; ${window.__currentSortMode==='seat'?'background:#2c3e50; color:white;':'background:transparent; color:#7f8c8d;'}">자리순</button>
-                    <button onclick="window.__changeSort('name')" style="padding:6px 15px; border-radius:6px; border:none; cursor:pointer; font-size:13px; font-weight:bold; transition:0.2s; ${window.__currentSortMode==='name'?'background:#2c3e50; color:white;':'background:transparent; color:#7f8c8d;'}">이름순</button>
-                    <button id="dashboard-fold-btn" onclick="window.__toggleDashboard()" style="padding:6px 15px; border-radius:6px; border:none; cursor:pointer; font-size:13px; font-weight:bold; transition:0.2s; background:#7f8c8d; color:white; margin-left:10px;">바둑판 접기 ⬆</button>
-                </div>
-            </div>
-        `;
+        summary.innerHTML = `
+            <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:10px; margin-bottom:15px;">
+                <div style="font-size:18px; font-weight:bold; color:#2c3e50;">현재 ${currentP}교시 현황판 (${today})</div>
+                <div style="display:flex; gap:5px; background:#eee; padding:4px; border-radius:8px;">
+                    <button onclick="window.__changeSort('seat')" style="padding:6px 15px; border-radius:6px; border:none; cursor:pointer; font-size:13px; font-weight:bold; transition:0.2s; ${window.__currentSortMode==='seat'?'background:#2c3e50; color:white;':'background:transparent; color:#7f8c8d;'}">자리순</button>
+                    <button onclick="window.__changeSort('name')" style="padding:6px 15px; border-radius:6px; border:none; cursor:pointer; font-size:13px; font-weight:bold; transition:0.2s; ${window.__currentSortMode==='name'?'background:#2c3e50; color:white;':'background:transparent; color:#7f8c8d;'}">이름순</button>
+                    <button id="dashboard-fold-btn" onclick="window.__toggleDashboard()" style="padding:6px 15px; border-radius:6px; border:none; cursor:pointer; font-size:13px; font-weight:bold; transition:0.2s; background:#7f8c8d; color:white; margin-left:10px;">바둑판 접기 ⬆</button>
+                </div>
+            </div>
+        `;
 
-        let query = _supabase.from('student').select('*');
-        if (loggedInId === 'admin_4F') {
-            query = query.ilike('seat_no', '4-%'); 
-        }
-        else if (loggedInRole !== 'super') {
-            query = query.eq('teacher_name', loggedInManager);
-        }
+        let query = _supabase.from('student').select('*');
+        if (loggedInId === 'admin_4F') {
+            query = query.ilike('seat_no', '4-%'); 
+        }
+        else if (loggedInRole !== 'super') {
+            query = query.eq('teacher_name', loggedInManager);
+        }
 
-        const [resStudents, resAtt, resSleep, resMove, resEdu, resSurvey] = await Promise.all([
-            query,
-            _supabase.from('attendance').select('*').eq('attendance_date', today), // 💡 수정됨: 누적 데이터를 위해 eq('period', currentP) 제거
-            _supabase.from('sleep_log').select('*').eq('sleep_date', today),
-            _supabase.from('move_log').select('*').eq('move_date', today).order('move_time', { ascending: false }),
-            _supabase.from('edu_score_log').select('*'),
-            _supabase.from('survey_log').select('*').eq('survey_date', today)
-        ]);
+        const [resStudents, resAtt, resSleep, resMove, resEdu, resSurvey] = await Promise.all([
+            query,
+            _supabase.from('attendance').select('*').eq('attendance_date', today).eq('period', currentP),
+            _supabase.from('sleep_log').select('*').eq('sleep_date', today),
+            _supabase.from('move_log').select('*').eq('move_date', today).order('move_time', { ascending: false }),
+            _supabase.from('edu_score_log').select('*'),
+            _supabase.from('survey_log').select('*').eq('survey_date', today)
+        ]);
 
-        let students = resStudents.data.filter(s => s.name && s.name !== '배정금지');
+        let students = resStudents.data.filter(s => s.name && s.name !== '배정금지');
 
-        if (window.__currentSortMode === 'name') {
-            students.sort((a, b) => a.name.localeCompare(b.name, 'ko'));
-        } else {
-            students.sort((a, b) => a.seat_no.localeCompare(b.seat_no, undefined, {numeric: true}));
-        }
+        if (window.__currentSortMode === 'name') {
+            students.sort((a, b) => a.name.localeCompare(b.name, 'ko'));
+        } else {
+            students.sort((a, b) => a.seat_no.localeCompare(b.seat_no, undefined, {numeric: true}));
+        }
 
-        window.__dashboardItems = students.map(s => ({ seat: s.seat_no, studentId: s.student_id, name: s.name, teacher: s.teacher_name, className: s.class_name }));
+        window.__dashboardItems = students.map(s => ({ seat: s.seat_no, studentId: s.student_id, name: s.name, teacher: s.teacher_name, className: s.class_name }));
 
-        dashboard.innerHTML = '';
-        
-        const curPInt = parseInt(currentP, 10);
+        dashboard.innerHTML = '';
+        
+        const curPInt = parseInt(currentP, 10);
 
-        students.forEach(s => {
-            // 💡 수정됨: 전체 출석 데이터 중 '현재 교시'만 매칭하도록 조건 추가
-            const att = resAtt.data.find(a => a.student_id === s.student_id && String(a.period) === String(currentP));
-            const move = resMove.data.find(ml => ml.student_id === s.student_id);
-            const isOut = move && (move.return_period === "복귀안함" || parseInt(move.return_period) >= curPInt);
-            const validMove = (isOut && move.reason !== "화장실/정수기") ? move.reason : "";
-            
-            let surveyReason = "";
-            const surveysForStudent = resSurvey.data.filter(sv => sv.student_id === s.student_id);
-            for (let sv of surveysForStudent) {
-                const timeType = sv.arrival_time_type || "";
-                let startP = 0, endP = 0;
-                
-                if (timeType.includes("결석")) { startP = 1; endP = 8; }
-                else if (timeType.includes("오전")) { startP = 1; endP = 3; }
-                else if (timeType.includes("오후")) { startP = 1; endP = 6; }
-                else if (timeType.includes("야간") || timeType.includes("저녁")) { startP = 1; endP = 7; }
-                
-                if (curPInt >= startP && curPInt <= endP) {
-                    surveyReason = `[설문] ${sv.reason.split('(')[0].trim()}`;
-                    break;
-                }
-            }
-            
-            const todaySleep = resSleep.data.filter(sl => sl.student_id === s.student_id).reduce((acc, cur) => acc + (cur.count || 1), 0);
-            const totalEduScore = resEdu.data.filter(el => el.student_id === s.student_id).reduce((acc, cur) => acc + (EDU_SCORE_MAP[cur.reason] || 0), 0);
+        students.forEach(s => {
+            const att = resAtt.data.find(a => a.student_id === s.student_id);
+            const move = resMove.data.find(ml => ml.student_id === s.student_id);
+            const isOut = move && (move.return_period === "복귀안함" || parseInt(move.return_period) >= curPInt);
+            const validMove = (isOut && move.reason !== "화장실/정수기") ? move.reason : "";
+            
+            let surveyReason = "";
+            const surveysForStudent = resSurvey.data.filter(sv => sv.student_id === s.student_id);
+            for (let sv of surveysForStudent) {
+                const timeType = sv.arrival_time_type || "";
+                let startP = 0, endP = 0;
+                
+                if (timeType.includes("결석")) { startP = 1; endP = 8; }
+                else if (timeType.includes("오전")) { startP = 1; endP = 3; }
+                else if (timeType.includes("오후")) { startP = 1; endP = 6; }
+                else if (timeType.includes("야간") || timeType.includes("저녁")) { startP = 1; endP = 7; }
+                
+                if (curPInt >= startP && curPInt <= endP) {
+                    surveyReason = `[설문] ${sv.reason.split('(')[0].trim()}`;
+                    break;
+                }
+            }
+            
+            const todaySleep = resSleep.data.filter(sl => sl.student_id === s.student_id).reduce((acc, cur) => acc + (cur.count || 1), 0);
+            const totalEduScore = resEdu.data.filter(el => el.student_id === s.student_id).reduce((acc, cur) => acc + (EDU_SCORE_MAP[cur.reason] || 0), 0);
 
-            // 💡 [새로 추가된 아이콘 카운트 배지 로직]
-            // 1. 화장실/정수기 카운트
-            const restroomCount = resMove.data.filter(m => m.student_id === s.student_id && m.reason === "화장실/정수기").length;
-            
-            // 2. 오늘 지각 총합 (출석코드 2 + 메모 '지각' + 교육점수 오늘자 '지각')
-            const attLate = resAtt.data.filter(a => a.student_id === s.student_id && (a.status_code === '2' || (a.memo && a.memo.includes('지각')))).length;
-            const eduLate = resEdu.data.filter(e => e.student_id === s.student_id && e.score_date === today && e.reason.includes('지각')).length;
-            const totalLate = attLate + eduLate;
-            
-            // 3. 이전 교시 찐 결석 내역 (현재 교시 미만, 출결코드 3, 메모(공결) 없음)
-            const prevAbsCount = resAtt.data.filter(a => {
-                if (a.student_id !== s.student_id) return false;
-                const p = parseInt(a.period, 10);
-                if (p >= curPInt) return false;
-                const hasValidMemo = a.memo && a.memo.trim() !== '' && a.memo.trim() !== '-';
-                return (a.status_code === '3') && !hasValidMemo;
-            }).length;
+            let status = "미입력", sub = "", color = "none", code = att ? att.status_code : "";
+            if (code === "1") { 
+                status = "출석"; color = "1"; 
+                sub = validMove || surveyReason || (att ? att.memo : ""); 
+            }
+            else if (validMove) { status = validMove; color = "move"; }
+            else if (surveyReason) { status = surveyReason; color = "schedule"; }
+            else if (att && att.memo) { status = att.memo; color = "schedule"; }
+            else { status = code === "3" ? "결석" : (code === "2" ? "지각" : "미입력"); color = code || "none"; }
 
-            let status = "미입력", sub = "", color = "none", code = att ? att.status_code : "";
-            if (code === "1") { 
-                status = "출석"; color = "1"; 
-                sub = validMove || surveyReason || (att ? att.memo : ""); 
-            }
-            else if (validMove) { status = validMove; color = "move"; }
-            else if (surveyReason) { status = surveyReason; color = "schedule"; }
-            else if (att && att.memo) { status = att.memo; color = "schedule"; }
-            else { status = code === "3" ? "결석" : (code === "2" ? "지각" : "미입력"); color = code || "none"; }
-
-            dashboard.innerHTML += `
-                <div class="card status-${color}" style="position:relative; cursor:pointer;" onclick="window.__loadStudentDetail(window.__dashboardItems.find(x => x.studentId === '${s.student_id}'))">
-                    <div class="seat" style="font-size:11px; opacity:0.7;">${s.seat_no}</div>
-                    <div class="name" style="font-size:18px; margin: 5px 0;">${s.name}</div>
-                    <div class="status-badge badge-${color}" style="font-size:13px; font-weight:900;">${status}</div>
-                    ${sub ? `<div style="font-size:11px; color:#2c3e50; font-weight:bold; margin-top:4px; background:rgba(0,0,0,0.05); padding:2px 6px; border-radius:4px;">${sub}</div>` : ''}
-                    <div style="display:flex; gap:3px; margin-top:5px; justify-content:center; flex-wrap:wrap;">
-                        ${todaySleep > 0 ? `<span style="background:#ffeaa7; padding:1px 4px; border-radius:3px; font-size:10px; color:#2d3436;">💤${todaySleep}</span>` : ''}
-                        ${totalEduScore > 0 ? `<span style="background:#fab1a0; padding:1px 4px; border-radius:3px; font-size:10px; color:#2d3436;">🚨${totalEduScore}</span>` : ''}
-                        ${totalLate > 0 ? `<span style="background:#f39c12; color:white; padding:1px 4px; border-radius:3px; font-size:10px;">🏃지각${totalLate}</span>` : ''}
-                        ${restroomCount > 0 ? `<span style="background:#81ecec; color:#2d3436; padding:1px 4px; border-radius:3px; font-size:10px;">🚰${restroomCount}</span>` : ''}
-                        ${prevAbsCount > 0 ? `<span style="background:#e74c3c; color:white; padding:1px 4px; border-radius:3px; font-size:10px;">❌결석${prevAbsCount}</span>` : ''}
-                    </div>
-                </div>
-            `;
-        });
-    } catch (err) { summary.innerText = "에러: " + err.message; }
+            dashboard.innerHTML += `
+                <div class="card status-${color}" style="position:relative; cursor:pointer;" onclick="window.__loadStudentDetail(window.__dashboardItems.find(x => x.studentId === '${s.student_id}'))">
+                    <div class="seat" style="font-size:11px; opacity:0.7;">${s.seat_no}</div>
+                    <div class="name" style="font-size:18px; margin: 5px 0;">${s.name}</div>
+                    <div class="status-badge badge-${color}" style="font-size:13px; font-weight:900;">${status}</div>
+                    ${sub ? `<div style="font-size:11px; color:#2c3e50; font-weight:bold; margin-top:4px; background:rgba(0,0,0,0.05); padding:2px 6px; border-radius:4px;">${sub}</div>` : ''}
+                    <div style="display:flex; gap:3px; margin-top:5px; justify-content:center;">
+                        ${todaySleep > 0 ? `<span style="background:#ffeaa7; padding:1px 4px; border-radius:3px; font-size:10px;">💤${todaySleep}</span>` : ''}
+                        ${totalEduScore > 0 ? `<span style="background:#fab1a0; padding:1px 4px; border-radius:3px; font-size:10px;">🚨${totalEduScore}</span>` : ''}
+                    </div>
+                </div>
+            `;
+        });
+    } catch (err) { summary.innerText = "에러: " + err.message; }
 }
 
 window.__changeSort = function(mode) { 
