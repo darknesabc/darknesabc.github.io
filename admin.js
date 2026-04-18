@@ -140,7 +140,12 @@ async function init() {
         `;
 
         let query = _supabase.from('student').select('*');
-        if (loggedInRole !== 'super') query = query.eq('teacher_name', loggedInManager);
+        if (loggedInManager === 'admin_4F') {
+            query = query.ilike('seat_no', '4-%'); 
+        }
+        else if (loggedInRole !== 'super') {
+            query = query.eq('teacher_name', loggedInManager);
+        }
 
         const [resStudents, resAtt, resSleep, resMove, resEdu, resSurvey] = await Promise.all([
             query,
