@@ -156,7 +156,7 @@ async function init() {
 
         const [resStudents, resAtt, resSleep, resMove, resEdu, resSurvey] = await Promise.all([
             query,
-            _supabase.from('attendance').select('*').eq('attendance_date', today).eq('period', currentP),
+            _supabase.from('attendance').select('*').eq('attendance_date', today),
             _supabase.from('sleep_log').select('*').eq('sleep_date', today),
             _supabase.from('move_log').select('*').eq('move_date', today).order('move_time', { ascending: false }),
             _supabase.from('edu_score_log').select('*'),
@@ -178,7 +178,16 @@ async function init() {
         const curPInt = parseInt(currentP, 10);
 
         students.forEach(s => {
-            const att = resAtt.data.find(a => a.student_id === s.student_id);
+            const att = resAtt.data.find(a => a.student_id === s.student_id && a.period === currentP);
+            let todayLateCount = 0;
+            let todayAbsCount = 0;
+            resAtt.data.filter(a => a.student_id === s.student_id && parseInt(a.period, 10) < curPInt).forEach(a => {
+            const isLate = a.status_code === '2' || (a.memo && a.memo.includes('지각'));
+            const hasValidMemo = a.memo && a.memo.trim() !== '' && a.memo.trim() !== '-';
+            const isAbs = a.status_code === '3' && !isLate && !hasValidMemo; // 메모 없는 찐 무단결석만 카운트
+            if (isLate) todayLateCount++;
+            if (isAbs) todayAbsCount++;
+            });
             const move = resMove.data.find(ml => ml.student_id === s.student_id);
             const isOut = move && (move.return_period === "복귀안함" || parseInt(move.return_period) >= curPInt);
             const validMove = (isOut && move.reason !== "화장실/정수기") ? move.reason : "";
@@ -234,6 +243,8 @@ async function init() {
                     ${sub ? `<div style="font-size:11px; color:#2c3e50; font-weight:bold; margin-top:4px; background:rgba(0,0,0,0.05); padding:2px 6px; border-radius:4px;">${sub}</div>` : ''}
                     <div style="display:flex; gap:3px; margin-top:5px; justify-content:center;">
                         ${todayRestroomCount > 0 ? `<span style="background:#e0f7fa; color:#0097a7; padding:1px 4px; border-radius:3px; font-size:13px; font-weight:bold;">💧${todayRestroomCount}</span>` : ''}
+                        ${todayLateCount > 0 ? `<span style="background:#fff3e0; color:#e67e22; padding:1px 4px; border-radius:3px; font-size:12px; font-weight:bold;">⏰지각${todayLateCount}</span>` : ''}
+                        ${todayAbsCount > 0 ? `<span style="background:#fdedec; color:#e74c3c; padding:1px 4px; border-radius:3px; font-size:12px; font-weight:bold;">❌결석${todayAbsCount}</span>` : ''}
                         ${todaySleep > 0 ? `<span style="background:#ffeaa7; padding:1px 4px; border-radius:3px; font-size:13px;">💤${todaySleep}</span>` : ''}
                         ${totalEduScore > 0 ? `<span style="background:#fab1a0; padding:1px 4px; border-radius:3px; font-size:13px;">🚨${totalEduScore}</span>` : ''}
                     </div>
