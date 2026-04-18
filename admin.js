@@ -1859,12 +1859,10 @@ window.__toggleSubject = function(subjId) {
     window.__renderGradeTrendUI(); 
 };
 
-// =========================================================
-// 💡 [최종 버그 수정] 성적 추이 그래프/표 렌더러 ('우리반 30%' 라인 제거)
-// =========================================================
 window.__renderGradeDisplay = function() {
     const area = document.getElementById('grade-display-area');
     
+    // 1. 선택된 시험 종류(더프, 오메가 등)만 필터링
     const scores = window.__currentStudentScores.filter(s => {
         const type = getExamType(s.exam_label);
         return window.__examTypeToggles[type] === true;
@@ -1887,7 +1885,8 @@ window.__renderGradeDisplay = function() {
 
     const getTop30 = (examLabel, subj, valKey, filterMode, myScore) => {
         let pool = window.__allMockScores.filter(s => s.exam_label === examLabel);
-        if (filterMode === 'topHS') pool = pool.filter(s => s.class_group && s.class_group.includes('HS'));
+        if (filterMode === 'topClass') pool = pool.filter(s => s.class_name === window.__currentStudentClass);
+        else if (filterMode === 'topHS') pool = pool.filter(s => s.class_group && s.class_group.includes('HS'));
         else if (filterMode === 'topGreen') pool = pool.filter(s => s.class_group && s.class_group.includes('그린'));
         else if (filterMode === 'topBlue') pool = pool.filter(s => s.class_group && s.class_group.includes('블루'));
         else if (filterMode === 'topMed') pool = pool.filter(s => s.class_group && (s.class_group.includes('의치') || s.class_group.includes('서/')));
@@ -1939,6 +1938,7 @@ window.__renderGradeDisplay = function() {
             let valKey = (sbj.id === 'eng') ? (mode === 'pct' ? 'eng_grade' : 'eng_raw') : (mode === 'pct' ? `${sbj.id}_exp_pct` : (sbj.id.startsWith('tam') ? `${sbj.id}_raw` : `${sbj.id}_raw_total`));
             const yAxisID = (sbj.id === 'eng' && mode === 'pct') ? 'yGrade' : 'y';
             
+            // 학생 본인 성적 (실선)
             datasets.push({ 
                 label: sbj.name, 
                 data: scores.map(s => getVal(s, sbj.id)), 
@@ -1951,32 +1951,31 @@ window.__renderGradeDisplay = function() {
                 yAxisID: yAxisID 
             });
 
-            if (sbj.id !== 'eng') {
-                const addLine = (key, label, dashPattern, color) => {
-                    if (window.__toggles[key]) {
-                        datasets.push({ 
-                            label: `${sbj.name} (${label})`, 
-                            data: scores.map(s => getTop30(s.exam_label, sbj.id, valKey, key, s)), 
-                            borderColor: color || colors[sbj.id], 
-                            borderDash: dashPattern, 
-                            borderWidth: 1.5, 
-                            pointRadius: rPt, 
-                            pointStyle: 'rect', 
-                            fill: false, 
-                            yAxisID: yAxisID 
-                        });
-                    }
-                };
+            // 💡 [핵심 교정] "if (sbj.id !== 'eng')" 차단막 삭제! 이제 영어도 30% 선을 그립니다.
+            const addLine = (key, label, dashPattern, color) => {
+                if (window.__toggles[key]) {
+                    datasets.push({ 
+                        label: `${sbj.name} (${label})`, 
+                        data: scores.map(s => getTop30(s.exam_label, sbj.id, valKey, key, s)), 
+                        borderColor: color || colors[sbj.id], 
+                        borderDash: dashPattern, 
+                        borderWidth: 1.5, 
+                        pointRadius: rPt, 
+                        pointStyle: 'rect', 
+                        fill: false, 
+                        yAxisID: yAxisID 
+                    });
+                }
+            };
 
-                addLine('topTotal', '전체상위30%', [5, 5], colors[sbj.id]);
-                addLine('topChoice', '선택상위30%', [3, 3], '#9b59b6'); 
-                // 💡 우리반 30% 차트 선 렌더링 삭제됨
-                addLine('topHS', 'HS반30%', [4, 2], '#e67e22'); 
-                addLine('topGreen', '그린30%', [4, 2], '#2ecc71');
-                addLine('topBlue', '블루30%', [4, 2], '#3498db');
-                addLine('topMed', '서/의치대30%', [4, 2], '#c0392b'); 
-                addLine('topSKY', '연고대30%', [4, 2], '#2980b9');
-            }
+            addLine('topTotal', '전체상위30%', [5, 5], colors[sbj.id]);
+            addLine('topChoice', '선택상위30%', [3, 3], '#9b59b6'); 
+            addLine('topClass', '우리반30%', [2, 2], '#1abc9c');
+            addLine('topHS', 'HS반30%', [4, 2], '#e67e22'); 
+            addLine('topGreen', '그린30%', [4, 2], '#2ecc71');
+            addLine('topBlue', '블루30%', [4, 2], '#3498db');
+            addLine('topMed', '서/의치대30%', [4, 2], '#c0392b'); 
+            addLine('topSKY', '연고대30%', [4, 2], '#2980b9');
         });
 
         Chart.defaults.color = '#7f8c8d';
