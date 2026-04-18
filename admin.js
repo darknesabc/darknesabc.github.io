@@ -1756,7 +1756,7 @@ window.__toggleCutoff = function(key) { window.__toggles[key] = !window.__toggle
 window.__toggleSubject = function(subjId) { window.__subjectToggles[subjId] = !window.__subjectToggles[subjId]; window.__renderGradeTrendUI(); };
 
 // =========================================================
-// 💡 [버그 수정] 성적 추이 그래프/표 렌더러 (UI 완벽 호환)
+// 💡 [버그 수정] 성적 추이 그래프/표 렌더러 (한국사 extra_raw 반영)
 // =========================================================
 window.__renderGradeDisplay = function() {
     const area = document.getElementById('grade-display-area');
@@ -1885,7 +1885,6 @@ window.__renderGradeDisplay = function() {
         });
 
     } else {
-        // 💡 [수정 내용] 표(Table) 뷰 완벽 구조화
         const v = (val) => (val === null || val === undefined || val === "" || val === "0" || val === 0) ? '-' : val;
         
         let h = `
@@ -1926,7 +1925,6 @@ window.__renderGradeDisplay = function() {
         `;
 
         scores.forEach(s => {
-            // 탐구 과목명 줄임말 처리 (공간 확보 목적)
             const stdName = (n) => {
                 if (!n || n === '-' || n === 'null') return '-';
                 let str = String(n).trim();
@@ -1944,7 +1942,7 @@ window.__renderGradeDisplay = function() {
                 <td class="g-kor">${v(s.kor_raw_total)}</td><td class="g-kor">${v(s.kor_exp_std)}</td><td class="g-kor">${v(s.kor_exp_pct)}</td><td class="g-kor"><b>${v(s.kor_exp_grade)}</b></td>
                 <td class="g-math">${v(s.math_raw_total)}</td><td class="g-math">${v(s.math_exp_std)}</td><td class="g-math">${v(s.math_exp_pct)}</td><td class="g-math"><b>${v(s.math_exp_grade)}</b></td>
                 <td class="g-eng">${v(s.eng_raw)}</td><td class="g-eng"><b>${v(s.eng_grade)}</b></td>
-                <td class="g-hist">${v(s.hist_raw)}</td><td class="g-hist"><b>${v(s.hist_grade || s.hist_exp_grade)}</b></td>
+                <td class="g-hist">${v(s.extra_raw)}</td><td class="g-hist"><b>${v(s.hist_grade || s.hist_exp_grade)}</b></td>
                 <td class="g-tam1" style="font-size:12px;">${stdName(s.tam1_name)}</td><td class="g-tam1">${v(s.tam1_raw)}</td><td class="g-tam1">${v(s.tam1_exp_std)}</td><td class="g-tam1">${v(s.tam1_exp_pct)}</td><td class="g-tam1"><b>${v(s.tam1_exp_grade)}</b></td>
                 <td class="g-tam2" style="font-size:12px;">${stdName(s.tam2_name)}</td><td class="g-tam2">${v(s.tam2_raw)}</td><td class="g-tam2">${v(s.tam2_exp_std)}</td><td class="g-tam2">${v(s.tam2_exp_pct)}</td><td class="g-tam2"><b>${v(s.tam2_exp_grade)}</b></td>
             </tr>`;
