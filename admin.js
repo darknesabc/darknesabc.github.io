@@ -11,10 +11,10 @@ window.__currentSortMode = 'seat'; // 기본값: 자리순
 window.__radarCurrentType = 'unit'; // 레이더 차트 (단원별/행동영역별)
 window.__radarCurrentSubj = null;   // 레이더 차트 (선택된 과목)
 window.__examTypeToggles = {
-    '더프': true,
-    '오메가': true,
-    '전대실모': true,
-    '평가원': true
+    '더프': false,
+    '오메가': false,
+    '전대실모': false,
+    '평가원': false
 };
 // 시험 라벨에서 종류를 추출하는 도우미 함수
 const getExamType = (label) => {
@@ -1838,19 +1838,19 @@ window.__toggleExamType = function(type) {
 };
 
 // =========================================================
-// 💡 [버그 수정] 성적 추이 그래프/표 렌더러 (한국사 extra_raw 반영 및 토글 완벽 작동)
+// 💡 [최종 버그 수정] 성적 추이 그래프/표 렌더러 (모든 토글 완벽 작동)
 // =========================================================
 window.__renderGradeDisplay = function() {
     const area = document.getElementById('grade-display-area');
     
-    // 선택된 시험만 필터링
+    // 1. 선택된 시험 종류(더프, 오메가 등)만 필터링
     const scores = window.__currentStudentScores.filter(s => {
         const type = getExamType(s.exam_label);
         return window.__examTypeToggles[type] === true;
     });
 
     if (scores.length === 0) {
-        area.innerHTML = '<div style="text-align:center; padding:100px 0; color:#bdc3c7; font-weight:bold;">선택된 조건에 해당하는 시험 성적이 없습니다.</div>';
+        area.innerHTML = '<div style="text-align:center; padding:100px 0; color:#bdc3c7; font-weight:bold; background:#f8f9fa; border-radius:8px;">위쪽에서 분석할 시험(더프, 오메가 등)을 먼저 선택해주세요.</div>';
         return;
     }
     
@@ -1914,12 +1914,13 @@ window.__renderGradeDisplay = function() {
         const rPt = scores.length === 1 ? 5 : 0;
 
         subjs.forEach(sbj => {
-            // 💡 [핵심] 과목 토글 버튼이 꺼져있으면 datasets에 추가하지 않고 다음 과목으로 넘어갑니다.
+            // 💡 [핵심 교정 1] 과목 토글이 꺼져있으면 아예 그리지 않음!
             if (!window.__subjectToggles[sbj.id]) return;
 
             let valKey = (sbj.id === 'eng') ? (mode === 'pct' ? 'eng_grade' : 'eng_raw') : (mode === 'pct' ? `${sbj.id}_exp_pct` : (sbj.id.startsWith('tam') ? `${sbj.id}_raw` : `${sbj.id}_raw_total`));
             const yAxisID = (sbj.id === 'eng' && mode === 'pct') ? 'yGrade' : 'y';
             
+            // 학생 본인 성적 (실선)
             datasets.push({ 
                 label: sbj.name, 
                 data: scores.map(s => getVal(s, sbj.id)), 
@@ -1932,10 +1933,10 @@ window.__renderGradeDisplay = function() {
                 yAxisID: yAxisID 
             });
 
-            // 💡 [핵심] 30% 컷 선들을 그리는 로직. toggles[key]가 true일 때만 그려집니다.
+            // 💡 [핵심 교정 2] 30% 컷 선들을 그리는 로직. toggles[key]가 켜져있을 때만 그림!
             if (sbj.id !== 'eng') {
                 const addLine = (key, label, dashPattern, color) => {
-                    if (toggles[key]) {
+                    if (window.__toggles[key]) {
                         datasets.push({ 
                             label: `${sbj.name} (${label})`, 
                             data: scores.map(s => getTop30(s.exam_label, sbj.id, valKey, key, s)), 
@@ -1950,14 +1951,13 @@ window.__renderGradeDisplay = function() {
                     }
                 };
 
-                // 모든 토글 버튼의 키에 맞춰 addLine을 호출해 줍니다.
                 addLine('topTotal', '전체상위30%', [5, 5], colors[sbj.id]);
                 addLine('topChoice', '선택상위30%', [3, 3], '#9b59b6'); 
-                addLine('topClass', '우리반30%', [2, 2], '#1abc9c'); // 👈 추가된 부분
+                addLine('topClass', '우리반30%', [2, 2], '#1abc9c');
                 addLine('topHS', 'HS반30%', [4, 2], '#e67e22'); 
-                addLine('topGreen', '그린30%', [4, 2], '#2ecc71'); // 👈 추가된 부분
-                addLine('topBlue', '블루30%', [4, 2], '#3498db');  // 👈 추가된 부분
-                addLine('topMed', '의치대30%', [4, 2], '#c0392b'); 
+                addLine('topGreen', '그린30%', [4, 2], '#2ecc71');
+                addLine('topBlue', '블루30%', [4, 2], '#3498db');
+                addLine('topMed', '서/의치대30%', [4, 2], '#c0392b'); 
                 addLine('topSKY', '연고대30%', [4, 2], '#2980b9');
             }
         });
@@ -1965,7 +1965,7 @@ window.__renderGradeDisplay = function() {
         Chart.defaults.color = '#7f8c8d';
         const chartScales = { 
             x: { grid: { display: false } }, 
-            y: { type: 'linear', display: true, position: 'left', beginAtZero: true, max: 100, grid: { color: '#ecf0f1' }, title: { display: true, text: '백분위 / 원점수' } } 
+            y: { type: 'linear', display: true, position: 'left', beginAtZero: true, max: 100, grid: { color: '#ecf0f1' }, title: { display: true, text: mode === 'pct' ? '백분위' : '원점수' } } 
         };
 
         if (window.__subjectToggles['eng'] && mode === 'pct') {
@@ -1976,7 +1976,12 @@ window.__renderGradeDisplay = function() {
             };
         }
 
-        new Chart(ctx, { 
+        // 기존 캔버스가 있다면 제거 후 다시 그림
+        if (window.__gradeChartInstance) {
+            window.__gradeChartInstance.destroy();
+        }
+
+        window.__gradeChartInstance = new Chart(ctx, { 
             type: 'line', 
             data: { labels, datasets }, 
             options: { 
@@ -2003,6 +2008,7 @@ window.__renderGradeDisplay = function() {
         });
 
     } else {
+        // 표(Table) 뷰 로직 (수정 없이 그대로 유지)
         const v = (val) => (val === null || val === undefined || val === "" || val === "0" || val === 0) ? '-' : val;
         
         let h = `
