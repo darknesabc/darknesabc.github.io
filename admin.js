@@ -62,6 +62,27 @@ const EDU_SCORE_MAP = {
 };
 
 // =========================================================
+// 💡 [신규 추가] 1,000건 제한 무시! 데이터 무제한 로드 함수
+// =========================================================
+async function fetchAllRecords(queryBuilder) {
+    let allData = [];
+    let startIdx = 0;
+    let fetchMore = true;
+    while (fetchMore) {
+        const { data, error } = await queryBuilder.range(startIdx, startIdx + 999);
+        if (error) { console.error(error); break; }
+        if (data && data.length > 0) {
+            allData = allData.concat(data);
+            startIdx += 1000;
+            if (data.length < 1000) fetchMore = false;
+        } else {
+            fetchMore = false;
+        }
+    }
+    return { data: allData };
+}
+
+// =========================================================
 // 1. 공통 유틸리티 (로그인, 로그아웃, 시간)
 // =========================================================
 async function handleLogin() {
@@ -154,14 +175,15 @@ async function init() {
             query = query.eq('teacher_name', loggedInManager);
         }
 
+        // 기존 코드를 아래 코드로 교체하세요!
         const [resStudents, resAttToday, resSleep, resMove, resEdu, resSurvey] = await Promise.all([
-    query,
-    _supabase.from('attendance').select('*').eq('attendance_date', today), // 💡 교시 필터 제거
-    _supabase.from('sleep_log').select('*').eq('sleep_date', today),
-    _supabase.from('move_log').select('*').eq('move_date', today).order('move_time', { ascending: false }),
-    _supabase.from('edu_score_log').select('*'),
-    _supabase.from('survey_log').select('*').eq('survey_date', today)
-]);
+            fetchAllRecords(query),
+            fetchAllRecords(_supabase.from('attendance').select('*').eq('attendance_date', today)),
+            fetchAllర్ణRecords(_supabase.from('sleep_log').select('*').eq('sleep_date', today)),
+            fetchAllRecords(_supabase.from('move_log').select('*').eq('move_date', today).order('move_time', { ascending: false })),
+            fetchAllRecords(_supabase.from('edu_score_log').select('*')),
+            fetchAllRecords(_supabase.from('survey_log').select('*').eq('survey_date', today))
+        ]);
 
         let students = resStudents.data.filter(s => s.name && s.name !== '배정금지');
 
@@ -281,12 +303,13 @@ window.__loadStudentDetail = async function(student) {
     detailSection.scrollIntoView({ behavior: 'smooth', block: 'start' });
 
     try {
+        // 기존 코드를 아래 코드로 교체하세요!
         const [resMove, resEdu, resSleep, resAtt, resSurvey] = await Promise.all([
-            _supabase.from('move_log').select('*').eq('student_id', student.studentId).order('move_date', {ascending: false}).order('move_time', {ascending: false}),
-            _supabase.from('edu_score_log').select('*').eq('student_id', student.studentId).order('score_date', {ascending: false}),
-            _supabase.from('sleep_log').select('*').eq('student_id', student.studentId).order('sleep_date', {ascending: false}),
-            _supabase.from('attendance').select('*').eq('student_id', student.studentId).order('attendance_date', {ascending: false}),
-            _supabase.from('survey_log').select('*').eq('student_id', student.studentId)
+            fetchAllRecords(_supabase.from('move_log').select('*').eq('student_id', student.studentId).order('move_date', {ascending: false}).order('move_time', {ascending: false})),
+            fetchAllRecords(_supabase.from('edu_score_log').select('*').eq('student_id', student.studentId).order('score_date', {ascending: false})),
+            fetchAllRecords(_supabase.from('sleep_log').select('*').eq('student_id', student.studentId).order('sleep_date', {ascending: false})),
+            fetchAllRecords(_supabase.from('attendance').select('*').eq('student_id', student.studentId).order('attendance_date', {ascending: false})),
+            fetchAllRecords(_supabase.from('survey_log').select('*').eq('student_id', student.studentId))
         ]);
 
         const now = new Date();
