@@ -1755,11 +1755,11 @@ window.__renderRadarChartCanvas = function() {
 };
 
 // =========================================================
-// 💡 추이 & 그래프 로직 (UI 버튼 렌더링 부분)
+// 💡 추이 & 그래프 로직 (UI 렌더링 - '우리반 30%' 버튼 제거)
 // =========================================================
 window.__renderGradeTrendUI = function() {
     const container = document.getElementById('grade-trend-container');
-    if (!container) return; // 컨테이너가 없으면 방어
+    if (!container) return;
 
     const btnSty = (isActive, bg, fg) => `border:1px solid #dee2e6; padding:5px 12px; border-radius:4px; cursor:pointer; font-size:11px; font-weight:bold; background:${isActive ? bg : 'transparent'}; color:${isActive ? '#fff' : fg}; transition:0.2s;`;
     
@@ -1776,7 +1776,6 @@ window.__renderGradeTrendUI = function() {
         return `<button onclick="window.__toggleCutoff('${key}')" style="border:1px solid ${isOn ? '#3498db' : '#dee2e6'}; padding:5px 12px; border-radius:20px; cursor:pointer; font-size:11px; font-weight:bold; background:${isOn ? '#e8f4f8' : '#fff'}; color:${isOn ? '#2980b9' : '#7f8c8d'}; transition:0.2s;">${label}</button>`;
     };
 
-    // 과목명 라벨 (선택과목 포함)
     const latestScore = window.__currentStudentScores[window.__currentStudentScores.length - 1] || {};
     const kLabel = latestScore.kor_choice ? `국어(${latestScore.kor_choice})` : '국어';
     const mLabel = latestScore.math_choice ? `수학(${latestScore.math_choice})` : '수학';
@@ -1818,7 +1817,6 @@ window.__renderGradeTrendUI = function() {
             <div style="display:flex; flex-wrap:wrap; gap:8px; margin-bottom:15px; ${window.__currentViewMode==='table' ? 'display:none;' : ''}">
                 ${tglBtn('topTotal', '전체 상위 30%')}
                 ${tglBtn('topChoice', '선택 상위 30%')}
-                ${tglBtn('topClass', '우리반 30%')}
                 ${tglBtn('topHS', 'HS반 30%')}
                 ${tglBtn('topGreen', '그린 30%')}
                 ${tglBtn('topBlue', '블루 30%')}
@@ -1838,7 +1836,6 @@ window.__renderGradeTrendUI = function() {
         </div>
     `;
     
-    // 💡 [핵심 수정] HTML 요소가 돔(DOM)에 완전히 그려질 때까지 0.05초 대기 후 그래프 렌더링
     setTimeout(() => {
         window.__renderGradeDisplay();
     }, 50);
@@ -1847,7 +1844,7 @@ window.__renderGradeTrendUI = function() {
 // 시험 타입 토글 함수
 window.__toggleExamType = function(type) {
     window.__examTypeToggles[type] = !window.__examTypeToggles[type];
-    window.__renderGradeTrendUI(); // UI 다시 그리고 그래프 업데이트
+    window.__renderGradeTrendUI(); 
 };
 
 // 30% 컷 라인 토글 함수
@@ -1863,12 +1860,11 @@ window.__toggleSubject = function(subjId) {
 };
 
 // =========================================================
-// 💡 [최종 버그 수정] 성적 추이 그래프/표 렌더러 (모든 토글 완벽 작동)
+// 💡 [최종 버그 수정] 성적 추이 그래프/표 렌더러 ('우리반 30%' 라인 제거)
 // =========================================================
 window.__renderGradeDisplay = function() {
     const area = document.getElementById('grade-display-area');
     
-    // 1. 선택된 시험 종류(더프, 오메가 등)만 필터링
     const scores = window.__currentStudentScores.filter(s => {
         const type = getExamType(s.exam_label);
         return window.__examTypeToggles[type] === true;
@@ -1891,8 +1887,7 @@ window.__renderGradeDisplay = function() {
 
     const getTop30 = (examLabel, subj, valKey, filterMode, myScore) => {
         let pool = window.__allMockScores.filter(s => s.exam_label === examLabel);
-        if (filterMode === 'topClass') pool = pool.filter(s => s.class_name === window.__currentStudentClass);
-        else if (filterMode === 'topHS') pool = pool.filter(s => s.class_group && s.class_group.includes('HS'));
+        if (filterMode === 'topHS') pool = pool.filter(s => s.class_group && s.class_group.includes('HS'));
         else if (filterMode === 'topGreen') pool = pool.filter(s => s.class_group && s.class_group.includes('그린'));
         else if (filterMode === 'topBlue') pool = pool.filter(s => s.class_group && s.class_group.includes('블루'));
         else if (filterMode === 'topMed') pool = pool.filter(s => s.class_group && (s.class_group.includes('의치') || s.class_group.includes('서/')));
@@ -1939,13 +1934,11 @@ window.__renderGradeDisplay = function() {
         const rPt = scores.length === 1 ? 5 : 0;
 
         subjs.forEach(sbj => {
-            // 💡 [핵심 교정 1] 과목 토글이 꺼져있으면 아예 그리지 않음!
             if (!window.__subjectToggles[sbj.id]) return;
 
             let valKey = (sbj.id === 'eng') ? (mode === 'pct' ? 'eng_grade' : 'eng_raw') : (mode === 'pct' ? `${sbj.id}_exp_pct` : (sbj.id.startsWith('tam') ? `${sbj.id}_raw` : `${sbj.id}_raw_total`));
             const yAxisID = (sbj.id === 'eng' && mode === 'pct') ? 'yGrade' : 'y';
             
-            // 학생 본인 성적 (실선)
             datasets.push({ 
                 label: sbj.name, 
                 data: scores.map(s => getVal(s, sbj.id)), 
@@ -1958,7 +1951,6 @@ window.__renderGradeDisplay = function() {
                 yAxisID: yAxisID 
             });
 
-            // 💡 [핵심 교정 2] 30% 컷 선들을 그리는 로직. toggles[key]가 켜져있을 때만 그림!
             if (sbj.id !== 'eng') {
                 const addLine = (key, label, dashPattern, color) => {
                     if (window.__toggles[key]) {
@@ -1978,7 +1970,7 @@ window.__renderGradeDisplay = function() {
 
                 addLine('topTotal', '전체상위30%', [5, 5], colors[sbj.id]);
                 addLine('topChoice', '선택상위30%', [3, 3], '#9b59b6'); 
-                addLine('topClass', '우리반30%', [2, 2], '#1abc9c');
+                // 💡 우리반 30% 차트 선 렌더링 삭제됨
                 addLine('topHS', 'HS반30%', [4, 2], '#e67e22'); 
                 addLine('topGreen', '그린30%', [4, 2], '#2ecc71');
                 addLine('topBlue', '블루30%', [4, 2], '#3498db');
@@ -2001,7 +1993,6 @@ window.__renderGradeDisplay = function() {
             };
         }
 
-        // 기존 캔버스가 있다면 제거 후 다시 그림
         if (window.__gradeChartInstance) {
             window.__gradeChartInstance.destroy();
         }
@@ -2033,7 +2024,6 @@ window.__renderGradeDisplay = function() {
         });
 
     } else {
-        // 표(Table) 뷰 로직 (수정 없이 그대로 유지)
         const v = (val) => (val === null || val === undefined || val === "" || val === "0" || val === 0) ? '-' : val;
         
         let h = `
