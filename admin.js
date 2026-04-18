@@ -440,8 +440,29 @@ window.__loadGradeTrend = async function(student) {
     const trendContainer = document.getElementById('grade-trend-container');
     if (!trendContainer) return;
     try {
-        const { data: allScores, error } = await _supabase.from('mock_scores').select('*').order('created_at', { ascending: true });
-        if (error || !allScores || allScores.length === 0) return;
+        // 💡 [수정] 1,000건 제한 없이 모든 성적 데이터를 불러오는 로직
+        let allScores = [];
+        let fetchMore = true;
+        let startIdx = 0;
+
+        while (fetchMore) {
+            const { data, error } = await _supabase
+                .from('mock_scores')
+                .select('*')
+                .order('created_at', { ascending: true })
+                .range(startIdx, startIdx + 999);
+
+            if (error) throw error;
+            if (data && data.length > 0) {
+                allScores = allScores.concat(data);
+                startIdx += 1000;
+                if (data.length < 1000) fetchMore = false;
+            } else {
+                fetchMore = false;
+            }
+        }
+
+        if (allScores.length === 0) return;
 
         window.__allMockScores = allScores;
         window.__currentStudentScores = allScores.filter(s => s.student_id === student.studentId);
@@ -1157,18 +1178,30 @@ window.__loadGradeErrata = async function(examLabel) {
         let allQInfos = [];
         let currentExamAllErrata = [];
 
-        const fetchExamData = async (ex) => {
-            let allExErrata = [];
-            let fetchMore = true; let startIdx = 0;
-            while(fetchMore) {
-                const {data, error} = await _supabase.from('mock_errata').select('*').eq('exam_label', ex).range(startIdx, startIdx + 999);
-                if (error) break;
-                if (data && data.length > 0) { allExErrata = allExErrata.concat(data); startIdx += 1000; if(data.length < 1000) fetchMore = false; } else fetchMore = false;
-            }
-            const studentExErrata = allExErrata.filter(e => String(e.student_id || "").trim() === studentId || Object.values(e).some(val => String(val).trim() === studentId));
-            const { data: qData } = await _supabase.from('mock_question_info').select('*').eq('exam_label', ex);
-            return { ex, allExErrata, studentExErrata, qInfos: qData || [] };
-        };
+        // window.__loadGradeErrata 내부의 fetchExamData 함수만 이 코드로 교체하세요
+const fetchExamData = async (ex) => {
+    // 1. 정오표(Errata) 가져오기 (기존 유지)
+    let allExErrata = [];
+    let fetchMoreE = true; let startIdxE = 0;
+    while(fetchMoreE) {
+        const {data, error} = await _supabase.from('mock_errata').select('*').eq('exam_label', ex).range(startIdxE, startIdxE + 999);
+        if (error) break;
+        if (data && data.length > 0) { allExErrata = allExErrata.concat(data); startIdxE += 1000; if(data.length < 1000) fetchMoreE = false; } else fetchMoreE = false;
+    }
+    
+    const studentExErrata = allExErrata.filter(e => String(e.student_id || "").trim() === studentId || Object.values(e).some(val => String(val).trim() === studentId));
+
+    // 2. 문항 정보(Question Info) 가져오기 (페이지네이션 추가)
+    let qInfos = [];
+    let fetchMoreQ = true; let startIdxQ = 0;
+    while(fetchMoreQ) {
+        const { data: qData, error: qErr } = await _supabase.from('mock_question_info').select('*').eq('exam_label', ex).range(startIdxQ, startIdxQ + 999);
+        if (qErr) break;
+        if (qData && qData.length > 0) { qInfos = qInfos.concat(qData); startIdxQ += 1000; if(qData.length < 1000) fetchMoreQ = false; } else fetchMoreQ = false;
+    }
+
+    return { ex, allExErrata, studentExErrata, qInfos };
+};
 
         const results = await Promise.all(targetExams.map(ex => fetchExamData(ex)));
         results.forEach(res => {
