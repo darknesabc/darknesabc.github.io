@@ -217,8 +217,7 @@ async function init() {
                 <div class="card status-${color}" style="position:relative; cursor:pointer;" onclick="window.__loadStudentDetail(window.__dashboardItems.find(x => x.studentId === '${s.student_id}'))">
                     <div class="seat" style="font-size:11px; opacity:0.7;">${s.seat_no}</div>
                     <div class="name" style="font-size:18px; margin: 5px 0;">${s.name}</div>
-                   /* status-badge 부분을 아래와 같이 수정하세요 */
-<div class="status-badge badge-${color}" 
+                  <div class="status-badge badge-${color}" 
      style="font-size:13px; font-weight:900; 
             display: inline-block; 
             max-width: 140px; 
