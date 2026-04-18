@@ -1756,7 +1756,7 @@ window.__toggleCutoff = function(key) { window.__toggles[key] = !window.__toggle
 window.__toggleSubject = function(subjId) { window.__subjectToggles[subjId] = !window.__subjectToggles[subjId]; window.__renderGradeTrendUI(); };
 
 // =========================================================
-// 💡 [영어 등급 표시 수정] 성적 추이 그래프/표 렌더러
+// 💡 [버그 수정] 성적 추이 그래프/표 렌더러 (UI 완벽 호환)
 // =========================================================
 window.__renderGradeDisplay = function() {
     const area = document.getElementById('grade-display-area');
@@ -1766,13 +1766,11 @@ window.__renderGradeDisplay = function() {
     const toggles = window.__toggles;
 
     const getVal = (s, subj) => {
-        // 💡 백분위 모드일 때 영어는 등급(1~9)을 반환 (우측 축 사용 예정)
         if (subj === 'eng' && mode === 'pct') return s.eng_grade ? Number(s.eng_grade) : null;
         if (mode === 'pct') return s[`${subj}_exp_pct`] ? Number(s[`${subj}_exp_pct`]) : null;
         return s[`${subj}_raw_total`] !== undefined ? (s[`${subj}_raw_total`] ? Number(s[`${subj}_raw_total`]) : null) : (s[`${subj}_raw`] ? Number(s[`${subj}_raw`]) : null);
     };
 
-    // (기본 Top30 계산 로직은 동일하므로 생략 가능하나 전체 구조 유지를 위해 포함)
     const getTop30 = (examLabel, subj, valKey, filterMode, myScore) => {
         let pool = window.__allMockScores.filter(s => s.exam_label === examLabel);
         if (filterMode === 'topClass') pool = pool.filter(s => s.class_name === window.__currentStudentClass);
@@ -1822,11 +1820,7 @@ window.__renderGradeDisplay = function() {
 
         subjs.forEach(sbj => {
             if (!window.__subjectToggles[sbj.id]) return;
-            
-            // 💡 [수정됨] 영어 제외 조건을 삭제하여 백분위 모드에서도 영어가 표시되게 함
             let valKey = (sbj.id === 'eng') ? (mode === 'pct' ? 'eng_grade' : 'eng_raw') : (mode === 'pct' ? `${sbj.id}_exp_pct` : (sbj.id.startsWith('tam') ? `${sbj.id}_raw` : `${sbj.id}_raw_total`));
-            
-            // 💡 영어가 등급일 때만 우측 yGrade 축을 타게 함
             const yAxisID = (sbj.id === 'eng' && mode === 'pct') ? 'yGrade' : 'y';
             
             datasets.push({ 
@@ -1835,7 +1829,7 @@ window.__renderGradeDisplay = function() {
                 borderColor: colors[sbj.id], 
                 backgroundColor: colors[sbj.id], 
                 tension: 0.1, 
-                borderWidth: 3, // 영어 강조를 위해 선을 조금 굵게
+                borderWidth: 3,
                 pointRadius: 4, 
                 fill: false, 
                 yAxisID: yAxisID 
@@ -1846,7 +1840,6 @@ window.__renderGradeDisplay = function() {
                     if (toggles[key]) datasets.push({ label: `${sbj.name} (${label})`, data: scores.map(s => getTop30(s.exam_label, sbj.id, valKey, key, s)), borderColor: color || colors[sbj.id], borderDash: dashPattern, borderWidth: 1.5, pointRadius: rPt, pointStyle: 'rect', fill: false, yAxisID: yAxisID });
                 };
                 addLine('topTotal', '전체상위30%', [5, 5], colors[sbj.id]);
-                // ... (나머지 addLine 호출 생략 가능하지만 구조상 유지) ...
                 addLine('topChoice', '선택상위30%', [3, 3], '#9b59b6'); addLine('topHS', 'HS반 30%', [4, 2], '#e67e22'); addLine('topMed', '의치대 30%', [4, 2], '#c0392b'); addLine('topSKY', '연고대 30%', [4, 2], '#2980b9');
             }
         });
@@ -1857,15 +1850,9 @@ window.__renderGradeDisplay = function() {
             y: { type: 'linear', display: true, position: 'left', beginAtZero: true, max: 100, grid: { color: '#ecf0f1' }, title: { display: true, text: '백분위 / 원점수' } } 
         };
 
-        // 💡 우측 등급용 Y축 설정 (역방향: 1등급이 위로)
         if (window.__subjectToggles['eng'] && mode === 'pct') {
             chartScales.yGrade = { 
-                type: 'linear', 
-                display: true, 
-                position: 'right', 
-                reverse: true, 
-                min: 1, 
-                max: 9, 
+                type: 'linear', display: true, position: 'right', reverse: true, min: 1, max: 9, 
                 ticks: { stepSize: 1, callback: function(value) { return value + '등급'; } }, 
                 grid: { drawOnChartArea: false } 
             };
@@ -1875,14 +1862,11 @@ window.__renderGradeDisplay = function() {
             type: 'line', 
             data: { labels, datasets }, 
             options: { 
-                responsive: true, 
-                maintainAspectRatio: false, 
-                scales: chartScales, 
+                responsive: true, maintainAspectRatio: false, scales: chartScales, 
                 plugins: { 
                     legend: { display: false }, 
                     tooltip: { 
-                        mode: 'index', 
-                        intersect: false, 
+                        mode: 'index', intersect: false, 
                         callbacks: { 
                             label: function(context) { 
                                 let label = context.dataset.label || ''; 
@@ -1901,10 +1885,71 @@ window.__renderGradeDisplay = function() {
         });
 
     } else {
-        // 표 뷰는 기존과 동일하게 유지
-        const v = (val) => (val === null || val === undefined || val === "") ? '-' : val;
-        let h = `<div style="overflow-x:auto; border-radius:8px; border:1px solid #dee2e6;"><table class="dt-table"><thead><tr><th rowspan="2">시험구분</th><th colspan="4">국어</th><th colspan="4">수학</th><th colspan="3">영어</th><th colspan="4">탐구1</th><th colspan="4">탐구2</th></tr><tr style="font-size:11px; color:#7f8c8d;"><th>원점</th><th>표점</th><th>백분위</th><th>등급</th><th>원점</th><th>표점</th><th>백분위</th><th>등급</th><th>원점</th><th>백분위</th><th>등급</th><th>과목</th><th>원점</th><th>백분위</th><th>등급</th><th>과목</th><th>원점</th><th>백분위</th><th>등급</th></tr></thead><tbody>`;
-        scores.forEach(s => { h += `<tr><td style="font-weight:bold;">${s.exam_label}</td><td>${v(s.kor_raw_total)}</td><td>${v(s.kor_exp_std)}</td><td>${v(s.kor_exp_pct)}</td><td>${v(s.kor_exp_grade)}</td><td>${v(s.math_raw_total)}</td><td>${v(s.math_exp_std)}</td><td>${v(s.math_exp_pct)}</td><td>${v(s.math_exp_grade)}</td><td>${v(s.eng_raw)}</td><td>-</td><td>${v(s.eng_grade)}</td><td>${v(s.tam1_name)}</td><td>${v(s.tam1_raw)}</td><td>${v(s.tam1_exp_pct)}</td><td>${v(s.tam1_exp_grade)}</td><td>${v(s.tam2_name)}</td><td>${v(s.tam2_raw)}</td><td>${v(s.tam2_exp_pct)}</td><td>${v(s.tam2_exp_grade)}</td></tr>`; });
+        // 💡 [수정 내용] 표(Table) 뷰 완벽 구조화
+        const v = (val) => (val === null || val === undefined || val === "" || val === "0" || val === 0) ? '-' : val;
+        
+        let h = `
+        <div style="overflow-x:auto; border-radius:8px; border:1px solid #dee2e6; box-shadow: 0 2px 4px rgba(0,0,0,0.02);">
+            <style>
+                .grade-trend-table { width:100%; border-collapse:collapse; text-align:center; font-size:13px; color:#2c3e50; min-width:1150px; background:#fff; }
+                .grade-trend-table th, .grade-trend-table td { border:1px solid #ecf0f1; padding:10px 6px; }
+                .grade-trend-table thead th { border-bottom:2px solid #dee2e6; }
+                .grade-trend-table tbody tr:hover { background:#fbfbfc; }
+                .grade-trend-table .g-kor { background:rgba(52, 152, 219, 0.03); }
+                .grade-trend-table .g-math { background:rgba(231, 76, 60, 0.03); }
+                .grade-trend-table .g-eng { background:rgba(155, 89, 182, 0.03); }
+                .grade-trend-table .g-hist { background:rgba(142, 68, 173, 0.03); }
+                .grade-trend-table .g-tam1 { background:rgba(39, 174, 96, 0.03); }
+                .grade-trend-table .g-tam2 { background:rgba(243, 156, 18, 0.03); }
+            </style>
+            <table class="grade-trend-table">
+                <thead>
+                    <tr style="background:#f8f9fa;">
+                        <th rowspan="2" style="font-weight:bold; color:#34495e; padding:12px;">시험구분</th>
+                        <th colspan="4" style="color:#2980b9;">국어</th>
+                        <th colspan="4" style="color:#c0392b;">수학</th>
+                        <th colspan="2" style="color:#8e44ad;">영어</th>
+                        <th colspan="2" style="color:#7f8c8d;">한국사</th>
+                        <th colspan="5" style="color:#27ae60;">탐구1</th>
+                        <th colspan="5" style="color:#d35400;">탐구2</th>
+                    </tr>
+                    <tr style="font-size:11px; color:#7f8c8d; background:#fff;">
+                        <th>원점</th><th>표점</th><th>백분위</th><th>등급</th>
+                        <th>원점</th><th>표점</th><th>백분위</th><th>등급</th>
+                        <th>원점</th><th>등급</th>
+                        <th>원점</th><th>등급</th>
+                        <th>과목</th><th>원점</th><th>표점</th><th>백분위</th><th>등급</th>
+                        <th>과목</th><th>원점</th><th>표점</th><th>백분위</th><th>등급</th>
+                    </tr>
+                </thead>
+                <tbody>
+        `;
+
+        scores.forEach(s => {
+            // 탐구 과목명 줄임말 처리 (공간 확보 목적)
+            const stdName = (n) => {
+                if (!n || n === '-' || n === 'null') return '-';
+                let str = String(n).trim();
+                str = str.replace(/생활과윤리|생윤/, '생윤').replace(/사회문화|사문/, '사문')
+                         .replace(/한국지리|한지/, '한지').replace(/세계지리|세지/, '세지')
+                         .replace(/동아시아사|동사/, '동사').replace(/정치와법|정법/, '정법')
+                         .replace(/물리학1|물리1|물1/, '물1').replace(/화학1|화1/, '화1')
+                         .replace(/생명과학1|생명1|생물1|생1/, '생1').replace(/지구과학1|지구1|지학1|지1/, '지1');
+                return str;
+            };
+
+            h += `
+            <tr>
+                <td style="font-weight:bold; color:#2c3e50;">${s.exam_label}</td>
+                <td class="g-kor">${v(s.kor_raw_total)}</td><td class="g-kor">${v(s.kor_exp_std)}</td><td class="g-kor">${v(s.kor_exp_pct)}</td><td class="g-kor"><b>${v(s.kor_exp_grade)}</b></td>
+                <td class="g-math">${v(s.math_raw_total)}</td><td class="g-math">${v(s.math_exp_std)}</td><td class="g-math">${v(s.math_exp_pct)}</td><td class="g-math"><b>${v(s.math_exp_grade)}</b></td>
+                <td class="g-eng">${v(s.eng_raw)}</td><td class="g-eng"><b>${v(s.eng_grade)}</b></td>
+                <td class="g-hist">${v(s.hist_raw)}</td><td class="g-hist"><b>${v(s.hist_grade || s.hist_exp_grade)}</b></td>
+                <td class="g-tam1" style="font-size:12px;">${stdName(s.tam1_name)}</td><td class="g-tam1">${v(s.tam1_raw)}</td><td class="g-tam1">${v(s.tam1_exp_std)}</td><td class="g-tam1">${v(s.tam1_exp_pct)}</td><td class="g-tam1"><b>${v(s.tam1_exp_grade)}</b></td>
+                <td class="g-tam2" style="font-size:12px;">${stdName(s.tam2_name)}</td><td class="g-tam2">${v(s.tam2_raw)}</td><td class="g-tam2">${v(s.tam2_exp_std)}</td><td class="g-tam2">${v(s.tam2_exp_pct)}</td><td class="g-tam2"><b>${v(s.tam2_exp_grade)}</b></td>
+            </tr>`;
+        });
+
         h += '</tbody></table></div>'; 
         area.innerHTML = h;
     }
