@@ -212,9 +212,6 @@ async function init() {
                 }
             }
             
-            const todaySleep = resSleep.data.filter(sl => sl.student_id === s.student_id).reduce((acc, cur) => acc + (cur.count || 1), 0);
-            const totalEduScore = resEdu.data.filter(el => el.student_id === s.student_id).reduce((acc, cur) => acc + (EDU_SCORE_MAP[cur.reason] || 0), 0);
-
             let status = "미입력", sub = "", color = "none", code = attCurP ? attCurP.status_code : "";
     if (code === "1") { 
         status = "출석"; color = "1"; 
