@@ -62,27 +62,6 @@ const EDU_SCORE_MAP = {
 };
 
 // =========================================================
-// 💡 [신규 추가] 1,000건 제한 무시! 데이터 무제한 로드 함수
-// =========================================================
-async function fetchAllRecords(queryBuilder) {
-    let allData = [];
-    let startIdx = 0;
-    let fetchMore = true;
-    while (fetchMore) {
-        const { data, error } = await queryBuilder.range(startIdx, startIdx + 999);
-        if (error) { console.error(error); break; }
-        if (data && data.length > 0) {
-            allData = allData.concat(data);
-            startIdx += 1000;
-            if (data.length < 1000) fetchMore = false;
-        } else {
-            fetchMore = false;
-        }
-    }
-    return { data: allData };
-}
-
-// =========================================================
 // 1. 공통 유틸리티 (로그인, 로그아웃, 시간)
 // =========================================================
 async function handleLogin() {
@@ -175,14 +154,13 @@ async function init() {
             query = query.eq('teacher_name', loggedInManager);
         }
 
-        // 기존 코드를 아래 코드로 교체하세요!
-        const [resStudents, resAttToday, resSleep, resMove, resEdu, resSurvey] = await Promise.all([
-            fetchAllRecords(query),
-            fetchAllRecords(_supabase.from('attendance').select('*').eq('attendance_date', today)),
-            fetchAllర్ణRecords(_supabase.from('sleep_log').select('*').eq('sleep_date', today)),
-            fetchAllRecords(_supabase.from('move_log').select('*').eq('move_date', today).order('move_time', { ascending: false })),
-            fetchAllRecords(_supabase.from('edu_score_log').select('*')),
-            fetchAllRecords(_supabase.from('survey_log').select('*').eq('survey_date', today))
+        const [resStudents, resAtt, resSleep, resMove, resEdu, resSurvey] = await Promise.all([
+            query,
+            _supabase.from('attendance').select('*').eq('attendance_date', today).eq('period', currentP),
+            _supabase.from('sleep_log').select('*').eq('sleep_date', today),
+            _supabase.from('move_log').select('*').eq('move_date', today).order('move_time', { ascending: false }),
+            _supabase.from('edu_score_log').select('*'),
+            _supabase.from('survey_log').select('*').eq('survey_date', today)
         ]);
 
         let students = resStudents.data.filter(s => s.name && s.name !== '배정금지');
@@ -199,23 +177,11 @@ async function init() {
         
         const curPInt = parseInt(currentP, 10);
 
-       students.forEach(s => {
-    // 💡 [추가] 1. 오늘 전체 출결/이동 데이터 필터링
-    const todayAtts = resAttToday.data.filter(a => a.student_id === s.student_id);
-    const todayMoves = resMove.data.filter(ml => ml.student_id === s.student_id);
-
-    // 💡 [추가] 2. 5가지 배지 수치 계산
-    const cntLate = todayAtts.filter(a => a.status_code === "2").length; // 오늘 지각 횟수
-    const cntAbs = todayAtts.filter(a => a.status_code === "3").length;  // 오늘 결석 횟수
-    const cntSleep = resSleep.data.filter(sl => sl.student_id === s.student_id).reduce((acc, cur) => acc + (cur.count || 1), 0); // 오늘 취침 횟수
-    const cntRestroom = todayMoves.filter(m => m.reason === "화장실/정수기").length; // 오늘 화장실/정수기 횟수
-    const totalEduScore = resEdu.data.filter(el => el.student_id === s.student_id).reduce((acc, cur) => acc + (EDU_SCORE_MAP[cur.reason] || 0), 0); // 누적 교육점수
-
-    // 💡 [수정] 3. 메인 배지 판단 (현재 교시 데이터만 사용)
-    const attCurP = todayAtts.find(a => a.period == currentP); // 현재 교시 출결
-    const moveCurP = todayMoves.find(ml => ml.return_period === "복귀안함" || parseInt(ml.return_period) >= curPInt);
-    const isOut = moveCurP && moveCurP.reason !== "화장실/정수기";
-    const validMoveReason = isOut ? moveCurP.reason : "";
+        students.forEach(s => {
+            const att = resAtt.data.find(a => a.student_id === s.student_id);
+            const move = resMove.data.find(ml => ml.student_id === s.student_id);
+            const isOut = move && (move.return_period === "복귀안함" || parseInt(move.return_period) >= curPInt);
+            const validMove = (isOut && move.reason !== "화장실/정수기") ? move.reason : "";
             
             let surveyReason = "";
             const surveysForStudent = resSurvey.data.filter(sv => sv.student_id === s.student_id);
@@ -234,33 +200,32 @@ async function init() {
                 }
             }
             
-            let status = "미입력", sub = "", color = "none", code = attCurP ? attCurP.status_code : "";
-    if (code === "1") { 
-        status = "출석"; color = "1"; 
-        sub = validMoveReason || surveyReason || (attCurP ? attCurP.memo : ""); 
-    }
-    else if (validMoveReason) { status = validMoveReason; color = "move"; }
-    else if (surveyReason) { status = surveyReason; color = "schedule"; }
-    else if (attCurP && attCurP.memo) { status = attCurP.memo; color = "schedule"; }
-    else { status = code === "3" ? "결석" : (code === "2" ? "지각" : "미입력"); color = code || "none"; }
+            const todaySleep = resSleep.data.filter(sl => sl.student_id === s.student_id).reduce((acc, cur) => acc + (cur.count || 1), 0);
+            const totalEduScore = resEdu.data.filter(el => el.student_id === s.student_id).reduce((acc, cur) => acc + (EDU_SCORE_MAP[cur.reason] || 0), 0);
+
+            let status = "미입력", sub = "", color = "none", code = att ? att.status_code : "";
+            if (code === "1") { 
+                status = "출석"; color = "1"; 
+                sub = validMove || surveyReason || (att ? att.memo : ""); 
+            }
+            else if (validMove) { status = validMove; color = "move"; }
+            else if (surveyReason) { status = surveyReason; color = "schedule"; }
+            else if (att && att.memo) { status = att.memo; color = "schedule"; }
+            else { status = code === "3" ? "결석" : (code === "2" ? "지각" : "미입력"); color = code || "none"; }
 
             dashboard.innerHTML += `
-        <div class="card status-${color}" style="position:relative; cursor:pointer;" onclick="window.__loadStudentDetail(window.__dashboardItems.find(x => x.studentId === '${s.student_id}'))">
-            <div class="seat" style="font-size:10px; opacity:0.6;">${s.seat_no}</div>
-            <div class="name" style="font-size:17px; margin: 3px 0; font-weight:bold;">${s.name}</div>
-            <div class="status-badge badge-${color}" style="font-size:12px; font-weight:900; padding:3px 0;">${status}</div>
-            ${sub ? `<div style="font-size:10px; color:#2c3e50; font-weight:bold; margin-top:3px; background:rgba(0,0,0,0.04); padding:1px 4px; border-radius:4px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">${sub}</div>` : ''}
-            
-            <div style="display:flex; flex-wrap:wrap; gap:3px; margin-top:6px; justify-content:center;">
-                ${cntLate > 0 ? `<span style="background:#ffeaa7; color:#d35400; padding:1px 5px; border-radius:4px; font-size:10px; font-weight:bold;">🏃${cntLate}</span>` : ''}
-                ${cntSleep > 0 ? `<span style="background:#d1ccc0; color:#2c3e50; padding:1px 5px; border-radius:4px; font-size:10px; font-weight:bold;">💤${cntSleep}</span>` : ''}
-                ${totalEduScore > 0 ? `<span style="background:#ff7675; color:#fff; padding:1px 5px; border-radius:4px; font-size:10px; font-weight:bold;">🚨${totalEduScore}</span>` : ''}
-                ${cntAbs > 0 ? `<span style="background:#fab1a0; color:#c0392b; padding:1px 5px; border-radius:4px; font-size:10px; font-weight:bold;">❌${cntAbs}</span>` : ''}
-                ${cntRestroom > 0 ? `<span style="background:#81ecec; color:#0097e6; padding:1px 5px; border-radius:4px; font-size:10px; font-weight:bold;">💧${cntRestroom}</span>` : ''}
-            </div>
-        </div>
-    `;
-});
+                <div class="card status-${color}" style="position:relative; cursor:pointer;" onclick="window.__loadStudentDetail(window.__dashboardItems.find(x => x.studentId === '${s.student_id}'))">
+                    <div class="seat" style="font-size:11px; opacity:0.7;">${s.seat_no}</div>
+                    <div class="name" style="font-size:18px; margin: 5px 0;">${s.name}</div>
+                    <div class="status-badge badge-${color}" style="font-size:13px; font-weight:900;">${status}</div>
+                    ${sub ? `<div style="font-size:11px; color:#2c3e50; font-weight:bold; margin-top:4px; background:rgba(0,0,0,0.05); padding:2px 6px; border-radius:4px;">${sub}</div>` : ''}
+                    <div style="display:flex; gap:3px; margin-top:5px; justify-content:center;">
+                        ${todaySleep > 0 ? `<span style="background:#ffeaa7; padding:1px 4px; border-radius:3px; font-size:10px;">💤${todaySleep}</span>` : ''}
+                        ${totalEduScore > 0 ? `<span style="background:#fab1a0; padding:1px 4px; border-radius:3px; font-size:10px;">🚨${totalEduScore}</span>` : ''}
+                    </div>
+                </div>
+            `;
+        });
     } catch (err) { summary.innerText = "에러: " + err.message; }
 }
 
@@ -303,13 +268,12 @@ window.__loadStudentDetail = async function(student) {
     detailSection.scrollIntoView({ behavior: 'smooth', block: 'start' });
 
     try {
-        // 기존 코드를 아래 코드로 교체하세요!
         const [resMove, resEdu, resSleep, resAtt, resSurvey] = await Promise.all([
-            fetchAllRecords(_supabase.from('move_log').select('*').eq('student_id', student.studentId).order('move_date', {ascending: false}).order('move_time', {ascending: false})),
-            fetchAllRecords(_supabase.from('edu_score_log').select('*').eq('student_id', student.studentId).order('score_date', {ascending: false})),
-            fetchAllRecords(_supabase.from('sleep_log').select('*').eq('student_id', student.studentId).order('sleep_date', {ascending: false})),
-            fetchAllRecords(_supabase.from('attendance').select('*').eq('student_id', student.studentId).order('attendance_date', {ascending: false})),
-            fetchAllRecords(_supabase.from('survey_log').select('*').eq('student_id', student.studentId))
+            _supabase.from('move_log').select('*').eq('student_id', student.studentId).order('move_date', {ascending: false}).order('move_time', {ascending: false}),
+            _supabase.from('edu_score_log').select('*').eq('student_id', student.studentId).order('score_date', {ascending: false}),
+            _supabase.from('sleep_log').select('*').eq('student_id', student.studentId).order('sleep_date', {ascending: false}),
+            _supabase.from('attendance').select('*').eq('student_id', student.studentId).order('attendance_date', {ascending: false}),
+            _supabase.from('survey_log').select('*').eq('student_id', student.studentId)
         ]);
 
         const now = new Date();
@@ -1921,7 +1885,8 @@ window.__renderGradeDisplay = function() {
 
     const getTop30 = (examLabel, subj, valKey, filterMode, myScore) => {
         let pool = window.__allMockScores.filter(s => s.exam_label === examLabel);
-        if (filterMode === 'topHS') pool = pool.filter(s => s.class_group && s.class_group.includes('HS'));
+        if (filterMode === 'topClass') pool = pool.filter(s => s.class_name === window.__currentStudentClass);
+        else if (filterMode === 'topHS') pool = pool.filter(s => s.class_group && s.class_group.includes('HS'));
         else if (filterMode === 'topGreen') pool = pool.filter(s => s.class_group && s.class_group.includes('그린'));
         else if (filterMode === 'topBlue') pool = pool.filter(s => s.class_group && s.class_group.includes('블루'));
         else if (filterMode === 'topMed') pool = pool.filter(s => s.class_group && (s.class_group.includes('의치') || s.class_group.includes('서/')));
