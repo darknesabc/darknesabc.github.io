@@ -11,10 +11,10 @@ window.__currentSortMode = 'seat'; // 기본값: 자리순
 window.__radarCurrentType = 'unit'; // 레이더 차트 (단원별/행동영역별)
 window.__radarCurrentSubj = null;   // 레이더 차트 (선택된 과목)
 window.__examTypeToggles = {
-    '더프': false,
-    '오메가': false,
-    '전대실모': false,
-    '평가원': false
+    '더프': true,
+    '오메가': true,
+    '전대실모': true,
+    '평가원': true
 };
 // 시험 라벨에서 종류를 추출하는 도우미 함수
 const getExamType = (label) => {
