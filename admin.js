@@ -9,6 +9,18 @@ let loggedInRole = localStorage.getItem('managerRole');
 window.__currentSortMode = 'seat'; // 기본값: 자리순
 window.__radarCurrentType = 'unit'; // 레이더 차트 (단원별/행동영역별)
 window.__radarCurrentSubj = null;   // 레이더 차트 (선택된 과목)
+window.__examTypeToggles = {
+    '더프': true,
+    '오메가': true,
+    '전대실모': true
+};
+// 시험 라벨에서 종류를 추출하는 도우미 함수
+const getExamType = (label) => {
+    if (label.includes('더프')) return '더프';
+    if (label.includes('오메가')) return '오메가';
+    if (label.includes('전대실모')) return '전대실모';
+    return '기타';
+};
 
 // =========================================================
 // 💡 [신규 기능] 전체(누적) 보기 토글 함수
@@ -1724,37 +1736,48 @@ window.__renderGradeTrendUI = function() {
     const container = document.getElementById('grade-trend-container');
     const btnSty = (isActive, bg, fg) => `border:1px solid #dee2e6; padding:5px 12px; border-radius:4px; cursor:pointer; font-size:11px; font-weight:bold; background:${isActive ? bg : 'transparent'}; color:${isActive ? '#fff' : fg}; transition:0.2s;`;
     
+    // 시험 종류 토글 버튼 스타일
+    const examTglBtn = (key) => {
+        const isOn = window.__examTypeToggles[key];
+        const colors = { '더프': '#34495e', '오메가': '#e67e22', '전대실모': '#27ae60' };
+        return `<button onclick="window.__toggleExamType('${key}')" style="border:1px solid ${isOn ? colors[key] : '#dee2e6'}; padding:6px 15px; border-radius:8px; cursor:pointer; font-size:12px; font-weight:bold; background:${isOn ? colors[key] : '#fff'}; color:${isOn ? '#fff' : '#bdc3c7'}; transition:0.2s; margin-right:5px;">${isOn ? '✅' : '⬜'} ${key}</button>`;
+    };
+
     const tglBtn = (key, label) => {
         const isOn = window.__toggles[key];
         return `<button onclick="window.__toggleCutoff('${key}')" style="border:1px solid ${isOn ? '#3498db' : '#dee2e6'}; padding:5px 12px; border-radius:20px; cursor:pointer; font-size:11px; font-weight:bold; background:${isOn ? '#e8f4f8' : '#fff'}; color:${isOn ? '#2980b9' : '#7f8c8d'}; transition:0.2s;">${label}</button>`;
     };
 
     const latestScore = window.__currentStudentScores[window.__currentStudentScores.length - 1] || {};
-    const kLabel = latestScore.kor_choice ? `국어(${latestScore.kor_choice})` : '국어(선택)';
-    const mLabel = latestScore.math_choice ? `수학(${latestScore.math_choice})` : '수학(선택)';
-    const t1Label = latestScore.tam1_name ? `탐구1(${latestScore.tam1_name})` : '탐구1(과목명)';
-    const t2Label = latestScore.tam2_name ? `탐구2(${latestScore.tam2_name})` : '탐구2(과목)';
+    const kLabel = latestScore.kor_choice ? `국어(${latestScore.kor_choice})` : '국어';
+    const mLabel = latestScore.math_choice ? `수학(${latestScore.math_choice})` : '수학';
+    const t1Label = latestScore.tam1_name ? `탐구1(${latestScore.tam1_name})` : '탐구1';
+    const t2Label = latestScore.tam2_name ? `탐구2(${latestScore.tam2_name})` : '탐구2';
 
     const subjBtn = (id, label, color) => {
         const isOn = window.__subjectToggles[id];
-        const bg = isOn ? color : '#f1f2f6';
-        const fg = isOn ? '#fff' : '#bdc3c7';
-        const border = isOn ? color : '#dee2e6';
-        return `<button onclick="window.__toggleSubject('${id}')" style="background:${bg}; color:${fg}; border:1px solid ${border}; padding:4px 12px; border-radius:15px; font-size:11px; font-weight:bold; cursor:pointer; transition:0.2s;">${label}</button>`;
+        return `<button onclick="window.__toggleSubject('${id}')" style="background:${isOn ? color : '#f1f2f6'}; color:${isOn ? '#fff' : '#bdc3c7'}; border:1px solid ${isOn ? color : '#dee2e6'}; padding:4px 12px; border-radius:15px; font-size:11px; font-weight:bold; cursor:pointer; transition:0.2s;">${label}</button>`;
     };
 
     container.innerHTML = `
         <div style="background:#fff; padding:25px; border-radius:12px; border:1px solid #dee2e6; box-shadow:0 4px 6px rgba(0,0,0,0.02); margin-top:20px;">
+            <div style="margin-bottom:20px; padding-bottom:15px; border-bottom:1px solid #f1f2f6;">
+                <div style="font-size:13px; font-weight:bold; color:#7f8c8d; margin-bottom:10px;">📋 분석할 시험 선택</div>
+                <div style="display:flex; flex-wrap:wrap; gap:5px;">
+                    ${examTglBtn('더프')}
+                    ${examTglBtn('오메가')}
+                    ${examTglBtn('전대실모')}
+                </div>
+            </div>
+
             <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:15px;">
                 <div style="display:flex; align-items:center; gap:15px;">
-                    <h4 style="margin:0; color:#2c3e50; display:flex; align-items:center; gap:8px;">📈 성적 추이 <span style="font-size:12px; color:#7f8c8d; font-weight:normal;">(예상 컷 기준)</span></h4>
-                    
+                    <h4 style="margin:0; color:#2c3e50;">📈 성적 추이</h4>
                     <div style="display:flex; gap:5px; background:#f1f2f6; padding:3px; border-radius:6px;">
                         <button onclick="window.__switchGView('graph')" style="${btnSty(window.__currentViewMode==='graph', '#2c3e50', '#7f8c8d')}">그래프</button>
                         <button onclick="window.__switchGView('table')" style="${btnSty(window.__currentViewMode==='table', '#2c3e50', '#7f8c8d')}">표</button>
                     </div>
-                    
-                    <div style="display:flex; gap:5px; background:#f1f2f6; padding:3px; border-radius:6px; margin-left:10px;">
+                    <div style="display:flex; gap:5px; background:#f1f2f6; padding:3px; border-radius:6px;">
                         <button onclick="window.__switchGMode('pct')" style="${btnSty(window.__currentGradeMode==='pct', '#3498db', '#7f8c8d')}">백분위</button>
                         <button onclick="window.__switchGMode('raw')" style="${btnSty(window.__currentGradeMode==='raw', '#3498db', '#7f8c8d')}">원점수</button>
                     </div>
@@ -1785,15 +1808,25 @@ window.__renderGradeTrendUI = function() {
     window.__renderGradeDisplay();
 };
 
-window.__toggleCutoff = function(key) { window.__toggles[key] = !window.__toggles[key]; window.__renderGradeTrendUI(); };
-window.__toggleSubject = function(subjId) { window.__subjectToggles[subjId] = !window.__subjectToggles[subjId]; window.__renderGradeTrendUI(); };
+// 시험 타입 토글 함수
+window.__toggleExamType = function(type) {
+    window.__examTypeToggles[type] = !window.__examTypeToggles[type];
+    window.__renderGradeTrendUI(); // UI와 그래프 동시 갱신
+};
 
 // =========================================================
 // 💡 [버그 수정] 성적 추이 그래프/표 렌더러 (한국사 extra_raw 반영)
 // =========================================================
 window.__renderGradeDisplay = function() {
     const area = document.getElementById('grade-display-area');
-    const scores = window.__currentStudentScores;
+    const scores = window.__currentStudentScores.filter(s => {
+        const type = getExamType(s.exam_label);
+        return window.__examTypeToggles[type] === true;
+    });
+    if (scores.length === 0) {
+        area.innerHTML = '<div style="text-align:center; padding:100px 0; color:#bdc3c7; font-weight:bold;">선택된 조건에 해당하는 시험 성적이 없습니다.</div>';
+        return;
+    }
     const mode = window.__currentGradeMode; 
     const view = window.__currentViewMode; 
     const toggles = window.__toggles;
