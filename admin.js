@@ -1838,18 +1838,22 @@ window.__toggleExamType = function(type) {
 };
 
 // =========================================================
-// 💡 [버그 수정] 성적 추이 그래프/표 렌더러 (한국사 extra_raw 반영)
+// 💡 [버그 수정] 성적 추이 그래프/표 렌더러 (한국사 extra_raw 반영 및 토글 완벽 작동)
 // =========================================================
 window.__renderGradeDisplay = function() {
     const area = document.getElementById('grade-display-area');
+    
+    // 선택된 시험만 필터링
     const scores = window.__currentStudentScores.filter(s => {
         const type = getExamType(s.exam_label);
         return window.__examTypeToggles[type] === true;
     });
+
     if (scores.length === 0) {
         area.innerHTML = '<div style="text-align:center; padding:100px 0; color:#bdc3c7; font-weight:bold;">선택된 조건에 해당하는 시험 성적이 없습니다.</div>';
         return;
     }
+    
     const mode = window.__currentGradeMode; 
     const view = window.__currentViewMode; 
     const toggles = window.__toggles;
@@ -1889,8 +1893,10 @@ window.__renderGradeDisplay = function() {
         } else if (subj === 'eng') {
             vals = pool.map(s => Number(s[valKey]) || 0);
         }
+        
         if (subj === 'eng' && valKey === 'eng_grade') vals = vals.filter(v => v > 0).sort((a, b) => a - b);
         else vals = vals.filter(v => v > 0).sort((a, b) => b - a);
+        
         if (vals.length === 0) return null;
         let idx = Math.floor(vals.length * 0.3);
         if (idx >= vals.length) idx = vals.length - 1;
@@ -1908,7 +1914,9 @@ window.__renderGradeDisplay = function() {
         const rPt = scores.length === 1 ? 5 : 0;
 
         subjs.forEach(sbj => {
+            // 💡 [핵심] 과목 토글 버튼이 꺼져있으면 datasets에 추가하지 않고 다음 과목으로 넘어갑니다.
             if (!window.__subjectToggles[sbj.id]) return;
+
             let valKey = (sbj.id === 'eng') ? (mode === 'pct' ? 'eng_grade' : 'eng_raw') : (mode === 'pct' ? `${sbj.id}_exp_pct` : (sbj.id.startsWith('tam') ? `${sbj.id}_raw` : `${sbj.id}_raw_total`));
             const yAxisID = (sbj.id === 'eng' && mode === 'pct') ? 'yGrade' : 'y';
             
@@ -1924,12 +1932,33 @@ window.__renderGradeDisplay = function() {
                 yAxisID: yAxisID 
             });
 
+            // 💡 [핵심] 30% 컷 선들을 그리는 로직. toggles[key]가 true일 때만 그려집니다.
             if (sbj.id !== 'eng') {
                 const addLine = (key, label, dashPattern, color) => {
-                    if (toggles[key]) datasets.push({ label: `${sbj.name} (${label})`, data: scores.map(s => getTop30(s.exam_label, sbj.id, valKey, key, s)), borderColor: color || colors[sbj.id], borderDash: dashPattern, borderWidth: 1.5, pointRadius: rPt, pointStyle: 'rect', fill: false, yAxisID: yAxisID });
+                    if (toggles[key]) {
+                        datasets.push({ 
+                            label: `${sbj.name} (${label})`, 
+                            data: scores.map(s => getTop30(s.exam_label, sbj.id, valKey, key, s)), 
+                            borderColor: color || colors[sbj.id], 
+                            borderDash: dashPattern, 
+                            borderWidth: 1.5, 
+                            pointRadius: rPt, 
+                            pointStyle: 'rect', 
+                            fill: false, 
+                            yAxisID: yAxisID 
+                        });
+                    }
                 };
+
+                // 모든 토글 버튼의 키에 맞춰 addLine을 호출해 줍니다.
                 addLine('topTotal', '전체상위30%', [5, 5], colors[sbj.id]);
-                addLine('topChoice', '선택상위30%', [3, 3], '#9b59b6'); addLine('topHS', 'HS반 30%', [4, 2], '#e67e22'); addLine('topMed', '의치대 30%', [4, 2], '#c0392b'); addLine('topSKY', '연고대 30%', [4, 2], '#2980b9');
+                addLine('topChoice', '선택상위30%', [3, 3], '#9b59b6'); 
+                addLine('topClass', '우리반30%', [2, 2], '#1abc9c'); // 👈 추가된 부분
+                addLine('topHS', 'HS반30%', [4, 2], '#e67e22'); 
+                addLine('topGreen', '그린30%', [4, 2], '#2ecc71'); // 👈 추가된 부분
+                addLine('topBlue', '블루30%', [4, 2], '#3498db');  // 👈 추가된 부분
+                addLine('topMed', '의치대30%', [4, 2], '#c0392b'); 
+                addLine('topSKY', '연고대30%', [4, 2], '#2980b9');
             }
         });
 
