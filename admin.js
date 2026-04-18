@@ -1741,7 +1741,7 @@ window.__renderGradeTrendUI = function() {
     // 시험 종류 토글 버튼 스타일
     const examTglBtn = (key) => {
         const isOn = window.__examTypeToggles[key];
-        const colors = { '더프': '#34495e', '오메가': '#e67e22', '전대실모': '#27ae60', '평가': '#2980b9' };
+        const colors = { '더프': '#34495e', '오메가': '#e67e22', '전대실모': '#27ae60', '평가원': '#2980b9' };
         return `<button onclick="window.__toggleExamType('${key}')" style="border:1px solid ${isOn ? colors[key] : '#dee2e6'}; padding:6px 15px; border-radius:8px; cursor:pointer; font-size:12px; font-weight:bold; background:${isOn ? colors[key] : '#fff'}; color:${isOn ? '#fff' : '#bdc3c7'}; transition:0.2s; margin-right:5px;">${isOn ? '✅' : '⬜'} ${key}</button>`;
     };
 
