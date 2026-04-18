@@ -146,36 +146,22 @@ async function init() {
             </div>
         `;
 
-        // 💡 [핵심 추가] 1000개 제한을 무한대로 뚫어주는 마법의 도우미 함수
-        const fetchAll = async (buildQueryFn) => {
-            let allData = [];
-            let start = 0;
-            while (true) {
-                // 매 반복마다 쿼리를 새로 생성해서 1000개씩 이어서 가져옴
-                const { data, error } = await buildQueryFn().range(start, start + 999);
-                if (error) throw error;
-                if (!data || data.length === 0) break;
-                allData = allData.concat(data);
-                if (data.length < 1000) break; // 1000개 미만이면 끝에 도달한 것
-                start += 1000;
-            }
-            return { data: allData };
-        };
+        let query = _supabase.from('student').select('*');
+        if (loggedInId === 'admin_4F') {
+            query = query.ilike('seat_no', '4-%'); 
+        }
+        else if (loggedInRole !== 'super') {
+            query = query.eq('teacher_name', loggedInManager);
+        }
 
-        // 💡 기존의 단일 쿼리들을 fetchAll() 함수로 감싸서 무제한 호출로 변경!
-        const [resStudents, resAtt, resSleep, resMove, resEdu, resSurvey] = await Promise.all([
-            fetchAll(() => {
-                let q = _supabase.from('student').select('*');
-                if (loggedInId === 'admin_4F') return q.ilike('seat_no', '4-%');
-                if (loggedInRole !== 'super') return q.eq('teacher_name', loggedInManager);
-                return q;
-            }),
-            fetchAll(() => _supabase.from('attendance').select('*').eq('attendance_date', today)),
-            fetchAll(() => _supabase.from('sleep_log').select('*').eq('sleep_date', today)),
-            fetchAll(() => _supabase.from('move_log').select('*').eq('move_date', today).order('move_time', { ascending: false })),
-            fetchAll(() => _supabase.from('edu_score_log').select('*')), // 전체 누적 벌점도 무제한으로!
-            fetchAll(() => _supabase.from('survey_log').select('*').eq('survey_date', today))
-        ]);
+        const [resStudents, resAtt, resSleep, resMove, resEdu, resSurvey] = await Promise.all([
+            query,
+            _supabase.from('attendance').select('*').eq('attendance_date', today).eq('period', currentP),
+            _supabase.from('sleep_log').select('*').eq('sleep_date', today),
+            _supabase.from('move_log').select('*').eq('move_date', today).order('move_time', { ascending: false }),
+            _supabase.from('edu_score_log').select('*'),
+            _supabase.from('survey_log').select('*').eq('survey_date', today)
+        ]);
 
         let students = resStudents.data.filter(s => s.name && s.name !== '배정금지');
 
@@ -191,66 +177,18 @@ async function init() {
         
         const curPInt = parseInt(currentP, 10);
 
-        // 💡 [추가] 이동 시간을 교시로 변환하는 도우미 함수
-        const getPeriodFromTime = (timeStr) => {
-            if (!timeStr) return 1;
-            const [h, m] = timeStr.split(':').map(Number); const t = h * 60 + m;
-            if (t < 8*60+30) return 1; if (t < 10*60+10) return 2; if (t < 12*60) return 3;
-            if (t < 14*60+30) return 4; if (t < 15*60+50) return 5; if (t < 17*60+30) return 6;
-            if (t < 20*60+10) return 7; return 8;
-        };
-
         students.forEach(s => {
-            // 💡 [수정1] 5교시가 미입력이어도, 1교시 출석 기록이 있다면 '출석(초록색)'을 유지하도록 가장 최근 기록을 찾습니다!
-            const todayAtts = resAtt.data.filter(a => a.student_id === s.student_id && parseInt(a.period, 10) <= curPInt);
-            todayAtts.sort((a, b) => parseInt(b.period, 10) - parseInt(a.period, 10)); // 최신 교시순으로 정렬
-            const att = todayAtts[0]; // 가장 최근 기록 가져오기
-
-            const surveysForStudent = resSurvey.data.filter(sv => sv.student_id === s.student_id);
-            const movesForStudent = resMove.data.filter(ml => ml.student_id === s.student_id && ml.reason !== "화장실/정수기");
-
-            // 💡 [수정2] 설문(병원/학원)과 외출 기록을 바탕으로 오늘 "공결 처리될 교시"들을 미리 수집!
-            const excusedPeriods = new Set();
-            for (let sv of surveysForStudent) {
-                const timeType = sv.arrival_time_type || "";
-                let startP = 0, endP = 0;
-                if (timeType.includes("결석")) { startP = 1; endP = 8; }
-                else if (timeType.includes("오전")) { startP = 1; endP = 3; }
-                else if (timeType.includes("오후")) { startP = 1; endP = 6; }
-                else if (timeType.includes("야간") || timeType.includes("저녁")) { startP = 1; endP = 7; }
-                for (let p = startP; p <= endP; p++) excusedPeriods.add(p);
-            }
-            for (let mv of movesForStudent) {
-                const startP = getPeriodFromTime(mv.move_time) || 1;
-                let endP = parseInt(mv.return_period, 10) || 8;
-                if (mv.return_period === "복귀안함") endP = 8;
-                for (let p = startP; p <= endP; p++) excusedPeriods.add(p);
-            }
-
-            // 💡 [수정3] 진짜 무단결석/지각 카운트 (방금 수집한 공결 교시는 제외!)
-            let todayLateCount = 0;
-            let todayAbsCount = 0;
-            resAtt.data.filter(a => a.student_id === s.student_id && parseInt(a.period, 10) < curPInt).forEach(a => {
-                const pInt = parseInt(a.period, 10);
-                const isLate = a.status_code === '2' || (a.memo && a.memo.includes('지각'));
-                const hasValidMemo = a.memo && a.memo.trim() !== '' && a.memo.trim() !== '-';
-                
-                const isExcused = excusedPeriods.has(pInt) || hasValidMemo; // 면제 대상인지 확인
-                const isAbs = a.status_code === '3' && !isLate && !isExcused; // 찐 무단결석만 카운트!
-                
-                if (isLate) todayLateCount++;
-                if (isAbs) todayAbsCount++;
-            });
-
-            // 3. 이동 및 설문 상태 계산
+            const att = resAtt.data.find(a => a.student_id === s.student_id);
             const move = resMove.data.find(ml => ml.student_id === s.student_id);
             const isOut = move && (move.return_period === "복귀안함" || parseInt(move.return_period) >= curPInt);
             const validMove = (isOut && move.reason !== "화장실/정수기") ? move.reason : "";
             
             let surveyReason = "";
+            const surveysForStudent = resSurvey.data.filter(sv => sv.student_id === s.student_id);
             for (let sv of surveysForStudent) {
                 const timeType = sv.arrival_time_type || "";
                 let startP = 0, endP = 0;
+                
                 if (timeType.includes("결석")) { startP = 1; endP = 8; }
                 else if (timeType.includes("오전")) { startP = 1; endP = 3; }
                 else if (timeType.includes("오후")) { startP = 1; endP = 6; }
@@ -269,11 +207,11 @@ async function init() {
             let status = "미입력", sub = "", color = "none", code = att ? att.status_code : "";
             if (code === "1") { 
                 status = "출석"; color = "1"; 
-                sub = validMove || surveyReason || (att && att.memo && att.memo !== '-' ? att.memo : ""); 
+                sub = validMove || surveyReason || (att ? att.memo : ""); 
             }
             else if (validMove) { status = validMove; color = "move"; }
             else if (surveyReason) { status = surveyReason; color = "schedule"; }
-            else if (att && att.memo && att.memo !== '-') { status = att.memo; color = "schedule"; }
+            else if (att && att.memo) { status = att.memo; color = "schedule"; }
             else { status = code === "3" ? "결석" : (code === "2" ? "지각" : "미입력"); color = code || "none"; }
 
             dashboard.innerHTML += `
@@ -296,8 +234,6 @@ async function init() {
                     ${sub ? `<div style="font-size:11px; color:#2c3e50; font-weight:bold; margin-top:4px; background:rgba(0,0,0,0.05); padding:2px 6px; border-radius:4px;">${sub}</div>` : ''}
                     <div style="display:flex; gap:3px; margin-top:5px; justify-content:center;">
                         ${todayRestroomCount > 0 ? `<span style="background:#e0f7fa; color:#0097a7; padding:1px 4px; border-radius:3px; font-size:13px; font-weight:bold;">💧${todayRestroomCount}</span>` : ''}
-                        ${todayLateCount > 0 ? `<span style="background:#fff3e0; color:#e67e22; padding:1px 4px; border-radius:3px; font-size:12px; font-weight:bold;">⏰지각${todayLateCount}</span>` : ''}
-                        ${todayAbsCount > 0 ? `<span style="background:#fdedec; color:#e74c3c; padding:1px 4px; border-radius:3px; font-size:12px; font-weight:bold;">❌결석${todayAbsCount}</span>` : ''}
                         ${todaySleep > 0 ? `<span style="background:#ffeaa7; padding:1px 4px; border-radius:3px; font-size:13px;">💤${todaySleep}</span>` : ''}
                         ${totalEduScore > 0 ? `<span style="background:#fab1a0; padding:1px 4px; border-radius:3px; font-size:13px;">🚨${totalEduScore}</span>` : ''}
                     </div>
