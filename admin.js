@@ -202,6 +202,7 @@ async function init() {
             
             const todaySleep = resSleep.data.filter(sl => sl.student_id === s.student_id).reduce((acc, cur) => acc + (cur.count || 1), 0);
             const totalEduScore = resEdu.data.filter(el => el.student_id === s.student_id).reduce((acc, cur) => acc + (EDU_SCORE_MAP[cur.reason] || 0), 0);
+            const todayRestroomCount = resMove.data.filter(ml => ml.student_id === s.student_id && ml.reason === "화장실/정수기").length;
 
             let status = "미입력", sub = "", color = "none", code = att ? att.status_code : "";
             if (code === "1") { 
@@ -232,6 +233,7 @@ async function init() {
 </div>
                     ${sub ? `<div style="font-size:11px; color:#2c3e50; font-weight:bold; margin-top:4px; background:rgba(0,0,0,0.05); padding:2px 6px; border-radius:4px;">${sub}</div>` : ''}
                     <div style="display:flex; gap:3px; margin-top:5px; justify-content:center;">
+                        ${todayRestroomCount > 0 ? `<span style="background:#e0f7fa; color:#0097a7; padding:1px 4px; border-radius:3px; font-size:12px; font-weight:bold;">💧${todayRestroomCount}</span>` : ''}
                         ${todaySleep > 0 ? `<span style="background:#ffeaa7; padding:1px 4px; border-radius:3px; font-size:12px;">💤${todaySleep}</span>` : ''}
                         ${totalEduScore > 0 ? `<span style="background:#fab1a0; padding:1px 4px; border-radius:3px; font-size:13px;">🚨${totalEduScore}</span>` : ''}
                     </div>
