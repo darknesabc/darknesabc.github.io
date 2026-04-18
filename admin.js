@@ -16,6 +16,11 @@ window.__examTypeToggles = {
     '전대실모': false,
     '평가원': false
 };
+
+// 💡 [여기에 추가!] 30% 컷 및 과목 토글 글로벌 상태 명시적 선언
+window.__toggles = { topTotal: false, topChoice: false, topClass: false, topHS: false, topGreen: false, topBlue: false, topMed: false, topSKY: false };
+window.__subjectToggles = { kor: true, math: true, tam1: true, tam2: true, eng: true };
+
 // 시험 라벨에서 종류를 추출하는 도우미 함수
 const getExamType = (label) => {
     if (label.includes('더프')) return '더프';
@@ -512,8 +517,6 @@ window.__loadGradeTrend = async function(student) {
         window.__loadGradeErrata(window.__currentSummaryExam);
 
         window.__currentGradeMode = 'pct'; window.__currentViewMode = 'graph'; 
-        window.__toggles = { topTotal: false, topChoice: false, topClass: false, topHS: false, topGreen: false, topBlue: false, topMed: false, topSKY: false };
-        window.__subjectToggles = { kor: true, math: true, tam1: true, tam2: true, eng: true }; 
         window.__renderGradeTrendUI();
     } catch (err) { console.error("성적 로드 에러:", err); }
 };
