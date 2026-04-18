@@ -177,27 +177,67 @@ async function init() {
         
         const curPInt = parseInt(currentP, 10);
 
+        // 💡 [핵심 추가] 이동 시간을 교시로 변환하는 도우미 함수
+        const getPeriodFromTime = (timeStr) => {
+            if (!timeStr) return 1;
+            const [h, m] = timeStr.split(':').map(Number); const t = h * 60 + m;
+            if (t < 8*60+30) return 1; if (t < 10*60+10) return 2; if (t < 12*60) return 3;
+            if (t < 14*60+30) return 4; if (t < 15*60+50) return 5; if (t < 17*60+30) return 6;
+            if (t < 20*60+10) return 7; return 8;
+        };
+
         students.forEach(s => {
             const att = resAtt.data.find(a => a.student_id === s.student_id && a.period === currentP);
+            
+            const surveysForStudent = resSurvey.data.filter(sv => sv.student_id === s.student_id);
+            const movesForStudent = resMove.data.filter(ml => ml.student_id === s.student_id && ml.reason !== "화장실/정수기");
+
+            // 💡 [핵심 추가] 1. 설문(병원 등)과 외출 기록을 바탕으로 오늘 "공결 처리될 교시"들을 미리 수집!
+            const excusedPeriods = new Set();
+            
+            for (let sv of surveysForStudent) {
+                const timeType = sv.arrival_time_type || "";
+                let startP = 0, endP = 0;
+                if (timeType.includes("결석")) { startP = 1; endP = 8; }
+                else if (timeType.includes("오전")) { startP = 1; endP = 3; }
+                else if (timeType.includes("오후")) { startP = 1; endP = 6; }
+                else if (timeType.includes("야간") || timeType.includes("저녁")) { startP = 1; endP = 7; }
+                for (let p = startP; p <= endP; p++) excusedPeriods.add(p); // 해당 교시들은 모두 면제(공결)에 추가
+            }
+
+            for (let mv of movesForStudent) {
+                const startP = getPeriodFromTime(mv.move_time) || 1;
+                let endP = parseInt(mv.return_period, 10) || 8;
+                if (mv.return_period === "복귀안함") endP = 8;
+                for (let p = startP; p <= endP; p++) excusedPeriods.add(p); // 외출 나간 교시도 면제(공결)에 추가
+            }
+
+            // 💡 [핵심 수정] 2. 지각/결석 카운트 시, 방금 수집한 공결 교시(excusedPeriods)는 결석 카운트에서 제외!
             let todayLateCount = 0;
             let todayAbsCount = 0;
             resAtt.data.filter(a => a.student_id === s.student_id && parseInt(a.period, 10) < curPInt).forEach(a => {
-            const isLate = a.status_code === '2' || (a.memo && a.memo.includes('지각'));
-            const hasValidMemo = a.memo && a.memo.trim() !== '' && a.memo.trim() !== '-';
-            const isAbs = a.status_code === '3' && !isLate && !hasValidMemo; // 메모 없는 찐 무단결석만 카운트
-            if (isLate) todayLateCount++;
-            if (isAbs) todayAbsCount++;
+                const pInt = parseInt(a.period, 10);
+                const isLate = a.status_code === '2' || (a.memo && a.memo.includes('지각'));
+                const hasValidMemo = a.memo && a.memo.trim() !== '' && a.memo.trim() !== '-';
+                
+                // 메모가 있거나, 외출/설문으로 면제된 교시면 공결로 판단
+                const isExcused = excusedPeriods.has(pInt) || hasValidMemo; 
+                
+                const isAbs = a.status_code === '3' && !isLate && !isExcused; // 찐 무단결석만!
+                
+                if (isLate) todayLateCount++;
+                if (isAbs) todayAbsCount++;
             });
+
+            // 3. 이동 및 설문 상태 계산 (기존 유지)
             const move = resMove.data.find(ml => ml.student_id === s.student_id);
             const isOut = move && (move.return_period === "복귀안함" || parseInt(move.return_period) >= curPInt);
             const validMove = (isOut && move.reason !== "화장실/정수기") ? move.reason : "";
             
             let surveyReason = "";
-            const surveysForStudent = resSurvey.data.filter(sv => sv.student_id === s.student_id);
             for (let sv of surveysForStudent) {
                 const timeType = sv.arrival_time_type || "";
                 let startP = 0, endP = 0;
-                
                 if (timeType.includes("결석")) { startP = 1; endP = 8; }
                 else if (timeType.includes("오전")) { startP = 1; endP = 3; }
                 else if (timeType.includes("오후")) { startP = 1; endP = 6; }
