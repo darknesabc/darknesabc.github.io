@@ -1755,10 +1755,12 @@ window.__renderRadarChartCanvas = function() {
 };
 
 // =========================================================
-// 💡 추이 & 그래프 로직
+// 💡 추이 & 그래프 로직 (UI 버튼 렌더링 부분)
 // =========================================================
 window.__renderGradeTrendUI = function() {
     const container = document.getElementById('grade-trend-container');
+    if (!container) return; // 컨테이너가 없으면 방어
+
     const btnSty = (isActive, bg, fg) => `border:1px solid #dee2e6; padding:5px 12px; border-radius:4px; cursor:pointer; font-size:11px; font-weight:bold; background:${isActive ? bg : 'transparent'}; color:${isActive ? '#fff' : fg}; transition:0.2s;`;
     
     // 시험 종류 토글 버튼 스타일
@@ -1768,17 +1770,20 @@ window.__renderGradeTrendUI = function() {
         return `<button onclick="window.__toggleExamType('${key}')" style="border:1px solid ${isOn ? colors[key] : '#dee2e6'}; padding:6px 15px; border-radius:8px; cursor:pointer; font-size:12px; font-weight:bold; background:${isOn ? colors[key] : '#fff'}; color:${isOn ? '#fff' : '#bdc3c7'}; transition:0.2s; margin-right:5px;">${isOn ? '✅' : '⬜'} ${key}</button>`;
     };
 
+    // 30% 컷 토글 버튼
     const tglBtn = (key, label) => {
         const isOn = window.__toggles[key];
         return `<button onclick="window.__toggleCutoff('${key}')" style="border:1px solid ${isOn ? '#3498db' : '#dee2e6'}; padding:5px 12px; border-radius:20px; cursor:pointer; font-size:11px; font-weight:bold; background:${isOn ? '#e8f4f8' : '#fff'}; color:${isOn ? '#2980b9' : '#7f8c8d'}; transition:0.2s;">${label}</button>`;
     };
 
+    // 과목명 라벨 (선택과목 포함)
     const latestScore = window.__currentStudentScores[window.__currentStudentScores.length - 1] || {};
     const kLabel = latestScore.kor_choice ? `국어(${latestScore.kor_choice})` : '국어';
     const mLabel = latestScore.math_choice ? `수학(${latestScore.math_choice})` : '수학';
     const t1Label = latestScore.tam1_name ? `탐구1(${latestScore.tam1_name})` : '탐구1';
     const t2Label = latestScore.tam2_name ? `탐구2(${latestScore.tam2_name})` : '탐구2';
 
+    // 과목 켜기/끄기 버튼
     const subjBtn = (id, label, color) => {
         const isOn = window.__subjectToggles[id];
         return `<button onclick="window.__toggleSubject('${id}')" style="background:${isOn ? color : '#f1f2f6'}; color:${isOn ? '#fff' : '#bdc3c7'}; border:1px solid ${isOn ? color : '#dee2e6'}; padding:4px 12px; border-radius:15px; font-size:11px; font-weight:bold; cursor:pointer; transition:0.2s;">${label}</button>`;
@@ -1813,6 +1818,7 @@ window.__renderGradeTrendUI = function() {
             <div style="display:flex; flex-wrap:wrap; gap:8px; margin-bottom:15px; ${window.__currentViewMode==='table' ? 'display:none;' : ''}">
                 ${tglBtn('topTotal', '전체 상위 30%')}
                 ${tglBtn('topChoice', '선택 상위 30%')}
+                ${tglBtn('topClass', '우리반 30%')}
                 ${tglBtn('topHS', 'HS반 30%')}
                 ${tglBtn('topGreen', '그린 30%')}
                 ${tglBtn('topBlue', '블루 30%')}
@@ -1831,13 +1837,29 @@ window.__renderGradeTrendUI = function() {
             <div id="grade-display-area" style="min-height:350px;"></div>
         </div>
     `;
-    window.__renderGradeDisplay();
+    
+    // 💡 [핵심 수정] HTML 요소가 돔(DOM)에 완전히 그려질 때까지 0.05초 대기 후 그래프 렌더링
+    setTimeout(() => {
+        window.__renderGradeDisplay();
+    }, 50);
 };
 
 // 시험 타입 토글 함수
 window.__toggleExamType = function(type) {
     window.__examTypeToggles[type] = !window.__examTypeToggles[type];
-    window.__renderGradeTrendUI(); // UI와 그래프 동시 갱신
+    window.__renderGradeTrendUI(); // UI 다시 그리고 그래프 업데이트
+};
+
+// 30% 컷 라인 토글 함수
+window.__toggleCutoff = function(key) { 
+    window.__toggles[key] = !window.__toggles[key]; 
+    window.__renderGradeTrendUI(); 
+};
+
+// 과목 토글 함수
+window.__toggleSubject = function(subjId) { 
+    window.__subjectToggles[subjId] = !window.__subjectToggles[subjId]; 
+    window.__renderGradeTrendUI(); 
 };
 
 // =========================================================
