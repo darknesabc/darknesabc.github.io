@@ -187,7 +187,7 @@ async function init() {
         };
 
         students.forEach(s => {
-            const att = resAtt.data.find(a => a.student_id === s.student_id && a.period === currentP);
+      const att = resAtt.data.find(a => a.student_id === s.student_id && String(a.period) === String(currentP));
             
             const surveysForStudent = resSurvey.data.filter(sv => sv.student_id === s.student_id);
             const movesForStudent = resMove.data.filter(ml => ml.student_id === s.student_id && ml.reason !== "화장실/정수기");
