@@ -422,8 +422,8 @@ window.__loadStudentDetail = async function(student) {
 
             </div>
 
-            <div id="grade-summary-container"></div>
             <div id="grade-trend-container"></div>
+            <div id="grade-summary-container"></div>
         `;
         detailSection.innerHTML = html;
         window.__loadGradeTrend(student);
