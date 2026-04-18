@@ -4,6 +4,7 @@ const _supabase = supabase.createClient(SB_URL, SB_KEY);
 
 let loggedInManager = localStorage.getItem('managerName');
 let loggedInRole = localStorage.getItem('managerRole'); 
+let loggedInId = localStorage.getItem('managerId');
 
 // 💡 글로벌 상태 변수
 window.__currentSortMode = 'seat'; // 기본값: 자리순
@@ -70,7 +71,8 @@ async function handleLogin() {
         if (error) throw error;
         if (data) {
             localStorage.setItem('managerName', data.manager_name);
-            localStorage.setItem('managerRole', data.role); 
+            localStorage.setItem('managerRole', data.role);
+            localStorage.setItem('managerId', data.manager_id);
             location.reload(); 
         } else { loginMsg.innerText = "로그인 정보가 올바르지 않습니다."; }
     } catch (err) { loginMsg.innerText = "에러: " + err.message; }
@@ -140,7 +142,7 @@ async function init() {
         `;
 
         let query = _supabase.from('student').select('*');
-        if (loggedInManager === 'admin_4F') {
+        if (loggedInId === 'admin_4F') {
             query = query.ilike('seat_no', '4-%'); 
         }
         else if (loggedInRole !== 'super') {
