@@ -233,8 +233,8 @@ async function init() {
 </div>
                     ${sub ? `<div style="font-size:11px; color:#2c3e50; font-weight:bold; margin-top:4px; background:rgba(0,0,0,0.05); padding:2px 6px; border-radius:4px;">${sub}</div>` : ''}
                     <div style="display:flex; gap:3px; margin-top:5px; justify-content:center;">
-                        ${todayRestroomCount > 0 ? `<span style="background:#e0f7fa; color:#0097a7; padding:1px 4px; border-radius:3px; font-size:12px; font-weight:bold;">💧${todayRestroomCount}</span>` : ''}
-                        ${todaySleep > 0 ? `<span style="background:#ffeaa7; padding:1px 4px; border-radius:3px; font-size:12px;">💤${todaySleep}</span>` : ''}
+                        ${todayRestroomCount > 0 ? `<span style="background:#e0f7fa; color:#0097a7; padding:1px 4px; border-radius:3px; font-size:13px; font-weight:bold;">💧${todayRestroomCount}</span>` : ''}
+                        ${todaySleep > 0 ? `<span style="background:#ffeaa7; padding:1px 4px; border-radius:3px; font-size:13px;">💤${todaySleep}</span>` : ''}
                         ${totalEduScore > 0 ? `<span style="background:#fab1a0; padding:1px 4px; border-radius:3px; font-size:13px;">🚨${totalEduScore}</span>` : ''}
                     </div>
                 </div>
