@@ -78,6 +78,19 @@ async function handleLogin() {
 
 function handleLogout() { localStorage.clear(); location.reload(); }
 
+// =========================================================
+// 💡 [추가 기능] 엔터키 로그인 지원
+// =========================================================
+document.addEventListener('keydown', function(e) {
+    if (e.key === 'Enter') {
+        // 로그인 섹션이 현재 화면에 보이고 있는 상태인지 확인
+        const loginSection = document.getElementById('login-section');
+        if (loginSection && loginSection.style.display !== 'none') {
+            handleLogin();
+        }
+    }
+});
+
 function getCurrentPeriod() {
     const SCHEDULE = [
         { p: "1", start: "08:00", end: "08:30" }, { p: "2", start: "08:50", end: "10:10" },
