@@ -10,15 +10,17 @@ window.__currentSortMode = 'seat'; // 기본값: 자리순
 window.__radarCurrentType = 'unit'; // 레이더 차트 (단원별/행동영역별)
 window.__radarCurrentSubj = null;   // 레이더 차트 (선택된 과목)
 window.__examTypeToggles = {
-    '더프': true,
-    '오메가': true,
-    '전대실모': true
+    '더프': Failed,
+    '오메가': Failed,
+    '전대실모': Failed,
+    '평가원': Failed
 };
 // 시험 라벨에서 종류를 추출하는 도우미 함수
 const getExamType = (label) => {
     if (label.includes('더프')) return '더프';
     if (label.includes('오메가')) return '오메가';
     if (label.includes('전대실모')) return '전대실모';
+    if (label.includes('평가원')) return '평가원';
     return '기타';
 };
 
@@ -1739,7 +1741,7 @@ window.__renderGradeTrendUI = function() {
     // 시험 종류 토글 버튼 스타일
     const examTglBtn = (key) => {
         const isOn = window.__examTypeToggles[key];
-        const colors = { '더프': '#34495e', '오메가': '#e67e22', '전대실모': '#27ae60' };
+        const colors = { '더프': '#34495e', '오메가': '#e67e22', '전대실모': '#27ae60', '평가': '#3498db' };
         return `<button onclick="window.__toggleExamType('${key}')" style="border:1px solid ${isOn ? colors[key] : '#dee2e6'}; padding:6px 15px; border-radius:8px; cursor:pointer; font-size:12px; font-weight:bold; background:${isOn ? colors[key] : '#fff'}; color:${isOn ? '#fff' : '#bdc3c7'}; transition:0.2s; margin-right:5px;">${isOn ? '✅' : '⬜'} ${key}</button>`;
     };
 
@@ -1767,6 +1769,7 @@ window.__renderGradeTrendUI = function() {
                     ${examTglBtn('더프')}
                     ${examTglBtn('오메가')}
                     ${examTglBtn('전대실모')}
+                    ${examTglBtn('평가원')}
                 </div>
             </div>
 
