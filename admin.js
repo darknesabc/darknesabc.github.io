@@ -1051,7 +1051,7 @@ window.__changeSummaryExam = function(examLabel) {
 };
 
 // =========================================================
-// 💡 [최종 표준화] 성적 요약 테이블 (과목명 표준화 및 디자인 통일)
+// 💡 [데이터 연동 수정] 성적 요약 테이블 (한국사 extra_raw 반영)
 // =========================================================
 window.__renderGradeSummaryTable = function() {
     const area = document.getElementById('grade-summary-table-area');
@@ -1110,7 +1110,7 @@ window.__renderGradeSummaryTable = function() {
                         <td>${v(score.kor_raw_total)}</td>
                         <td>${v(score.math_raw_total)}</td>
                         <td>${v(score.eng_raw)}</td>
-                        <td>${v(score.hist_raw)}</td>
+                        <td>${v(score.extra_raw)}</td>
                         <td>${v(score.tam1_raw)}</td>
                         <td>${v(score.tam2_raw)}</td>
                     </tr>
