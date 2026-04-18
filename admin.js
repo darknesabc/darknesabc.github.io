@@ -1186,7 +1186,7 @@ window.__renderGradeSummaryTable = function() {
                         <td>${v(score.kor_exp_grade)}</td>
                         <td>${v(score.math_exp_grade)}</td>
                         <td class="sum-eng">${v(score.eng_grade)}</td>
-                        <td>${v(score.hist_grade || score.hist_exp_grade)}</td>
+                        <td>${v(score.extra_grade || score.hist_grade || score.hist_exp_grade)}</td>
                         <td>${v(score.tam1_exp_grade)}</td>
                         <td>${v(score.tam2_exp_grade)}</td>
                     </tr>
