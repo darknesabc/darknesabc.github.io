@@ -117,27 +117,23 @@ window.__fetchAllAttendance = async function(studentId) {
 };
 
 // =========================================================
-// 💡 [추가 기능] 오늘 하루 전체 출결 1000개 무제한 가져오기
+// 💡 [업그레이드] 최근 N일치 데이터 1000개 무제한 가져오기 (스마트 알림판용)
 // =========================================================
-window.__fetchTodayAttendance = async function(todayStr) {
+window.__fetchRecentData = async function(tableName, dateCol, startDate) {
     let allData = [];
     let fetchMore = true;
     let startIdx = 0;
     
     while (fetchMore) {
-        const { data, error } = await _supabase
-            .from('attendance')
-            .select('*')
-            .eq('attendance_date', todayStr)
-            // 🚨 [필수 추가] 누락 방지를 위한 고정 정렬 기준!
-            .order('student_id', { ascending: true }) 
-            .order('period', { ascending: true })
-            .range(startIdx, startIdx + 999);
-
-        if (error) {
-            console.error("출결 로드 에러:", error);
-            break;
+        let query = _supabase.from(tableName).select('*').gte(dateCol, startDate).range(startIdx, startIdx + 999);
+        
+        // 출결 데이터는 꼬이지 않게 학생/교시 순으로 고정 정렬
+        if (tableName === 'attendance') {
+            query = query.order('student_id', { ascending: true }).order('period', { ascending: true });
         }
+        
+        const { data, error } = await query;
+        if (error) { console.error(`${tableName} 로드 에러:`, error); break; }
         
         if (data && data.length > 0) {
             allData = allData.concat(data);
@@ -288,8 +284,13 @@ async function init() {
     try {
         const now = new Date();
         const today = new Date(now.getTime() - (now.getTimezoneOffset() * 60000)).toISOString().split('T')[0];
-        const isSunday = new Date(today).getDay() === 0; // 💡 [추가] 오늘이 일요일인지 확인
+        const isSunday = new Date(today).getDay() === 0; 
         const currentP = getCurrentPeriod();
+
+        // 💡 [신규] 7일 전 날짜 계산
+        const start7d = new Date(now);
+        start7d.setDate(start7d.getDate() - 6);
+        const start7dIso = new Date(start7d.getTime() - (start7d.getTimezoneOffset() * 60000)).toISOString().split('T')[0]
 
         summary.innerHTML = `
             <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:10px; margin-bottom:15px;">
@@ -312,11 +313,11 @@ async function init() {
 
         const [resStudents, resAtt, resSleep, resMove, resEduRaw, resSurvey] = await Promise.all([
             query,
-            window.__fetchTodayAttendance(today), 
-            _supabase.from('sleep_log').select('*').eq('sleep_date', today),
-            _supabase.from('move_log').select('*').eq('move_date', today).order('move_time', { ascending: false }),
-            window.__fetchAllEduScores(), // 👈 시한폭탄 제거 완료!
-            _supabase.from('survey_log').select('*').eq('survey_date', today)
+            window.__fetchRecentData('attendance', 'attendance_date', start7dIso),
+            window.__fetchRecentData('sleep_log', 'sleep_date', start7dIso),
+            window.__fetchRecentData('move_log', 'move_date', start7dIso),
+            window.__fetchAllEduScores(),
+            window.__fetchRecentData('survey_log', 'survey_date', start7dIso)
         ]);
 
         const processedEduData = window.__processEduScores(resEduRaw.data);
@@ -331,151 +332,133 @@ async function init() {
         window.__dashboardItems = students.map(s => ({ seat: s.seat_no, studentId: s.student_id, name: s.name, teacher: s.teacher_name, className: s.class_name }));
 
         dashboard.innerHTML = '';
-        
         const curPInt = parseInt(currentP, 10);
 
-        students.forEach(s => {
-            const studentAttsToday = resAtt.data.filter(a => a.student_id === s.student_id);
-            const att = studentAttsToday.find(a => String(a.period) === String(currentP));
-            const move = resMove.data.find(ml => ml.student_id === s.student_id);
-            const isOut = move && (move.return_period === "복귀안함" || parseInt(move.return_period) >= curPInt);
-            const validMove = (isOut && move.reason !== "화장실/정수기") ? move.reason : "";
-            
-            let surveyReason = "";
-            const surveysForStudent = resSurvey.data.filter(sv => sv.student_id === s.student_id);
-            
-            // 💡 [신규] 오늘 학생의 종합 스케줄 맵 (공결 판별용)
-            let studentSchedToday = {};
-            
-            for (let sv of surveysForStudent) {
-                const timeType = sv.arrival_time_type || "";
-                let startP = 0, endP = 0;
-                
-                if (timeType.includes("결석")) { startP = 1; endP = 8; }
-                else if (timeType.includes("오전")) { startP = 1; endP = 3; }
-                else if (timeType.includes("오후")) { startP = 1; endP = 6; }
-                else if (timeType.includes("야간") || timeType.includes("저녁")) { startP = 1; endP = 7; }
-                
-                // 메인 배지용 설문 사유 추출 (현재 교시)
-                if (curPInt >= startP && curPInt <= endP) {
-                    surveyReason = `[설문] ${sv.reason.split('(')[0].trim()}`;
-                }
-                
-                // 공결 판별용 스케줄 맵 채우기
-                if (startP > 0) { 
-                    for(let p=startP; p<=endP; p++) studentSchedToday[p] = `[설문]`; 
-                }
-            }
+        // 🚨 스마트 알림판에 들어갈 명단 보관함
+        let alertEdu = [];
+        let alertAbs = [];
+        let alertLate = [];
+        let alertSleep = [];
+        let alertNoReturn = [];
 
-            // 이동 스케줄 맵 채우기 (화장실 제외)
-            resMove.data.filter(mv => mv.student_id === s.student_id && mv.reason !== "화장실/정수기").forEach(mv => {
-                let rp = parseInt(mv.return_period, 10) || 0; 
-                if (mv.return_period === "복귀안함") rp = 8; 
-                const sp = window.__getPeriodFromTime(mv.move_time); 
-                if (rp > 0) { 
-                    const start = sp > 0 ? sp : rp; 
-                    for(let p=start; p<=rp; p++) studentSchedToday[p] = studentSchedToday[p] ? studentSchedToday[p] + ` / ${mv.reason}` : mv.reason; 
+        students.forEach(s => {
+            // 해당 학생의 최근 7일치 데이터 전체
+            const stAtts7d = resAtt.data.filter(a => a.student_id === s.student_id);
+            const stSleep7d = resSleep.data.filter(sl => sl.student_id === s.student_id);
+            const stMove7d = resMove.data.filter(ml => ml.student_id === s.student_id);
+            const stSurvey7d = resSurvey.data.filter(sv => sv.student_id === s.student_id);
+            const stEduAll = processedEduData.filter(el => el.student_id === s.student_id);
+
+            // 해당 학생의 오늘(당일) 데이터 (바둑판 카드 렌더링용)
+            const stAttsToday = stAtts7d.filter(a => a.attendance_date === today);
+            const att = stAttsToday.find(a => String(a.period) === String(currentP));
+            const moveToday = stMove7d.find(ml => ml.move_date === today);
+            const isOut = moveToday && (moveToday.return_period === "복귀안함" || parseInt(moveToday.return_period) >= curPInt);
+            const validMove = (isOut && moveToday.reason !== "화장실/정수기") ? moveToday.reason : "";
+            
+            // 💡 7일치 종합 스케줄 맵 생성 (공결 및 지각 분석용)
+            let schedMap7d = {};
+            stEduAll.forEach(ed => {
+                if (ed.score_date >= start7dIso && ed.score_date <= today && ed.reason.includes('지각')) {
+                    const sp = window.__getPeriodFromTime(ed.score_time);
+                    if (!schedMap7d[ed.score_date]) schedMap7d[ed.score_date] = {};
+                    schedMap7d[ed.score_date][sp] = schedMap7d[ed.score_date][sp] ? schedMap7d[ed.score_date][sp] + ` / ${ed.display_reason}` : ed.display_reason;
                 }
             });
-            
-            // 💡 [수정] 이전 교시 무단 결석 횟수 카운팅 (일요일은 무조건 0)
-            let todayAbsenceCount = 0;
-            if (!isSunday) {
-                studentAttsToday.forEach(a => {
-                    const p = parseInt(a.period, 10);
-                    if (p < curPInt) { // 현재 교시 이전만 카운트
-                        const extraMemo = studentSchedToday[p] || '';
-                        const baseMemo = a.memo ? a.memo.trim() : '';
-                        const combinedMemo = extraMemo || (baseMemo !== '-' ? baseMemo : '');
-                        
-                        const isLate = a.status_code === '2' || extraMemo.includes('지각') || baseMemo.includes('지각');
-                        const hasValidMemo = combinedMemo !== '';
-                        const isExcused = (a.status_code === '3') && !isLate && hasValidMemo; 
-                        
-                        const isAbs = (a.status_code === '3') && !isLate && !isExcused; // 순수 무단결석
-                        if (isAbs) todayAbsenceCount++;
-                    }
-                });
-            }
+            stSurvey7d.forEach(sv => {
+                const dStr = sv.survey_date; const timeType = sv.arrival_time_type || ""; let startP = 0, endP = 0;
+                if (timeType.includes("결석")) { startP = 1; endP = 8; } else if (timeType.includes("오전")) { startP = 1; endP = 3; } else if (timeType.includes("오후")) { startP = 1; endP = 6; } else if (timeType.includes("야간") || timeType.includes("저녁")) { startP = 1; endP = 7; }
+                if (startP > 0) { if (!schedMap7d[dStr]) schedMap7d[dStr] = {}; for(let p=startP; p<=endP; p++) schedMap7d[dStr][p] = `[설문]`; }
+            });
+            stMove7d.forEach(mv => { 
+                if (mv.reason === "화장실/정수기") return; 
+                const dStr = mv.move_date; let rp = parseInt(mv.return_period, 10) || 0; if (mv.return_period === "복귀안함") rp = 8; 
+                const sp = window.__getPeriodFromTime(mv.move_time); 
+                if (rp > 0) { const start = sp > 0 ? sp : rp; if (!schedMap7d[dStr]) schedMap7d[dStr] = {}; for(let p=start; p<=rp; p++) schedMap7d[dStr][p] = schedMap7d[dStr][p] ? schedMap7d[dStr][p] + ` / ${mv.reason}` : mv.reason; } 
+            });
 
-            const todaySleep = resSleep.data.filter(sl => sl.student_id === s.student_id).reduce((acc, cur) => acc + (cur.count || 1), 0);
-            const totalEduScore = processedEduData.filter(el => el.student_id === s.student_id).reduce((acc, cur) => acc + cur.calculated_score, 0);
-            const todayRestroomCount = resMove.data.filter(ml => ml.student_id === s.student_id && ml.reason === "화장실/정수기").length;
+            // 💡 스마트 알림판용 & 당일용 변수들 계산
+            let abs7dCount = 0; 
+            let late7dCount = 0;
+            let todayAbsenceCount = 0; // 카드 표시용
 
-            // 💡 [수정] 지각 횟수 카운팅 (일요일은 무조건 0)
+            stAtts7d.forEach(a => {
+                const isToday = a.attendance_date === today;
+                if (a.attendance_date > today || (isToday && parseInt(a.period, 10) > currentP)) return;
+                if (new Date(a.attendance_date).getDay() === 0) return; // 일요일 무시
+
+                const p = parseInt(a.period, 10);
+                const extraMemo = schedMap7d[a.attendance_date]?.[p] || '';
+                const baseMemo = a.memo ? a.memo.trim() : '';
+                const combinedMemo = extraMemo || (baseMemo !== '-' ? baseMemo : '');
+
+                const isLate = a.status_code === '2' || extraMemo.includes('지각') || baseMemo.includes('지각');
+                const hasValidMemo = combinedMemo !== '';
+                const isExcused = (a.status_code === '3') && !isLate && hasValidMemo; 
+                const isAbs = (a.status_code === '3') && !isLate && !isExcused;
+
+                if (isLate) late7dCount++;
+                if (isAbs) {
+                    abs7dCount++;
+                    if (isToday && p < curPInt) todayAbsenceCount++;
+                }
+            });
+
+            const sleep7dCount = stSleep7d.reduce((sum, sl) => sum + sl.count, 0);
+            const noReturn7dCount = stMove7d.filter(m => m.return_period === '복귀안함').length;
+            const totalEduScore = stEduAll.reduce((sum, el) => sum + el.calculated_score, 0);
+
+            // 🚨 스마트 알림판 조건 확인 후 명단에 추가!
+            if (totalEduScore >= 10) alertEdu.push(`${s.name}(${totalEduScore}점)`);
+            if (abs7dCount >= 3) alertAbs.push(`${s.name}(${abs7dCount}회)`);
+            if (late7dCount >= 2) alertLate.push(`${s.name}(${late7dCount}회)`);
+            if (sleep7dCount >= 3) alertSleep.push(`${s.name}(${sleep7dCount}회)`);
+            if (noReturn7dCount >= 3) alertNoReturn.push(`${s.name}(${noReturn7dCount}회)`);
+
+            // --- 여기부터는 당일 바둑판 카드 그리기 (기존 로직) ---
+            const todaySleep = stSleep7d.filter(sl => sl.sleep_date === today).reduce((acc, cur) => acc + (cur.count || 1), 0);
+            const todayRestroomCount = stMove7d.filter(ml => ml.move_date === today && ml.reason === "화장실/정수기").length;
+
             let latePeriods = new Set();
             if (!isSunday) {
-                studentAttsToday.forEach(a => {
-                    if (a.status_code === '2' || (a.memo && a.memo.includes('지각'))) latePeriods.add(String(a.period));
-                });
-                processedEduData.forEach(el => {
-                    if (el.student_id === s.student_id && el.score_date === today && el.reason.includes('지각')) {
-                        const sp = window.__getPeriodFromTime(el.score_time);
-                        if (sp) latePeriods.add(String(sp));
-                    }
+                stAttsToday.forEach(a => { if (a.status_code === '2' || (a.memo && a.memo.includes('지각'))) latePeriods.add(String(a.period)); });
+                stEduAll.filter(el => el.score_date === today && el.reason.includes('지각')).forEach(el => {
+                    const sp = window.__getPeriodFromTime(el.score_time); if (sp) latePeriods.add(String(sp));
                 });
             }
             const todayLateCount = latePeriods.size;
 
+            let surveyReason = schedMap7d[today]?.[curPInt] && schedMap7d[today][curPInt].includes('[설문]') ? "[설문]" : "";
             let status = "미입력", sub = "", color = "none", code = att ? att.status_code : "";
-            if (code === "1") { 
-                status = "출석"; color = "1"; 
-                sub = validMove || surveyReason || (att ? att.memo : ""); 
-            }
+            if (code === "1") { status = "출석"; color = "1"; sub = validMove || surveyReason || (att ? att.memo : ""); }
             else if (validMove) { status = validMove; color = "move"; }
             else if (surveyReason) { status = surveyReason; color = "schedule"; }
             else if (att && att.memo) { status = att.memo; color = "schedule"; }
             else { status = code === "3" ? "결석" : (code === "2" ? "지각" : "미입력"); color = code || "none"; }
 
-            // 💡 [변경] 1. 결석 아이콘 진화 로직
             let absBadge = '';
-            if (todayAbsenceCount >= 6) {
-                // ❌ 위험 (빨간색)
-                absBadge = `<span style="background:#e74c3c; color:#fff; padding:2px 6px; border-radius:4px; font-size:12px; font-weight:900;">❌위험(${todayAbsenceCount})</span>`;
-            } else if (todayAbsenceCount >= 3) {
-                // ❌ 경고 (주황색)
-                absBadge = `<span style="background:#e67e22; color:#fff; padding:2px 6px; border-radius:4px; font-size:12px; font-weight:bold;">❌경고(${todayAbsenceCount})</span>`;
-            } else if (todayAbsenceCount > 0) {
-                // 일반
-                absBadge = `<span style="background:#fadedb; color:#e74c3c; padding:1px 4px; border-radius:3px; font-size:12px; font-weight:bold;">❌${todayAbsenceCount}</span>`;
-            }
+            if (todayAbsenceCount >= 6) absBadge = `<span style="background:#e74c3c; color:#fff; padding:2px 6px; border-radius:4px; font-size:12px; font-weight:900;">❌위험(${todayAbsenceCount})</span>`;
+            else if (todayAbsenceCount >= 3) absBadge = `<span style="background:#e67e22; color:#fff; padding:2px 6px; border-radius:4px; font-size:12px; font-weight:bold;">❌경고(${todayAbsenceCount})</span>`;
+            else if (todayAbsenceCount > 0) absBadge = `<span style="background:#fadedb; color:#e74c3c; padding:1px 4px; border-radius:3px; font-size:12px; font-weight:bold;">❌${todayAbsenceCount}</span>`;
 
-            // 💡 [변경] 2. 취침 아이콘 진화 로직
             let sleepBadge = '';
-            if (todaySleep >= 6) {
-                // 💤 위험 (진한 빨간색)
-                sleepBadge = `<span style="background:#c0392b; color:#fff; padding:2px 6px; border-radius:4px; font-size:12px; font-weight:900;">💤위험(${todaySleep})</span>`;
-            } else if (todaySleep >= 3) {
-                // 💤 경고 (노란색/진한 머스타드 - 흰 글씨 가독성을 위해)
-                sleepBadge = `<span style="background:#f39c12; color:#fff; padding:2px 6px; border-radius:4px; font-size:12px; font-weight:bold;">💤경고(${todaySleep})</span>`;
-            } else if (todaySleep > 0) {
-                // 일반
-                sleepBadge = `<span style="background:#ffeaa7; color:#d35400; padding:1px 4px; border-radius:3px; font-size:12px;">💤${todaySleep}</span>`;
-            }
+            if (todaySleep >= 6) sleepBadge = `<span style="background:#c0392b; color:#fff; padding:2px 6px; border-radius:4px; font-size:12px; font-weight:900;">💤위험(${todaySleep})</span>`;
+            else if (todaySleep >= 3) sleepBadge = `<span style="background:#f39c12; color:#fff; padding:2px 6px; border-radius:4px; font-size:12px; font-weight:bold;">💤경고(${todaySleep})</span>`;
+            else if (todaySleep > 0) sleepBadge = `<span style="background:#ffeaa7; color:#d35400; padding:1px 4px; border-radius:3px; font-size:12px;">💤${todaySleep}</span>`;
 
-            // 💡 [변경] 3. 교육점수(벌점) 아이콘 진화 로직
             let eduBadge = '';
-            if (totalEduScore >= 15) {
-                // 🚨 위험 (진한 보라색)
-                eduBadge = `<span style="background:#6c3483; color:#fff; padding:2px 6px; border-radius:4px; font-size:12px; font-weight:900;">🚨위험(${totalEduScore})</span>`;
-            } else if (totalEduScore >= 10) {
-                // 🚨 경고 (연한 보라색)
-                eduBadge = `<span style="background:#af7ac5; color:#fff; padding:2px 6px; border-radius:4px; font-size:12px; font-weight:bold;">🚨경고(${totalEduScore})</span>`;
-            } else if (totalEduScore > 0) {
-                // 일반
-                eduBadge = `<span style="background:#fab1a0; color:#c0392b; padding:1px 4px; border-radius:3px; font-size:12px;">🚨${totalEduScore}</span>`;
-            }
+            if (totalEduScore >= 15) eduBadge = `<span style="background:#6c3483; color:#fff; padding:2px 6px; border-radius:4px; font-size:12px; font-weight:900;">🚨위험(${totalEduScore})</span>`;
+            else if (totalEduScore >= 10) eduBadge = `<span style="background:#af7ac5; color:#fff; padding:2px 6px; border-radius:4px; font-size:12px; font-weight:bold;">🚨경고(${totalEduScore})</span>`;
+            else if (totalEduScore > 0) eduBadge = `<span style="background:#fab1a0; color:#c0392b; padding:1px 4px; border-radius:3px; font-size:12px;">🚨${totalEduScore}</span>`;
 
             dashboard.innerHTML += `
                 <div class="card status-${color}" style="position:relative; cursor:pointer;" onclick="window.__loadStudentDetail(window.__dashboardItems.find(x => x.studentId === '${s.student_id}'))">
                     <div class="seat" style="font-size:11px; opacity:0.7;">${s.seat_no}</div>
                     <div class="name" style="font-size:18px; margin: 5px 0;">${s.name}</div>
-                    <div class="status-badge badge-${color}" 
-                        style="font-size:13px; font-weight:900; display: inline-block; max-width: 140px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; vertical-align: middle; line-height: 1.4; padding: 2px 8px; margin: 2px auto;">
+                    <div class="status-badge badge-${color}" style="font-size:13px; font-weight:900; display: inline-block; max-width: 140px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; vertical-align: middle; line-height: 1.4; padding: 2px 8px; margin: 2px auto;">
                         ${status}
                     </div>
                     ${sub ? `<div style="font-size:11px; color:#2c3e50; font-weight:bold; margin-top:4px; background:rgba(0,0,0,0.05); padding:2px 6px; border-radius:4px;">${sub}</div>` : ''}
-                    
                     <div style="display:flex; gap:3px; margin-top:5px; justify-content:center; flex-wrap:wrap;">
                         ${absBadge}
                         ${todayLateCount > 0 ? `<span style="background:#fef5e7; color:#e67e22; padding:1px 4px; border-radius:3px; font-size:12px; font-weight:bold;">⏰${todayLateCount}</span>` : ''}
@@ -485,8 +468,43 @@ async function init() {
                     </div>
                 </div>
             `;
-
         });
+
+        // 🚨 반복문이 끝난 후, 바둑판 위에 스마트 알림판 그리기!
+        const buildAlertRow = (title, icon, items, color, bgColor) => {
+            if (items.length === 0) return '';
+            return `
+                <div style="background:${bgColor}; border-left:5px solid ${color}; border-radius:8px; padding:12px 18px; margin-bottom:10px; display:flex; align-items:flex-start; gap:12px; box-shadow:0 2px 8px rgba(0,0,0,0.04);">
+                    <div style="font-weight:900; color:${color}; font-size:14px; white-space:nowrap; min-width:140px;">${icon} ${title}</div>
+                    <div style="font-size:13px; color:#2c3e50; line-height:1.6; flex:1;">
+                        ${items.map(i => `<span style="background:rgba(255,255,255,0.7); border:1px solid rgba(0,0,0,0.05); padding:3px 10px; border-radius:15px; margin-right:6px; margin-bottom:6px; display:inline-block; font-weight:bold; box-shadow:0 1px 2px rgba(0,0,0,0.02);">${i}</span>`).join('')}
+                    </div>
+                </div>
+            `;
+        };
+
+        let alertHtml = '';
+        alertHtml += buildAlertRow('누적 벌점 주의', '🚨', alertEdu, '#8e44ad', '#f4ecf7');
+        alertHtml += buildAlertRow('최근 결석 주의 (7일)', '❌', alertAbs, '#e74c3c', '#fdedec');
+        alertHtml += buildAlertRow('최근 지각 주의 (7일)', '⏰', alertLate, '#e67e22', '#fef5e7');
+        alertHtml += buildAlertRow('최근 취침 주의 (7일)', '💤', alertSleep, '#f39c12', '#fcf3cf');
+        alertHtml += buildAlertRow('복귀 안 함 주의 (7일)', '🚶', alertNoReturn, '#27ae60', '#e9f7ef');
+
+        // 스마트 알림판을 넣을 컨테이너 처리 (바둑판 바로 위에 삽입)
+        let alertContainer = document.getElementById('smart-alert-container');
+        if (!alertContainer) {
+            alertContainer = document.createElement('div');
+            alertContainer.id = 'smart-alert-container';
+            dashboard.parentNode.insertBefore(alertContainer, dashboard);
+        }
+        
+        if (alertHtml) {
+            alertContainer.innerHTML = `<div style="margin-bottom:25px;"><h3 style="margin:0 0 15px 0; color:#2c3e50; font-size:16px;">📌 집중 관리 대상 (스마트 알림판)</h3>${alertHtml}</div>`;
+            alertContainer.style.display = 'block';
+        } else {
+            alertContainer.style.display = 'none';
+        }
+
     } catch (err) { summary.innerText = "에러: " + err.message; }
 }
 
