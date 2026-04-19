@@ -278,7 +278,6 @@ async function init() {
         const curPInt = parseInt(currentP, 10);
 
         students.forEach(s => {
-            // 💡 [변경] 오늘 학생의 전체 출결을 가져온 뒤, 현재 교시 상태만 따로 뽑습니다.
             const studentAttsToday = resAtt.data.filter(a => a.student_id === s.student_id);
             const att = studentAttsToday.find(a => String(a.period) === String(currentP));
             const move = resMove.data.find(ml => ml.student_id === s.student_id);
@@ -287,6 +286,10 @@ async function init() {
             
             let surveyReason = "";
             const surveysForStudent = resSurvey.data.filter(sv => sv.student_id === s.student_id);
+            
+            // 💡 [신규] 오늘 학생의 종합 스케줄 맵 (공결 판별용)
+            let studentSchedToday = {};
+            
             for (let sv of surveysForStudent) {
                 const timeType = sv.arrival_time_type || "";
                 let startP = 0, endP = 0;
@@ -296,25 +299,55 @@ async function init() {
                 else if (timeType.includes("오후")) { startP = 1; endP = 6; }
                 else if (timeType.includes("야간") || timeType.includes("저녁")) { startP = 1; endP = 7; }
                 
+                // 메인 배지용 설문 사유 추출 (현재 교시)
                 if (curPInt >= startP && curPInt <= endP) {
                     surveyReason = `[설문] ${sv.reason.split('(')[0].trim()}`;
-                    break;
+                }
+                
+                // 공결 판별용 스케줄 맵 채우기
+                if (startP > 0) { 
+                    for(let p=startP; p<=endP; p++) studentSchedToday[p] = `[설문]`; 
                 }
             }
+
+            // 이동 스케줄 맵 채우기 (화장실 제외)
+            resMove.data.filter(mv => mv.student_id === s.student_id && mv.reason !== "화장실/정수기").forEach(mv => {
+                let rp = parseInt(mv.return_period, 10) || 0; 
+                if (mv.return_period === "복귀안함") rp = 8; 
+                const sp = window.__getPeriodFromTime(mv.move_time); 
+                if (rp > 0) { 
+                    const start = sp > 0 ? sp : rp; 
+                    for(let p=start; p<=rp; p++) studentSchedToday[p] = studentSchedToday[p] ? studentSchedToday[p] + ` / ${mv.reason}` : mv.reason; 
+                }
+            });
             
+            // 💡 [신규] 이전 교시 무단 결석 횟수 카운팅
+            let todayAbsenceCount = 0;
+            studentAttsToday.forEach(a => {
+                const p = parseInt(a.period, 10);
+                if (p < curPInt) { // 현재 교시 이전만 카운트
+                    const extraMemo = studentSchedToday[p] || '';
+                    const baseMemo = a.memo ? a.memo.trim() : '';
+                    const combinedMemo = extraMemo || (baseMemo !== '-' ? baseMemo : '');
+                    
+                    const isLate = a.status_code === '2' || extraMemo.includes('지각') || baseMemo.includes('지각');
+                    const hasValidMemo = combinedMemo !== '';
+                    const isExcused = (a.status_code === '3') && !isLate && hasValidMemo; 
+                    
+                    const isAbs = (a.status_code === '3') && !isLate && !isExcused; // 순수 무단결석
+                    if (isAbs) todayAbsenceCount++;
+                }
+            });
+
             const todaySleep = resSleep.data.filter(sl => sl.student_id === s.student_id).reduce((acc, cur) => acc + (cur.count || 1), 0);
             const totalEduScore = resEdu.data.filter(el => el.student_id === s.student_id).reduce((acc, cur) => acc + (EDU_SCORE_MAP[cur.reason] || 0), 0);
             const todayRestroomCount = resMove.data.filter(ml => ml.student_id === s.student_id && ml.reason === "화장실/정수기").length;
 
-            // 💡 [신규] 오늘 하루 '지각' 횟수 완벽 카운팅 (중복 교시 방지를 위해 Set 사용)
+            // 지각 횟수 카운팅 (Set 사용)
             let latePeriods = new Set();
-            // 1. 출결 DB에 '지각(2)' 처리되거나 메모에 '지각'이 적힌 경우
             studentAttsToday.forEach(a => {
-                if (a.status_code === '2' || (a.memo && a.memo.includes('지각'))) {
-                    latePeriods.add(String(a.period));
-                }
+                if (a.status_code === '2' || (a.memo && a.memo.includes('지각'))) latePeriods.add(String(a.period));
             });
-            // 2. 교육점수(벌점) 로그에 오늘 '지각'으로 찍힌 경우
             resEdu.data.forEach(el => {
                 if (el.student_id === s.student_id && el.score_date === today && el.reason.includes('지각')) {
                     const sp = window.__getPeriodFromTime(el.score_time);
@@ -344,6 +377,7 @@ async function init() {
                     ${sub ? `<div style="font-size:11px; color:#2c3e50; font-weight:bold; margin-top:4px; background:rgba(0,0,0,0.05); padding:2px 6px; border-radius:4px;">${sub}</div>` : ''}
                     
                     <div style="display:flex; gap:3px; margin-top:5px; justify-content:center;">
+                        ${todayAbsenceCount > 0 ? `<span style="background:#fadedb; color:#e74c3c; padding:1px 4px; border-radius:3px; font-size:13px; font-weight:bold;">❌${todayAbsenceCount}</span>` : ''}
                         ${todayLateCount > 0 ? `<span style="background:#fef5e7; color:#e67e22; padding:1px 4px; border-radius:3px; font-size:13px; font-weight:bold;">⏰${todayLateCount}</span>` : ''}
                         ${todayRestroomCount > 0 ? `<span style="background:#e0f7fa; color:#0097a7; padding:1px 4px; border-radius:3px; font-size:13px; font-weight:bold;">💧${todayRestroomCount}</span>` : ''}
                         ${todaySleep > 0 ? `<span style="background:#ffeaa7; padding:1px 4px; border-radius:3px; font-size:13px;">💤${todaySleep}</span>` : ''}
