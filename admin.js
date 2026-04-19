@@ -146,6 +146,17 @@ function getCurrentPeriod() {
 }
 
 // =========================================================
+// 💡 [추가 기능] 시간 -> 교시 변환 헬퍼 함수 (지각 계산용)
+// =========================================================
+window.__getPeriodFromTime = function(timeStr) {
+    if (!timeStr) return 1;
+    const [h, m] = timeStr.split(':').map(Number); const t = h * 60 + m;
+    if (t < 8*60+30) return 1; if (t < 10*60+10) return 2; if (t < 12*60) return 3;
+    if (t < 14*60+30) return 4; if (t < 15*60+50) return 5; if (t < 17*60+30) return 6;
+    if (t < 20*60+10) return 7; return 8;
+};
+
+// =========================================================
 // 2. 메인 화면 초기화 (바둑판 카드)
 // =========================================================
 async function init() {
@@ -187,7 +198,7 @@ async function init() {
 
         const [resStudents, resAtt, resSleep, resMove, resEdu, resSurvey] = await Promise.all([
             query,
-            _supabase.from('attendance').select('*').eq('attendance_date', today).eq('period', currentP),
+            _supabase.from('attendance').select('*').eq('attendance_date', today), // 👈 현재 교시 필터 삭제
             _supabase.from('sleep_log').select('*').eq('sleep_date', today),
             _supabase.from('move_log').select('*').eq('move_date', today).order('move_time', { ascending: false }),
             _supabase.from('edu_score_log').select('*'),
@@ -209,7 +220,9 @@ async function init() {
         const curPInt = parseInt(currentP, 10);
 
         students.forEach(s => {
-            const att = resAtt.data.find(a => a.student_id === s.student_id);
+            // 💡 [변경] 오늘 학생의 전체 출결을 가져온 뒤, 현재 교시 상태만 따로 뽑습니다.
+            const studentAttsToday = resAtt.data.filter(a => a.student_id === s.student_id);
+            const att = studentAttsToday.find(a => String(a.period) === String(currentP));
             const move = resMove.data.find(ml => ml.student_id === s.student_id);
             const isOut = move && (move.return_period === "복귀안함" || parseInt(move.return_period) >= curPInt);
             const validMove = (isOut && move.reason !== "화장실/정수기") ? move.reason : "";
@@ -235,6 +248,23 @@ async function init() {
             const totalEduScore = resEdu.data.filter(el => el.student_id === s.student_id).reduce((acc, cur) => acc + (EDU_SCORE_MAP[cur.reason] || 0), 0);
             const todayRestroomCount = resMove.data.filter(ml => ml.student_id === s.student_id && ml.reason === "화장실/정수기").length;
 
+            // 💡 [신규] 오늘 하루 '지각' 횟수 완벽 카운팅 (중복 교시 방지를 위해 Set 사용)
+            let latePeriods = new Set();
+            // 1. 출결 DB에 '지각(2)' 처리되거나 메모에 '지각'이 적힌 경우
+            studentAttsToday.forEach(a => {
+                if (a.status_code === '2' || (a.memo && a.memo.includes('지각'))) {
+                    latePeriods.add(String(a.period));
+                }
+            });
+            // 2. 교육점수(벌점) 로그에 오늘 '지각'으로 찍힌 경우
+            resEdu.data.forEach(el => {
+                if (el.student_id === s.student_id && el.score_date === today && el.reason.includes('지각')) {
+                    const sp = window.__getPeriodFromTime(el.score_time);
+                    if (sp) latePeriods.add(String(sp));
+                }
+            });
+            const todayLateCount = latePeriods.size;
+
             let status = "미입력", sub = "", color = "none", code = att ? att.status_code : "";
             if (code === "1") { 
                 status = "출석"; color = "1"; 
@@ -249,21 +279,14 @@ async function init() {
                 <div class="card status-${color}" style="position:relative; cursor:pointer;" onclick="window.__loadStudentDetail(window.__dashboardItems.find(x => x.studentId === '${s.student_id}'))">
                     <div class="seat" style="font-size:11px; opacity:0.7;">${s.seat_no}</div>
                     <div class="name" style="font-size:18px; margin: 5px 0;">${s.name}</div>
-                  <div class="status-badge badge-${color}" 
-     style="font-size:13px; font-weight:900; 
-            display: inline-block; 
-            max-width: 140px; 
-            white-space: nowrap; 
-            overflow: hidden; 
-            text-overflow: ellipsis; 
-            vertical-align: middle;
-            line-height: 1.4;
-            padding: 2px 8px; /* 배경 박스가 보일 수 있도록 여백 추가 */
-            margin: 2px auto;">
-    ${status}
-</div>
+                    <div class="status-badge badge-${color}" 
+                        style="font-size:13px; font-weight:900; display: inline-block; max-width: 140px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; vertical-align: middle; line-height: 1.4; padding: 2px 8px; margin: 2px auto;">
+                        ${status}
+                    </div>
                     ${sub ? `<div style="font-size:11px; color:#2c3e50; font-weight:bold; margin-top:4px; background:rgba(0,0,0,0.05); padding:2px 6px; border-radius:4px;">${sub}</div>` : ''}
+                    
                     <div style="display:flex; gap:3px; margin-top:5px; justify-content:center;">
+                        ${todayLateCount > 0 ? `<span style="background:#fef5e7; color:#e67e22; padding:1px 4px; border-radius:3px; font-size:13px; font-weight:bold;">⏰${todayLateCount}</span>` : ''}
                         ${todayRestroomCount > 0 ? `<span style="background:#e0f7fa; color:#0097a7; padding:1px 4px; border-radius:3px; font-size:13px; font-weight:bold;">💧${todayRestroomCount}</span>` : ''}
                         ${todaySleep > 0 ? `<span style="background:#ffeaa7; padding:1px 4px; border-radius:3px; font-size:13px;">💤${todaySleep}</span>` : ''}
                         ${totalEduScore > 0 ? `<span style="background:#fab1a0; padding:1px 4px; border-radius:3px; font-size:13px;">🚨${totalEduScore}</span>` : ''}
