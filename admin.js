@@ -227,16 +227,12 @@ window.__processEduScores = function(rawEduData) {
 
     rawEduData.forEach(el => {
         const score = EDU_SCORE_MAP[el.reason] || 0;
-        const period = el.period || window.__getPeriodFromTime(el.score_time);
+        // DB 스크린샷 기준 return_period에 교시가 들어갈 수도 있으므로 호환성 추가
+        const period = el.period || el.return_period || window.__getPeriodFromTime(el.score_time) || "1";
         
-        // 1. 휴먼 에러 방지: 날짜 + 시간 + 사유 + 점수 + 교시가 동일한 데이터 필터링
-        const dedupKey = `${el.student_id}_${el.score_date}_${el.score_time}_${el.reason}_${score}_${period}`;
-        
-        if (seen.has(dedupKey)) return; // 이미 본 데이터면 무시!
-        seen.add(dedupKey);
-
-        // 2. 취침 특수 병합 처리
         if (el.reason === '취침') {
+            // 💡 [해결 포인트] 취침은 교시/시간 입력 없이 횟수로 연타하는 경우가 많음.
+            // 따라서 까다로운 중복 검사(seen)를 패스하고, 무조건 날짜 기준으로 합산(Agg)시킵니다!
             const aggKey = `${el.student_id}_${el.score_date}`;
             if (!sleepAgg[aggKey]) {
                 sleepAgg[aggKey] = { ...el, sleepCount: 1, calculated_score: score };
@@ -245,18 +241,24 @@ window.__processEduScores = function(rawEduData) {
                 sleepAgg[aggKey].calculated_score += score;
             }
         } else {
-            // 다른 벌점들은 그대로 추가
+            // 💡 다른 일반 벌점(지각 등)은 날짜+시간+사유+점수+교시가 완전 동일하면 휴먼 에러로 간주해 차단
+            const dedupKey = `${el.student_id}_${el.score_date}_${el.score_time}_${el.reason}_${score}_${period}`;
+            
+            if (seen.has(dedupKey)) return; // 이미 본 데이터면 무시!
+            seen.add(dedupKey);
+
+            // 통과한 벌점만 추가
             processed.push({ ...el, calculated_score: score, display_reason: el.reason });
         }
     });
 
-    // 3. 병합된 취침 데이터를 배열에 다시 삽입
+    // 병합된 취침 데이터를 배열에 다시 삽입
     Object.values(sleepAgg).forEach(sleepObj => {
         sleepObj.display_reason = sleepObj.sleepCount > 1 ? `취침 (${sleepObj.calculated_score}점)` : `취침`;
         processed.push(sleepObj);
     });
 
-    // 4. 최신순으로 정렬 (날짜 내림차순 -> 시간 내림차순)
+    // 최신순으로 정렬 (날짜 내림차순 -> 시간 내림차순)
     processed.sort((a, b) => {
         if (a.score_date !== b.score_date) return a.score_date > b.score_date ? -1 : 1;
         const tA = a.score_time || "00:00";
