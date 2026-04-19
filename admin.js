@@ -416,9 +416,24 @@ async function init() {
             stAtts7d.forEach(a => {
                 if (a.attendance_date > today || (a.attendance_date === today && parseInt(a.period) > curPInt)) return;
                 if (new Date(a.attendance_date).getDay() === 0) return;
-                const p = parseInt(a.period);
-                const isLate = a.status_code === '2' || (schedMap7d[a.attendance_date]?.[p] || '').includes('지각');
-                const isAbs = a.status_code === '3' && !isLate && !schedMap7d[a.attendance_date]?.[p];
+                const p = parseInt(a.period, 10);
+// 1. 지각 여부 판단 (코드 2번이거나 메모/스케줄에 '지각'이 있는 경우)
+const baseMemo = a.memo ? a.memo.trim() : '';
+const extraMemo = schedMap7d[a.attendance_date]?.[p] || '';
+const isLate = a.status_code === '2' || baseMemo.includes('지각') || extraMemo.includes('지각');
+
+// 2. 공결 여부 판단 (사유가 적혀있으면 공결)
+const hasValidMemo = baseMemo !== '' && baseMemo !== '-';
+const isExcused = (a.status_code === '3') && !isLate && (hasValidMemo || extraMemo !== '');
+
+// 3. 순수 무단 결석만 카운트
+const isAbs = (a.status_code === '3') && !isLate && !isExcused;
+
+if (isLate) late7dCount++;
+if (isAbs) {
+    abs7dCount++;
+    if (a.attendance_date === today && p < curPInt) todayAbsenceCount++;
+}
                 if (isLate) late7dCount++;
                 if (isAbs) { abs7dCount++; if (a.attendance_date === today && p < curPInt) todayAbsenceCount++; }
             });
