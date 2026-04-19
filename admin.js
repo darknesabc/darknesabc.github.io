@@ -215,6 +215,59 @@ window.__getPeriodFromTime = function(timeStr) {
 };
 
 // =========================================================
+// 💡 [신규 기능] 교육점수(벌점) 데이터 전처리 헬퍼
+// 휴먼 에러 중복 방지(Set) 및 '취침' 당일 합산 특수 처리
+// =========================================================
+window.__processEduScores = function(rawEduData) {
+    if (!rawEduData || !Array.isArray(rawEduData)) return [];
+    
+    const seen = new Set();
+    const sleepAgg = {};
+    const processed = [];
+
+    rawEduData.forEach(el => {
+        const score = EDU_SCORE_MAP[el.reason] || 0;
+        const period = el.period || window.__getPeriodFromTime(el.score_time);
+        
+        // 1. 휴먼 에러 방지: 날짜 + 시간 + 사유 + 점수 + 교시가 동일한 데이터 필터링
+        const dedupKey = `${el.student_id}_${el.score_date}_${el.score_time}_${el.reason}_${score}_${period}`;
+        
+        if (seen.has(dedupKey)) return; // 이미 본 데이터면 무시!
+        seen.add(dedupKey);
+
+        // 2. 취침 특수 병합 처리
+        if (el.reason === '취침') {
+            const aggKey = `${el.student_id}_${el.score_date}`;
+            if (!sleepAgg[aggKey]) {
+                sleepAgg[aggKey] = { ...el, sleepCount: 1, calculated_score: score };
+            } else {
+                sleepAgg[aggKey].sleepCount += 1;
+                sleepAgg[aggKey].calculated_score += score;
+            }
+        } else {
+            // 다른 벌점들은 그대로 추가
+            processed.push({ ...el, calculated_score: score, display_reason: el.reason });
+        }
+    });
+
+    // 3. 병합된 취침 데이터를 배열에 다시 삽입
+    Object.values(sleepAgg).forEach(sleepObj => {
+        sleepObj.display_reason = sleepObj.sleepCount > 1 ? `취침 (${sleepObj.calculated_score}점)` : `취침`;
+        processed.push(sleepObj);
+    });
+
+    // 4. 최신순으로 정렬 (날짜 내림차순 -> 시간 내림차순)
+    processed.sort((a, b) => {
+        if (a.score_date !== b.score_date) return a.score_date > b.score_date ? -1 : 1;
+        const tA = a.score_time || "00:00";
+        const tB = b.score_time || "00:00";
+        return tA > tB ? -1 : 1;
+    });
+
+    return processed;
+};
+
+// =========================================================
 // 2. 메인 화면 초기화 (바둑판 카드)
 // =========================================================
 async function init() {
@@ -255,7 +308,7 @@ async function init() {
             query = query.eq('teacher_name', loggedInManager);
         }
 
-        const [resStudents, resAtt, resSleep, resMove, resEdu, resSurvey] = await Promise.all([
+        const [resStudents, resAtt, resSleep, resMove, resEduRaw, resSurvey] = await Promise.all([
             query,
             window.__fetchTodayAttendance(today), 
             _supabase.from('sleep_log').select('*').eq('sleep_date', today),
@@ -264,6 +317,7 @@ async function init() {
             _supabase.from('survey_log').select('*').eq('survey_date', today)
         ]);
 
+        const processedEduData = window.__processEduScores(resEduRaw.data);
         let students = resStudents.data.filter(s => s.name && s.name !== '배정금지');
 
         if (window.__currentSortMode === 'name') {
@@ -343,7 +397,7 @@ async function init() {
             }
 
             const todaySleep = resSleep.data.filter(sl => sl.student_id === s.student_id).reduce((acc, cur) => acc + (cur.count || 1), 0);
-            const totalEduScore = resEdu.data.filter(el => el.student_id === s.student_id).reduce((acc, cur) => acc + (EDU_SCORE_MAP[cur.reason] || 0), 0);
+            const totalEduScore = processedEduData.filter(el => el.student_id === s.student_id).reduce((acc, cur) => acc + cur.calculated_score, 0);
             const todayRestroomCount = resMove.data.filter(ml => ml.student_id === s.student_id && ml.reason === "화장실/정수기").length;
 
             // 💡 [수정] 지각 횟수 카운팅 (일요일은 무조건 0)
@@ -352,7 +406,7 @@ async function init() {
                 studentAttsToday.forEach(a => {
                     if (a.status_code === '2' || (a.memo && a.memo.includes('지각'))) latePeriods.add(String(a.period));
                 });
-                resEdu.data.forEach(el => {
+                processedEduData.forEach(el => {
                     if (el.student_id === s.student_id && el.score_date === today && el.reason.includes('지각')) {
                         const sp = window.__getPeriodFromTime(el.score_time);
                         if (sp) latePeriods.add(String(sp));
@@ -473,7 +527,7 @@ window.__loadStudentDetail = async function(student) {
     detailSection.scrollIntoView({ behavior: 'smooth', block: 'start' });
 
     try {
-        const [resMove, resEdu, resSleep, resAtt, resSurvey] = await Promise.all([
+        const [resMove, resEduRaw, resSleep, resAtt, resSurvey] = await Promise.all([
             _supabase.from('move_log').select('*').eq('student_id', student.studentId).order('move_date', {ascending: false}).order('move_time', {ascending: false}),
             _supabase.from('edu_score_log').select('*').eq('student_id', student.studentId).order('score_date', {ascending: false}),
             _supabase.from('sleep_log').select('*').eq('student_id', student.studentId).order('sleep_date', {ascending: false}),
@@ -509,12 +563,12 @@ window.__loadStudentDetail = async function(student) {
         const schedMap = {};
         
         // 1. 교육점수 (지각) 반영
-        resEdu.data.forEach(ed => {
+        processedEduData.forEach(ed => {
             if (ed.reason.includes('지각')) {
                 const dStr = ed.score_date; 
-                const sp = getPeriodFromTime(ed.score_time);
+                const sp = window.__getPeriodFromTime(ed.score_time);
                 if (!schedMap[dStr]) schedMap[dStr] = {};
-                schedMap[dStr][sp] = schedMap[dStr][sp] ? schedMap[dStr][sp] + ` / ${ed.reason}` : ed.reason;
+                schedMap[dStr][sp] = schedMap[dStr][sp] ? schedMap[dStr][sp] + ` / ${ed.display_reason}` : ed.display_reason;
             }
         });
 
@@ -627,7 +681,7 @@ window.__loadStudentDetail = async function(student) {
             }
         });
 
-        const totalScore = resEdu.data.reduce((sum, log) => sum + (EDU_SCORE_MAP[log.reason] || 0), 0);
+        const totalScore = processedEduData.reduce((sum, log) => sum + log.calculated_score, 0);
 
         const cardStyle = "background:#ffffff; padding:20px; border-radius:10px; border:1px solid #e2e6ea; position:relative; color:#2c3e50; box-shadow:0 2px 8px rgba(0,0,0,0.02);";
         const btnStyle = "position:absolute; right:20px; top:20px; background:#f1f2f6; color:#57606f; border:1px solid #dfe4ea; padding:5px 12px; border-radius:5px; font-size:12px; cursor:pointer; font-weight:bold;";
@@ -704,8 +758,8 @@ window.__loadStudentDetail = async function(student) {
                     <div style="margin-bottom:15px; padding-bottom:15px; border-bottom:1px dashed #ecf0f1;">전체 누적점수: <b style="color:#d35400; font-size:18px;">${totalScore}점</b></div>
                     <div style="font-size:12px; color:#95a5a6; margin-bottom:8px;">최근 항목:</div>
                     <ul style="margin:0; padding:0; list-style:none; font-size:13px; line-height:1.8;">
-                        ${resEdu.data.slice(0,3).length > 0 ? resEdu.data.slice(0,3).map(e => `<li><span style="color:#95a5a6; margin-right:8px;">${e.score_date.slice(5)}</span> <b>${e.reason}</b> <span style="color:#e74c3c; font-weight:bold;">(+${EDU_SCORE_MAP[e.reason]||0})</span></li>`).join('') : '<li style="color:#95a5a6;">기록이 없습니다.</li>'}
-                    </ul>
+                        ${processedEduData.slice(0,3).length > 0 ? processedEduData.slice(0,3).map(e => `<li><span style="color:#95a5a6; margin-right:8px;">${e.score_date.slice(5)}</span> <b>${e.display_reason}</b> <span style="color:#e74c3c; font-weight:bold;">(+${e.calculated_score})</span></li>`).join('') : '<li style="color:#95a5a6;">기록이 없습니다.</li>'}
+                   </ul>
                 </div>
 
             </div>
@@ -2413,14 +2467,25 @@ window.__openDetailModal = async function(type, studentId, studentName) {
         else {
             window.__modalData = { type: type, items: [] }; let tableQuery = null;
             if (type === 'move') { tableQuery = _supabase.from('move_log').select('*').eq('student_id', studentId).order('move_date', {ascending: false}).order('move_time', {ascending: false}); } else if (type === 'sleep') { tableQuery = _supabase.from('sleep_log').select('*').eq('student_id', studentId).order('sleep_date', {ascending: false}); } else if (type === 'eduscore') { tableQuery = _supabase.from('edu_score_log').select('*').eq('student_id', studentId).order('score_date', {ascending: false}); }
-            const { data } = await tableQuery; window.__modalData.items = data || [];
+            
+            const { data } = await tableQuery; 
+            // 💡 [변경] 교육점수일 경우 전처리 함수 통과
+            window.__modalData.items = (type === 'eduscore') ? window.__processEduScores(data) : (data || []);
             contentArea.innerHTML = `<style>.period-btn { background:#f1f2f6; border:1px solid #dfe6e9; padding:6px 16px; margin-left:6px; border-radius:6px; cursor:pointer; color:#7f8c8d; font-size:13px; font-weight:bold; transition:all 0.2s; } .period-btn.active { background:#2c3e50; color:#ffffff; border-color:#2c3e50; } .period-btn:hover:not(.active) { background:#e2e6ea; } .data-table { width:100%; border-collapse:collapse; text-align:left; font-size:14px; color:#2c3e50; margin-top:10px; } .data-table th { padding:12px 10px; border-bottom:2px solid #ecf0f1; color:#7f8c8d; font-weight:normal; font-size:13px; } .data-table td { padding:12px 10px; border-bottom:1px solid #f1f2f6; } .data-table tbody tr:hover { background-color:#f8f9fa; }</style><div style="display:flex; justify-content:flex-end; align-items:center; margin-bottom:20px;"><span style="font-size:13px; color:#7f8c8d;">조회 기간:</span><button class="period-btn" id="btn-period-7" onclick="window.__renderModalTable(7)">7일</button><button class="period-btn" id="btn-period-15" onclick="window.__renderModalTable(15)">15일</button><button class="period-btn" id="btn-period-30" onclick="window.__renderModalTable(30)">30일</button></div><div id="modal-table-area"></div>`;
             window.__renderModalTable = function(days) {
                 [7, 15, 30].forEach(d => { const btn = document.getElementById('btn-period-' + d); if (btn) { if (d === days) btn.classList.add('active'); else btn.classList.remove('active'); } });
                 const now = new Date(); const targetDate = new Date(now); targetDate.setDate(now.getDate() - (days - 1)); const targetIso = new Date(targetDate.getTime() - (targetDate.getTimezoneOffset() * 60000)).toISOString().split('T')[0];
                 const filtered = window.__modalData.items.filter(item => { const dStr = item.move_date || item.sleep_date || item.score_date; return dStr >= targetIso; });
                 let tableHtml = '<table class="data-table"><thead><tr>';
-                if (window.__modalData.type === 'move') { tableHtml += '<th>날짜</th><th>시간</th><th>사유</th><th>복귀교시</th></tr></thead><tbody>'; if (filtered.length === 0) tableHtml += '<tr><td colspan="4" style="text-align:center; padding:40px; color:#95a5a6;">해당 기간에 기록이 없습니다.</td></tr>'; else { filtered.forEach(d => { tableHtml += `<tr><td style="color:#7f8c8d;">${d.move_date}</td><td>${d.move_time || '-'}</td><td><b style="color:#2c3e50;">${d.reason}</b></td><td style="color:#95a5a6;">${d.return_period || '-'}</td></tr>`; }); } } else if (window.__modalData.type === 'sleep') { tableHtml += '<th>날짜</th><th>교시</th><th>기록</th><th>횟수</th></tr></thead><tbody>'; if (filtered.length === 0) tableHtml += '<tr><td colspan="4" style="text-align:center; padding:40px; color:#95a5a6;">해당 기간에 기록이 없습니다.</td></tr>'; else { filtered.forEach(d => { tableHtml += `<tr><td style="color:#7f8c8d;">${d.sleep_date}</td><td>${d.period}교시</td><td><b style="color:#2c3e50;">취침</b></td><td><b style="color:#8e44ad; background:#f4ebf7; padding:4px 8px; border-radius:4px; font-size:12px;">${d.count}회 적발</b></td></tr>`; }); } } else if (window.__modalData.type === 'eduscore') { tableHtml += '<th>날짜</th><th>사유</th><th>점수</th></tr></thead><tbody>'; if (filtered.length === 0) tableHtml += '<tr><td colspan="3" style="text-align:center; padding:40px; color:#95a5a6;">해당 기간에 기록이 없습니다.</td></tr>'; else { filtered.forEach(d => { const score = EDU_SCORE_MAP[d.reason] || 0; tableHtml += `<tr><td style="color:#7f8c8d;">${d.score_date}</td><td><b style="color:#2c3e50;">${d.reason}</b></td><td><b style="color:#e74c3c; background:#fdedec; padding:4px 8px; border-radius:4px; font-size:12px;">+${score}점</b></td></tr>`; }); } }
+                if (window.__modalData.type === 'move') { tableHtml += '<th>날짜</th><th>시간</th><th>사유</th><th>복귀교시</th></tr></thead><tbody>'; if (filtered.length === 0) tableHtml += '<tr><td colspan="4" style="text-align:center; padding:40px; color:#95a5a6;">해당 기간에 기록이 없습니다.</td></tr>'; else { filtered.forEach(d => { tableHtml += `<tr><td style="color:#7f8c8d;">${d.move_date}</td><td>${d.move_time || '-'}</td><td><b style="color:#2c3e50;">${d.reason}</b></td><td style="color:#95a5a6;">${d.return_period || '-'}</td></tr>`; }); } } else if (window.__modalData.type === 'sleep') { tableHtml += '<th>날짜</th><th>교시</th><th>기록</th><th>횟수</th></tr></thead><tbody>'; if (filtered.length === 0) tableHtml += '<tr><td colspan="4" style="text-align:center; padding:40px; color:#95a5a6;">해당 기간에 기록이 없습니다.</td></tr>'; else { filtered.forEach(d => { tableHtml += `<tr><td style="color:#7f8c8d;">${d.sleep_date}</td><td>${d.period}교시</td><td><b style="color:#2c3e50;">취침</b></td><td><b style="color:#8e44ad; background:#f4ebf7; padding:4px 8px; border-radius:4px; font-size:12px;">${d.count}회 적발</b></td></tr>`; }); } } else if (window.__modalData.type === 'eduscore') { 
+                tableHtml += '<th>날짜</th><th>사유</th><th>점수</th></tr></thead><tbody>'; 
+                if (filtered.length === 0) tableHtml += '<tr><td colspan="3" style="text-align:center; padding:40px; color:#95a5a6;">해당 기간에 기록이 없습니다.</td></tr>'; 
+                else { 
+                    filtered.forEach(d => { 
+                        tableHtml += `<tr><td style="color:#7f8c8d;">${d.score_date}</td><td><b style="color:#2c3e50;">${d.display_reason}</b></td><td><b style="color:#e74c3c; background:#fdedec; padding:4px 8px; border-radius:4px; font-size:12px;">+${d.calculated_score}점</b></td></tr>`; 
+                    }); 
+                } 
+            }
                 tableHtml += '</tbody></table>'; document.getElementById('modal-table-area').innerHTML = tableHtml;
             };
             window.__renderModalTable(7);
