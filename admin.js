@@ -233,6 +233,7 @@ async function init() {
     try {
         const now = new Date();
         const today = new Date(now.getTime() - (now.getTimezoneOffset() * 60000)).toISOString().split('T')[0];
+        const isSunday = new Date(today).getDay() === 0; // 💡 [추가] 오늘이 일요일인지 확인
         const currentP = getCurrentPeriod();
 
         summary.innerHTML = `
@@ -321,39 +322,43 @@ async function init() {
                 }
             });
             
-            // 💡 [신규] 이전 교시 무단 결석 횟수 카운팅
+            // 💡 [수정] 이전 교시 무단 결석 횟수 카운팅 (일요일은 무조건 0)
             let todayAbsenceCount = 0;
-            studentAttsToday.forEach(a => {
-                const p = parseInt(a.period, 10);
-                if (p < curPInt) { // 현재 교시 이전만 카운트
-                    const extraMemo = studentSchedToday[p] || '';
-                    const baseMemo = a.memo ? a.memo.trim() : '';
-                    const combinedMemo = extraMemo || (baseMemo !== '-' ? baseMemo : '');
-                    
-                    const isLate = a.status_code === '2' || extraMemo.includes('지각') || baseMemo.includes('지각');
-                    const hasValidMemo = combinedMemo !== '';
-                    const isExcused = (a.status_code === '3') && !isLate && hasValidMemo; 
-                    
-                    const isAbs = (a.status_code === '3') && !isLate && !isExcused; // 순수 무단결석
-                    if (isAbs) todayAbsenceCount++;
-                }
-            });
+            if (!isSunday) {
+                studentAttsToday.forEach(a => {
+                    const p = parseInt(a.period, 10);
+                    if (p < curPInt) { // 현재 교시 이전만 카운트
+                        const extraMemo = studentSchedToday[p] || '';
+                        const baseMemo = a.memo ? a.memo.trim() : '';
+                        const combinedMemo = extraMemo || (baseMemo !== '-' ? baseMemo : '');
+                        
+                        const isLate = a.status_code === '2' || extraMemo.includes('지각') || baseMemo.includes('지각');
+                        const hasValidMemo = combinedMemo !== '';
+                        const isExcused = (a.status_code === '3') && !isLate && hasValidMemo; 
+                        
+                        const isAbs = (a.status_code === '3') && !isLate && !isExcused; // 순수 무단결석
+                        if (isAbs) todayAbsenceCount++;
+                    }
+                });
+            }
 
             const todaySleep = resSleep.data.filter(sl => sl.student_id === s.student_id).reduce((acc, cur) => acc + (cur.count || 1), 0);
             const totalEduScore = resEdu.data.filter(el => el.student_id === s.student_id).reduce((acc, cur) => acc + (EDU_SCORE_MAP[cur.reason] || 0), 0);
             const todayRestroomCount = resMove.data.filter(ml => ml.student_id === s.student_id && ml.reason === "화장실/정수기").length;
 
-            // 지각 횟수 카운팅 (Set 사용)
+            // 💡 [수정] 지각 횟수 카운팅 (일요일은 무조건 0)
             let latePeriods = new Set();
-            studentAttsToday.forEach(a => {
-                if (a.status_code === '2' || (a.memo && a.memo.includes('지각'))) latePeriods.add(String(a.period));
-            });
-            resEdu.data.forEach(el => {
-                if (el.student_id === s.student_id && el.score_date === today && el.reason.includes('지각')) {
-                    const sp = window.__getPeriodFromTime(el.score_time);
-                    if (sp) latePeriods.add(String(sp));
-                }
-            });
+            if (!isSunday) {
+                studentAttsToday.forEach(a => {
+                    if (a.status_code === '2' || (a.memo && a.memo.includes('지각'))) latePeriods.add(String(a.period));
+                });
+                resEdu.data.forEach(el => {
+                    if (el.student_id === s.student_id && el.score_date === today && el.reason.includes('지각')) {
+                        const sp = window.__getPeriodFromTime(el.score_time);
+                        if (sp) latePeriods.add(String(sp));
+                    }
+                });
+            }
             const todayLateCount = latePeriods.size;
 
             let status = "미입력", sub = "", color = "none", code = att ? att.status_code : "";
