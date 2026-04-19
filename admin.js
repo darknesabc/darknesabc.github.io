@@ -129,6 +129,9 @@ window.__fetchTodayAttendance = async function(todayStr) {
             .from('attendance')
             .select('*')
             .eq('attendance_date', todayStr)
+            // 🚨 [필수 추가] 누락 방지를 위한 고정 정렬 기준!
+            .order('student_id', { ascending: true }) 
+            .order('period', { ascending: true })
             .range(startIdx, startIdx + 999);
 
         if (error) {
