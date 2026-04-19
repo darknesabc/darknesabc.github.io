@@ -62,44 +62,6 @@ const EDU_SCORE_MAP = {
 };
 
 // =========================================================
-// 💡 [신규 기능] 스마트 알림판 숨김(✅) 처리 및 복구(✕), 상세 보기(🔗)
-// =========================================================
-window.__ackAlert = function(studentId, category, currentValue) {
-    const el = document.getElementById(`alert-badge-${studentId}-${category}`);
-    if (el) {
-        // 부드럽게 사라지는 애니메이션
-        el.style.transition = 'all 0.3s ease';
-        el.style.opacity = '0';
-        el.style.transform = 'scale(0.8)';
-    }
-    // 애니메이션 후 로컬스토리지에 저장하고 화면 새로고침(보관함으로 이동)
-    setTimeout(() => {
-        let ackData = JSON.parse(localStorage.getItem('smartAlertAck') || '{}');
-        ackData[`${studentId}_${category}`] = { timestamp: Date.now(), valueAtAck: currentValue };
-        localStorage.setItem('smartAlertAck', JSON.stringify(ackData));
-        init(); 
-    }, 300);
-};
-
-window.__undoAlert = function(studentId, category) {
-    // 숨김 기록에서 삭제하고 즉시 원상복구
-    let ackData = JSON.parse(localStorage.getItem('smartAlertAck') || '{}');
-    delete ackData[`${studentId}_${category}`];
-    localStorage.setItem('smartAlertAck', JSON.stringify(ackData));
-    init(); 
-};
-
-window.__openDetailFromAlert = function(studentId) {
-    // 💡 원클릭 연동: 알림판에서 이름 클릭 시 딜레이 없이 바로 상세 페이지 오픈!
-    if (!window.__allStudentsData) return;
-    const s = window.__allStudentsData.find(x => x.student_id === studentId);
-    if (s) {
-        const studentObj = { seat: s.seat_no, studentId: s.student_id, name: s.name, teacher: s.teacher_name, className: s.class_name };
-        window.__loadStudentDetail(studentObj);
-    }
-};
-
-// =========================================================
 // 1. 공통 유틸리티 (로그인, 로그아웃, 시간)
 // =========================================================
 async function handleLogin() {
