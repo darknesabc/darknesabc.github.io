@@ -86,6 +86,37 @@ async function handleLogin() {
 function handleLogout() { localStorage.clear(); location.reload(); }
 
 // =========================================================
+// 💡 [추가 기능] 출결 데이터 1000개 제한 해제 헬퍼 함수
+// =========================================================
+window.__fetchAllAttendance = async function(studentId) {
+    let allData = [];
+    let fetchMore = true;
+    let startIdx = 0;
+    
+    while (fetchMore) {
+        const { data, error } = await _supabase
+            .from('attendance')
+            .select('*')
+            .eq('student_id', studentId)
+            .order('attendance_date', { ascending: false })
+            .range(startIdx, startIdx + 999);
+
+        if (error) throw error;
+        
+        if (data && data.length > 0) {
+            allData = allData.concat(data);
+            startIdx += 1000;
+            // 1000개 미만으로 가져왔다면 마지막 페이지이므로 루프 종료
+            if (data.length < 1000) fetchMore = false;
+        } else {
+            fetchMore = false;
+        }
+    }
+    // Promise.all 형식에 맞추기 위해 객체 형태로 반환
+    return { data: allData };
+};
+
+// =========================================================
 // 💡 [추가 기능] 엔터키 로그인 지원
 // =========================================================
 document.addEventListener('keydown', function(e) {
@@ -286,7 +317,7 @@ window.__loadStudentDetail = async function(student) {
             _supabase.from('move_log').select('*').eq('student_id', student.studentId).order('move_date', {ascending: false}).order('move_time', {ascending: false}),
             _supabase.from('edu_score_log').select('*').eq('student_id', student.studentId).order('score_date', {ascending: false}),
             _supabase.from('sleep_log').select('*').eq('student_id', student.studentId).order('sleep_date', {ascending: false}),
-            _supabase.from('attendance').select('*').eq('student_id', student.studentId).order('attendance_date', {ascending: false}),
+            window.__fetchAllAttendance(student.studentId), // 👈 1000개 무제한 함수로 교체
             _supabase.from('survey_log').select('*').eq('student_id', student.studentId)
         ]);
 
@@ -2129,7 +2160,12 @@ window.__openDetailModal = async function(type, studentId, studentName) {
     try {
         let contentHtml = '';
         if (type === 'attendance') {
-            const [resAtt, resMove, resSurvey, resEdu] = await Promise.all([ _supabase.from('attendance').select('*').eq('student_id', studentId).order('attendance_date', {ascending: false}), _supabase.from('move_log').select('*').eq('student_id', studentId), _supabase.from('survey_log').select('*').eq('student_id', studentId), _supabase.from('edu_score_log').select('*').eq('student_id', studentId) ]);
+            const [resAtt, resMove, resSurvey, resEdu] = await Promise.all([ 
+                window.__fetchAllAttendance(studentId), // 👈 1000개 무제한 함수로 교체
+                _supabase.from('move_log').select('*').eq('student_id', studentId), 
+                _supabase.from('survey_log').select('*').eq('student_id', studentId), 
+                _supabase.from('edu_score_log').select('*').eq('student_id', studentId) 
+            ]);
             const data = resAtt.data || []; const moveData = resMove.data || []; const surveyData = resSurvey.data || []; const eduData = resEdu.data || [];
             if (!data || data.length === 0) { contentArea.innerHTML = '<div style="text-align:center; padding:30px; color:#7f8c8d;">기록이 없습니다.</div>'; return; }
 
