@@ -2566,6 +2566,3 @@ window.__openDetailModal = async function(type, studentId, studentName) {
 };
 
 init();
-
-
-이렇게 수정하면 맞게 된걸가?
