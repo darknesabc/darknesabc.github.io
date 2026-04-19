@@ -343,14 +343,49 @@ window.__loadStudentDetail = async function(student) {
             if (t < 20*60+10) return 7; return 8;
         };
 
+        // =========================================================================
+        // 💡 [여기서부터 교체] 요약 패널에서도 모달창처럼 모든 스케줄을 합쳐서 공결 판단
+        // =========================================================================
         const schedMap = {};
+        
+        // 1. 교육점수 (지각) 반영
         resEdu.data.forEach(ed => {
             if (ed.reason.includes('지각')) {
                 const dStr = ed.score_date; 
                 const sp = getPeriodFromTime(ed.score_time);
                 if (!schedMap[dStr]) schedMap[dStr] = {};
-                schedMap[dStr][sp] = true;
+                schedMap[dStr][sp] = schedMap[dStr][sp] ? schedMap[dStr][sp] + ` / ${ed.reason}` : ed.reason;
             }
+        });
+
+        // 2. 설문(Survey) 스케줄 반영
+        resSurvey.data.forEach(sv => {
+            const dStr = sv.survey_date; 
+            const timeType = sv.arrival_time_type || ""; 
+            let startP = 0, endP = 0;
+            if (timeType.includes("결석")) { startP = 1; endP = 8; } 
+            else if (timeType.includes("오전")) { startP = 1; endP = 3; } 
+            else if (timeType.includes("오후")) { startP = 1; endP = 6; } 
+            else if (timeType.includes("야간") || timeType.includes("저녁")) { startP = 1; endP = 7; }
+            
+            if (startP > 0) { 
+                if (!schedMap[dStr]) schedMap[dStr] = {}; 
+                for(let p=startP; p<=endP; p++) schedMap[dStr][p] = schedMap[dStr][p] ? schedMap[dStr][p] + ` / [설문]` : `[설문]`; 
+            }
+        });
+
+        // 3. 이동(Move) 스케줄 반영 (복귀안함 등)
+        resMove.data.forEach(mv => { 
+            if (mv.reason === "화장실/정수기") return; 
+            const dStr = mv.move_date; 
+            let rp = parseInt(mv.return_period, 10) || 0; 
+            if (mv.return_period === "복귀안함") rp = 8; 
+            const sp = getPeriodFromTime(mv.move_time); 
+            if (rp > 0) { 
+                if (!schedMap[dStr]) schedMap[dStr] = {}; 
+                const start = sp > 0 ? sp : rp; 
+                for(let p=start; p<=rp; p++) schedMap[dStr][p] = schedMap[dStr][p] ? schedMap[dStr][p] + ` / ${mv.reason}` : mv.reason; 
+            } 
         });
 
         let totalAtt = 0, totalLate = 0, totalAbs = 0, totalExcused = 0;
@@ -363,22 +398,31 @@ window.__loadStudentDetail = async function(student) {
 
             const p = parseInt(a.period, 10);
             
-            const hasEduLate = schedMap[a.attendance_date]?.[p] === true;
-            const hasMemoLate = a.memo ? a.memo.includes('지각') : false;
+            // 종합 스케줄 맵(설문, 이동, 교육점수)에서 해당 교시의 메모가 있는지 확인
+            const extraMemo = schedMap[a.attendance_date]?.[p] || '';
+            const baseMemo = a.memo ? a.memo.trim() : '';
+            const combinedMemo = extraMemo || (baseMemo !== '-' ? baseMemo : '');
+
+            const hasEduLate = extraMemo.includes('지각');
+            const hasMemoLate = baseMemo.includes('지각');
             const isLate = (a.status_code === '2') || hasEduLate || hasMemoLate;
             
-            // 💡 [핵심 수정 로직] 결석(3)이면서, 메모가 비어있지 않다면(스케줄 이름 등 사유가 있다면) 공결로 인정!
-            const hasValidMemo = a.memo && a.memo.trim() !== '' && a.memo.trim() !== '-';
+            // 💡 [핵심 수정 로직] 결석(3)이면서, DB메모 또는 설문/이동 스케줄(combinedMemo)이 존재하면 공결로 인정!
+            const hasValidMemo = combinedMemo !== '';
             const isExcused = (a.status_code === '3') && !isLate && hasValidMemo; 
             
             const isAtt = (a.status_code === '1');
-            const isAbs = (a.status_code === '3') && !isLate && !isExcused; // 메모가 없는 찐 무단결석만 남김
+            const isAbs = (a.status_code === '3') && !isLate && !isExcused; // 진정한 무단결석만 남김
 
             let finalType = '';
             if (isExcused) finalType = 'excused'; 
             else if (isLate) finalType = 'late';
             else if (isAbs) finalType = 'abs';
             else if (isAtt) finalType = 'att';
+            
+            // =========================================================================
+            // 💡 [여기까지 교체] 하단의 누적 카운트 로직(totalAtt++ 등)은 그대로 두시면 됩니다.
+            // =========================================================================
 
             // 전체 카운트 누적
             if (finalType === 'att') totalAtt++;
