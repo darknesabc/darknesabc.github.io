@@ -371,6 +371,75 @@ async function init() {
             else if (att && att.memo) { status = att.memo; color = "schedule"; }
             else { status = code === "3" ? "결석" : (code === "2" ? "지각" : "미입력"); color = code || "none"; }
 
+            // 💡 [변경] 1. 결석 아이콘 진화 로직
+            let absBadge = '';
+            if (todayAbsenceCount >= 6) {
+                // ❌ 위험 (빨간색)
+                absBadge = `<span style="background:#e74c3c; color:#fff; padding:2px 6px; border-radius:4px; font-size:12px; font-weight:900;">❌위험(${todayAbsenceCount})</span>`;
+            } else if (todayAbsenceCount >= 3) {
+                // ❌ 경고 (주황색)
+                absBadge = `<span style="background:#e67e22; color:#fff; padding:2px 6px; border-radius:4px; font-size:12px; font-weight:bold;">❌경고(${todayAbsenceCount})</span>`;
+            } else if (todayAbsenceCount > 0) {
+                // 일반
+                absBadge = `<span style="background:#fadedb; color:#e74c3c; padding:1px 4px; border-radius:3px; font-size:12px; font-weight:bold;">❌${todayAbsenceCount}</span>`;
+            }
+
+            // 💡 [변경] 2. 취침 아이콘 진화 로직
+            let sleepBadge = '';
+            if (todaySleep >= 6) {
+                // 💤 위험 (진한 빨간색)
+                sleepBadge = `<span style="background:#c0392b; color:#fff; padding:2px 6px; border-radius:4px; font-size:12px; font-weight:900;">💤위험(${todaySleep})</span>`;
+            } else if (todaySleep >= 3) {
+                // 💤 경고 (노란색/진한 머스타드 - 흰 글씨 가독성을 위해)
+                sleepBadge = `<span style="background:#f39c12; color:#fff; padding:2px 6px; border-radius:4px; font-size:12px; font-weight:bold;">💤경고(${todaySleep})</span>`;
+            } else if (todaySleep > 0) {
+                // 일반
+                sleepBadge = `<span style="background:#ffeaa7; color:#d35400; padding:1px 4px; border-radius:3px; font-size:12px;">💤${todaySleep}</span>`;
+            }
+
+            // 💡 [변경] 3. 교육점수(벌점) 아이콘 진화 로직
+            let eduBadge = '';
+            if (totalEduScore >= 15) {
+                // 🚨 위험 (진한 보라색)
+                eduBadge = `<span style="background:#6c3483; color:#fff; padding:2px 6px; border-radius:4px; font-size:12px; font-weight:900;">🚨위험(${totalEduScore})</span>`;
+            } else if (totalEduScore >= 10) {
+                // 🚨 경고 (연한 보라색)
+                eduBadge = `<span style="background:#af7ac5; color:#fff; padding:2px 6px; border-radius:4px; font-size:12px; font-weight:bold;">🚨경고(${totalEduScore})</span>`;
+            } else if (totalEduScore > 0) {
+                // 일반
+                eduBadge = `<span style="background:#fab1a0; color:#c0392b; padding:1px 4px; border-radius:3px; font-size:12px;">🚨${totalEduScore}</span>`;
+            }
+
+            let status = "미입력", sub = "", color = "none", code = att ? att.status_code : "";
+            if (code === "1") { 
+                status = "출석"; color = "1"; 
+                sub = validMove || surveyReason || (att ? att.memo : ""); 
+            }
+            else if (validMove) { status = validMove; color = "move"; }
+            else if (surveyReason) { status = surveyReason; color = "schedule"; }
+            else if (att && att.memo) { status = att.memo; color = "schedule"; }
+            else { status = code === "3" ? "결석" : (code === "2" ? "지각" : "미입력"); color = code || "none"; }
+
+            dashboard.innerHTML += `
+                <div class="card status-${color}" style="position:relative; cursor:pointer;" onclick="window.__loadStudentDetail(window.__dashboardItems.find(x => x.studentId === '${s.student_id}'))">
+                    <div class="seat" style="font-size:11px; opacity:0.7;">${s.seat_no}</div>
+                    <div class="name" style="font-size:18px; margin: 5px 0;">${s.name}</div>
+                    <div class="status-badge badge-${color}" 
+                        style="font-size:13px; font-weight:900; display: inline-block; max-width: 140px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; vertical-align: middle; line-height: 1.4; padding: 2px 8px; margin: 2px auto;">
+                        ${status}
+                    </div>
+                    ${sub ? `<div style="font-size:11px; color:#2c3e50; font-weight:bold; margin-top:4px; background:rgba(0,0,0,0.05); padding:2px 6px; border-radius:4px;">${sub}</div>` : ''}
+                    
+                    <div style="display:flex; gap:3px; margin-top:5px; justify-content:center; flex-wrap:wrap;">
+                        ${absBadge}
+                        ${todayLateCount > 0 ? `<span style="background:#fef5e7; color:#e67e22; padding:1px 4px; border-radius:3px; font-size:12px; font-weight:bold;">⏰${todayLateCount}</span>` : ''}
+                        ${todayRestroomCount > 0 ? `<span style="background:#e0f7fa; color:#0097a7; padding:1px 4px; border-radius:3px; font-size:12px; font-weight:bold;">💧${todayRestroomCount}</span>` : ''}
+                        ${sleepBadge}
+                        ${eduBadge}
+                    </div>
+                </div>
+            `;
+
             dashboard.innerHTML += `
                 <div class="card status-${color}" style="position:relative; cursor:pointer;" onclick="window.__loadStudentDetail(window.__dashboardItems.find(x => x.studentId === '${s.student_id}'))">
                     <div class="seat" style="font-size:11px; opacity:0.7;">${s.seat_no}</div>
