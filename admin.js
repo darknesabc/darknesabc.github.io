@@ -527,13 +527,17 @@ window.__loadStudentDetail = async function(student) {
     detailSection.scrollIntoView({ behavior: 'smooth', block: 'start' });
 
     try {
+        // 💡 1. resEdu -> resEduRaw 로 이름 변경
         const [resMove, resEduRaw, resSleep, resAtt, resSurvey] = await Promise.all([
             _supabase.from('move_log').select('*').eq('student_id', student.studentId).order('move_date', {ascending: false}).order('move_time', {ascending: false}),
             _supabase.from('edu_score_log').select('*').eq('student_id', student.studentId).order('score_date', {ascending: false}),
             _supabase.from('sleep_log').select('*').eq('student_id', student.studentId).order('sleep_date', {ascending: false}),
-            window.__fetchAllAttendance(student.studentId), // 👈 1000개 무제한 함수로 교체
+            window.__fetchAllAttendance(student.studentId), // 1000개 무제한 함수
             _supabase.from('survey_log').select('*').eq('student_id', student.studentId)
         ]);
+
+        // 💡 2. [에러 해결!] 여기서 교육점수를 헬퍼 함수에 통과시켜 processedEduData 변수를 만듭니다.
+        const processedEduData = window.__processEduScores(resEduRaw.data);
 
         const now = new Date();
         const todayIso = new Date(now.getTime() - (now.getTimezoneOffset() * 60000)).toISOString().split('T')[0];
@@ -558,15 +562,15 @@ window.__loadStudentDetail = async function(student) {
         };
 
         // =========================================================================
-        // 💡 [여기서부터 교체] 요약 패널에서도 모달창처럼 모든 스케줄을 합쳐서 공결 판단
+        // 💡 요약 패널에서도 모달창처럼 모든 스케줄을 합쳐서 공결 판단
         // =========================================================================
         const schedMap = {};
         
-        // 1. 교육점수 (지각) 반영
+        // 💡 3. 교육점수 (지각) 반영 시 resEdu.data 대신 processedEduData 사용
         processedEduData.forEach(ed => {
             if (ed.reason.includes('지각')) {
                 const dStr = ed.score_date; 
-                const sp = window.__getPeriodFromTime(ed.score_time);
+                const sp = getPeriodFromTime(ed.score_time);
                 if (!schedMap[dStr]) schedMap[dStr] = {};
                 schedMap[dStr][sp] = schedMap[dStr][sp] ? schedMap[dStr][sp] + ` / ${ed.display_reason}` : ed.display_reason;
             }
