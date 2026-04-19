@@ -410,16 +410,6 @@ async function init() {
                 eduBadge = `<span style="background:#fab1a0; color:#c0392b; padding:1px 4px; border-radius:3px; font-size:12px;">🚨${totalEduScore}</span>`;
             }
 
-            let status = "미입력", sub = "", color = "none", code = att ? att.status_code : "";
-            if (code === "1") { 
-                status = "출석"; color = "1"; 
-                sub = validMove || surveyReason || (att ? att.memo : ""); 
-            }
-            else if (validMove) { status = validMove; color = "move"; }
-            else if (surveyReason) { status = surveyReason; color = "schedule"; }
-            else if (att && att.memo) { status = att.memo; color = "schedule"; }
-            else { status = code === "3" ? "결석" : (code === "2" ? "지각" : "미입력"); color = code || "none"; }
-
             dashboard.innerHTML += `
                 <div class="card status-${color}" style="position:relative; cursor:pointer;" onclick="window.__loadStudentDetail(window.__dashboardItems.find(x => x.studentId === '${s.student_id}'))">
                     <div class="seat" style="font-size:11px; opacity:0.7;">${s.seat_no}</div>
