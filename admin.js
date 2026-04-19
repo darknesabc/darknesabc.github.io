@@ -62,6 +62,30 @@ const EDU_SCORE_MAP = {
 };
 
 // =========================================================
+// 💡 [신규 기능] 스마트 알림판 숨김(✅) 처리 및 악화 감지 함수
+// =========================================================
+window.__ackAlert = function(studentId, category, currentValue) {
+    // 1. 기존 숨김 기록을 불러옵니다.
+    let ackData = JSON.parse(localStorage.getItem('smartAlertAck') || '{}');
+    
+    // 2. 현재 시간과, 숨김 처리할 당시의 '위험 수치'를 함께 저장합니다.
+    ackData[`${studentId}_${category}`] = {
+        timestamp: Date.now(),
+        valueAtAck: currentValue // 💡 이 수치를 기억해뒀다가 나중에 더 나빠지면 강제 소환!
+    };
+    localStorage.setItem('smartAlertAck', JSON.stringify(ackData));
+    
+    // 3. 화면에서 즉시 부드럽게 숨기기 (새로고침 없이)
+    const el = document.getElementById(`alert-badge-${studentId}-${category}`);
+    if (el) {
+        el.style.transition = 'all 0.3s ease';
+        el.style.opacity = '0';
+        el.style.transform = 'scale(0.8)';
+        setTimeout(() => { el.style.display = 'none'; }, 300);
+    }
+};
+
+// =========================================================
 // 1. 공통 유틸리티 (로그인, 로그아웃, 시간)
 // =========================================================
 async function handleLogin() {
@@ -334,7 +358,21 @@ async function init() {
         dashboard.innerHTML = '';
         const curPInt = parseInt(currentP, 10);
 
-        // 🚨 스마트 알림판에 들어갈 명단 보관함
+        // 🚨 [스마트 기능] 숨김 처리된 기록 불러오기 & 판별 함수
+        const ackData = JSON.parse(localStorage.getItem('smartAlertAck') || '{}');
+        const checkAlertStatus = (studentId, category, currentValue) => {
+            const ack = ackData[`${studentId}_${category}`];
+            if (!ack) return true; // 숨긴 적 없으면 당당하게 노출!
+            
+            const SEVEN_DAYS = 7 * 24 * 60 * 60 * 1000;
+            if (Date.now() - ack.timestamp > SEVEN_DAYS) return true; // 7일이 지났으면 쿨타임 초기화 -> 노출!
+            
+            if (currentValue > ack.valueAtAck) return true; // 💡 [핵심] 숨길 때보다 상태가 더 악화되었다면 강제 재소환!
+            
+            return false; // 7일도 안 지났고, 상태도 그대로면 숨김 유지
+        };
+
+        // 🚨 스마트 알림판에 들어갈 명단 보관함 (객체 형태로 변경)
         let alertEdu = [];
         let alertAbs = [];
         let alertLate = [];
@@ -380,12 +418,12 @@ async function init() {
             // 💡 스마트 알림판용 & 당일용 변수들 계산
             let abs7dCount = 0; 
             let late7dCount = 0;
-            let todayAbsenceCount = 0; // 카드 표시용
+            let todayAbsenceCount = 0;
 
             stAtts7d.forEach(a => {
                 const isToday = a.attendance_date === today;
                 if (a.attendance_date > today || (isToday && parseInt(a.period, 10) > currentP)) return;
-                if (new Date(a.attendance_date).getDay() === 0) return; // 일요일 무시
+                if (new Date(a.attendance_date).getDay() === 0) return;
 
                 const p = parseInt(a.period, 10);
                 const extraMemo = schedMap7d[a.attendance_date]?.[p] || '';
@@ -408,14 +446,23 @@ async function init() {
             const noReturn7dCount = stMove7d.filter(m => m.return_period === '복귀안함').length;
             const totalEduScore = stEduAll.reduce((sum, el) => sum + el.calculated_score, 0);
 
-            // 🚨 스마트 알림판 조건 확인 후 명단에 추가!
-            if (totalEduScore >= 10) alertEdu.push(`${s.name}(${totalEduScore}점)`);
-            if (abs7dCount >= 3) alertAbs.push(`${s.name}(${abs7dCount}회)`);
-            if (late7dCount >= 2) alertLate.push(`${s.name}(${late7dCount}회)`);
-            if (sleep7dCount >= 3) alertSleep.push(`${s.name}(${sleep7dCount}회)`);
-            if (noReturn7dCount >= 3) alertNoReturn.push(`${s.name}(${noReturn7dCount}회)`);
+            // 🚨 [핵심] 수치가 기준을 넘었고, 숨김 상태도 통과했다면 명단에 추가!
+            if (totalEduScore >= 10 && checkAlertStatus(s.student_id, 'edu', totalEduScore)) 
+                alertEdu.push({ id: s.student_id, name: s.name, val: totalEduScore, unit: '점', cat: 'edu' });
+            
+            if (abs7dCount >= 3 && checkAlertStatus(s.student_id, 'abs', abs7dCount)) 
+                alertAbs.push({ id: s.student_id, name: s.name, val: abs7dCount, unit: '회', cat: 'abs' });
+            
+            if (late7dCount >= 2 && checkAlertStatus(s.student_id, 'late', late7dCount)) 
+                alertLate.push({ id: s.student_id, name: s.name, val: late7dCount, unit: '회', cat: 'late' });
+            
+            if (sleep7dCount >= 3 && checkAlertStatus(s.student_id, 'sleep', sleep7dCount)) 
+                alertSleep.push({ id: s.student_id, name: s.name, val: sleep7dCount, unit: '회', cat: 'sleep' });
+            
+            if (noReturn7dCount >= 3 && checkAlertStatus(s.student_id, 'noreturn', noReturn7dCount)) 
+                alertNoReturn.push({ id: s.student_id, name: s.name, val: noReturn7dCount, unit: '회', cat: 'noreturn' });
 
-            // --- 여기부터는 당일 바둑판 카드 그리기 (기존 로직) ---
+            // --- 당일 바둑판 카드 그리기 ---
             const todaySleep = stSleep7d.filter(sl => sl.sleep_date === today).reduce((acc, cur) => acc + (cur.count || 1), 0);
             const todayRestroomCount = stMove7d.filter(ml => ml.move_date === today && ml.reason === "화장실/정수기").length;
 
@@ -470,14 +517,19 @@ async function init() {
             `;
         });
 
-        // 🚨 반복문이 끝난 후, 바둑판 위에 스마트 알림판 그리기!
+        // 🚨 알림판 UI 렌더러 (✅ 버튼 추가됨)
         const buildAlertRow = (title, icon, items, color, bgColor) => {
             if (items.length === 0) return '';
             return `
                 <div style="background:${bgColor}; border-left:5px solid ${color}; border-radius:8px; padding:12px 18px; margin-bottom:10px; display:flex; align-items:flex-start; gap:12px; box-shadow:0 2px 8px rgba(0,0,0,0.04);">
                     <div style="font-weight:900; color:${color}; font-size:14px; white-space:nowrap; min-width:140px;">${icon} ${title}</div>
-                    <div style="font-size:13px; color:#2c3e50; line-height:1.6; flex:1;">
-                        ${items.map(i => `<span style="background:rgba(255,255,255,0.7); border:1px solid rgba(0,0,0,0.05); padding:3px 10px; border-radius:15px; margin-right:6px; margin-bottom:6px; display:inline-block; font-weight:bold; box-shadow:0 1px 2px rgba(0,0,0,0.02);">${i}</span>`).join('')}
+                    <div style="font-size:13px; color:#2c3e50; line-height:1.6; flex:1; display:flex; flex-wrap:wrap; gap:6px;">
+                        ${items.map(i => `
+                            <span id="alert-badge-${i.id}-${i.cat}" style="background:rgba(255,255,255,0.7); border:1px solid rgba(0,0,0,0.05); padding:4px 10px; border-radius:15px; display:inline-flex; align-items:center; gap:4px; font-weight:bold; box-shadow:0 1px 2px rgba(0,0,0,0.02); transition:0.2s;">
+                                ${i.name} <span style="color:#e74c3c;">(${i.val}${i.unit})</span>
+                                <span onclick="window.__ackAlert('${i.id}', '${i.cat}', ${i.val})" title="확인 완료 (7일 숨김)" style="cursor:pointer; margin-left:2px; font-size:11px; opacity:0.4; transition:0.2s;" onmouseover="this.style.opacity='1'" onmouseout="this.style.opacity='0.4'">✅</span>
+                            </span>
+                        `).join('')}
                     </div>
                 </div>
             `;
@@ -490,7 +542,6 @@ async function init() {
         alertHtml += buildAlertRow('최근 취침 주의 (7일)', '💤', alertSleep, '#f39c12', '#fcf3cf');
         alertHtml += buildAlertRow('복귀 안 함 주의 (7일)', '🚶', alertNoReturn, '#27ae60', '#e9f7ef');
 
-        // 스마트 알림판을 넣을 컨테이너 처리 (바둑판 바로 위에 삽입)
         let alertContainer = document.getElementById('smart-alert-container');
         if (!alertContainer) {
             alertContainer = document.createElement('div');
@@ -504,9 +555,6 @@ async function init() {
         } else {
             alertContainer.style.display = 'none';
         }
-
-    } catch (err) { summary.innerText = "에러: " + err.message; }
-}
 
 window.__changeSort = function(mode) { 
     window.__currentSortMode = mode; 
