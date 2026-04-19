@@ -150,6 +150,30 @@ window.__fetchTodayAttendance = async function(todayStr) {
     return { data: allData };
 };
 
+window.__fetchAllEduScores = async function() {
+    let allData = [];
+    let fetchMore = true;
+    let startIdx = 0;
+    while (fetchMore) {
+        const { data, error } = await _supabase
+            .from('edu_score_log')
+            .select('*')
+            // 🚨 [필수 추가] 누락 방지용 정렬 기준
+            .order('score_date', { ascending: false })
+            .order('score_time', { ascending: false })
+            .range(startIdx, startIdx + 999);
+        if (error) break;
+        if (data && data.length > 0) {
+            allData = allData.concat(data);
+            startIdx += 1000;
+            if (data.length < 1000) fetchMore = false;
+        } else {
+            fetchMore = false;
+        }
+    }
+    return { data: allData };
+};
+
 // =========================================================
 // 💡 [추가 기능] 엔터키 로그인 지원
 // =========================================================
@@ -232,10 +256,10 @@ async function init() {
 
         const [resStudents, resAtt, resSleep, resMove, resEdu, resSurvey] = await Promise.all([
             query,
-            window.__fetchTodayAttendance(today), // 👈 무제한 함수로 교체!
+            window.__fetchTodayAttendance(today), 
             _supabase.from('sleep_log').select('*').eq('sleep_date', today),
             _supabase.from('move_log').select('*').eq('move_date', today).order('move_time', { ascending: false }),
-            _supabase.from('edu_score_log').select('*'),
+            window.__fetchAllEduScores(), // 👈 시한폭탄 제거 완료!
             _supabase.from('survey_log').select('*').eq('survey_date', today)
         ]);
 
