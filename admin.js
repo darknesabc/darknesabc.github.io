@@ -349,7 +349,14 @@ async function init() {
             query = query.eq('teacher_name', loggedInManager);
         }
 
-        window.__allStudentsData = resStudents.data; // 💡 원클릭 상세 조회를 위해 전체 학생 명단 보관
+        const [resStudents, resAtt, resSleep, resMove, resEduRaw, resSurvey] = await Promise.all([
+            query,
+            window.__fetchRecentData('attendance', 'attendance_date', start7dIso),
+            window.__fetchRecentData('sleep_log', 'sleep_date', start7dIso),
+            window.__fetchRecentData('move_log', 'move_date', start7dIso),
+            window.__fetchAllEduScores(),
+            window.__fetchRecentData('survey_log', 'survey_date', start7dIso)
+        ]);
 
         const processedEduData = window.__processEduScores(resEduRaw.data);
         let students = resStudents.data.filter(s => s.name && s.name !== '배정금지');
@@ -365,44 +372,29 @@ async function init() {
         dashboard.innerHTML = '';
         const curPInt = parseInt(currentP, 10);
 
-        // 🚨 [스마트 기능] 숨김 기록 확인 함수
-        const ackData = JSON.parse(localStorage.getItem('smartAlertAck') || '{}');
-        const checkAlertStatus = (studentId, category, currentValue) => {
-            const ack = ackData[`${studentId}_${category}`];
-            if (!ack) return true; 
-            
-            const SEVEN_DAYS = 7 * 24 * 60 * 60 * 1000;
-            if (Date.now() - ack.timestamp > SEVEN_DAYS) return true; 
-            if (currentValue > ack.valueAtAck) return true; // 💡 더 나빠지면 강제 재소환!
-            
-            return false;
-        };
-
-        // 🚨 알림판 리스트 및 📦 보관함 리스트
-        let alertEdu = [], alertAbs = [], alertLate = [], alertSleep = [], alertNoReturn = [];
-        let ackedList = []; // 확인 완료된 학생 보관함
-
-        const pushAlert = (condition, list, val, unit, cat, catLabel, s) => {
-            if (condition) {
-                const item = { id: s.student_id, name: s.name, val: val, unit: unit, cat: cat, catLabel: catLabel };
-                if (checkAlertStatus(s.student_id, cat, val)) list.push(item);
-                else ackedList.push(item); // 숨김 처리된 학생은 보관함으로 이동
-            }
-        };
+        // 🚨 스마트 알림판에 들어갈 명단 보관함
+        let alertEdu = [];
+        let alertAbs = [];
+        let alertLate = [];
+        let alertSleep = [];
+        let alertNoReturn = [];
 
         students.forEach(s => {
+            // 해당 학생의 최근 7일치 데이터 전체
             const stAtts7d = resAtt.data.filter(a => a.student_id === s.student_id);
             const stSleep7d = resSleep.data.filter(sl => sl.student_id === s.student_id);
             const stMove7d = resMove.data.filter(ml => ml.student_id === s.student_id);
             const stSurvey7d = resSurvey.data.filter(sv => sv.student_id === s.student_id);
             const stEduAll = processedEduData.filter(el => el.student_id === s.student_id);
 
+            // 해당 학생의 오늘(당일) 데이터 (바둑판 카드 렌더링용)
             const stAttsToday = stAtts7d.filter(a => a.attendance_date === today);
             const att = stAttsToday.find(a => String(a.period) === String(currentP));
             const moveToday = stMove7d.find(ml => ml.move_date === today);
             const isOut = moveToday && (moveToday.return_period === "복귀안함" || parseInt(moveToday.return_period) >= curPInt);
             const validMove = (isOut && moveToday.reason !== "화장실/정수기") ? moveToday.reason : "";
             
+            // 💡 7일치 종합 스케줄 맵 생성 (공결 및 지각 분석용)
             let schedMap7d = {};
             stEduAll.forEach(ed => {
                 if (ed.score_date >= start7dIso && ed.score_date <= today && ed.reason.includes('지각')) {
@@ -423,12 +415,15 @@ async function init() {
                 if (rp > 0) { const start = sp > 0 ? sp : rp; if (!schedMap7d[dStr]) schedMap7d[dStr] = {}; for(let p=start; p<=rp; p++) schedMap7d[dStr][p] = schedMap7d[dStr][p] ? schedMap7d[dStr][p] + ` / ${mv.reason}` : mv.reason; } 
             });
 
-            let abs7dCount = 0, late7dCount = 0, todayAbsenceCount = 0;
+            // 💡 스마트 알림판용 & 당일용 변수들 계산
+            let abs7dCount = 0; 
+            let late7dCount = 0;
+            let todayAbsenceCount = 0; // 카드 표시용
 
             stAtts7d.forEach(a => {
                 const isToday = a.attendance_date === today;
                 if (a.attendance_date > today || (isToday && parseInt(a.period, 10) > currentP)) return;
-                if (new Date(a.attendance_date).getDay() === 0) return;
+                if (new Date(a.attendance_date).getDay() === 0) return; // 일요일 무시
 
                 const p = parseInt(a.period, 10);
                 const extraMemo = schedMap7d[a.attendance_date]?.[p] || '';
@@ -451,14 +446,14 @@ async function init() {
             const noReturn7dCount = stMove7d.filter(m => m.return_period === '복귀안함').length;
             const totalEduScore = stEduAll.reduce((sum, el) => sum + el.calculated_score, 0);
 
-            // 🚨 스마트 배분 (위험/경고 명단 vs 보관함)
-            pushAlert(totalEduScore >= 10, alertEdu, totalEduScore, '점', 'edu', '벌점', s);
-            pushAlert(abs7dCount >= 3, alertAbs, abs7dCount, '회', 'abs', '결석', s);
-            pushAlert(late7dCount >= 2, alertLate, late7dCount, '회', 'late', '지각', s);
-            pushAlert(sleep7dCount >= 3, alertSleep, sleep7dCount, '회', 'sleep', '취침', s);
-            pushAlert(noReturn7dCount >= 3, alertNoReturn, noReturn7dCount, '회', 'noreturn', '복귀안함', s);
+            // 🚨 스마트 알림판 조건 확인 후 명단에 추가!
+            if (totalEduScore >= 10) alertEdu.push(`${s.name}(${totalEduScore}점)`);
+            if (abs7dCount >= 3) alertAbs.push(`${s.name}(${abs7dCount}회)`);
+            if (late7dCount >= 2) alertLate.push(`${s.name}(${late7dCount}회)`);
+            if (sleep7dCount >= 3) alertSleep.push(`${s.name}(${sleep7dCount}회)`);
+            if (noReturn7dCount >= 3) alertNoReturn.push(`${s.name}(${noReturn7dCount}회)`);
 
-            // --- 당일 바둑판 카드 그리기 ---
+            // --- 여기부터는 당일 바둑판 카드 그리기 (기존 로직) ---
             const todaySleep = stSleep7d.filter(sl => sl.sleep_date === today).reduce((acc, cur) => acc + (cur.count || 1), 0);
             const todayRestroomCount = stMove7d.filter(ml => ml.move_date === today && ml.reason === "화장실/정수기").length;
 
@@ -513,20 +508,14 @@ async function init() {
             `;
         });
 
-        // 🚨 알림판 UI 렌더러 (이름 클릭 🔗 연동)
+        // 🚨 반복문이 끝난 후, 바둑판 위에 스마트 알림판 그리기!
         const buildAlertRow = (title, icon, items, color, bgColor) => {
             if (items.length === 0) return '';
             return `
                 <div style="background:${bgColor}; border-left:5px solid ${color}; border-radius:8px; padding:12px 18px; margin-bottom:10px; display:flex; align-items:flex-start; gap:12px; box-shadow:0 2px 8px rgba(0,0,0,0.04);">
                     <div style="font-weight:900; color:${color}; font-size:14px; white-space:nowrap; min-width:140px;">${icon} ${title}</div>
-                    <div style="font-size:13px; color:#2c3e50; line-height:1.6; flex:1; display:flex; flex-wrap:wrap; gap:6px;">
-                        ${items.map(i => `
-                            <span id="alert-badge-${i.id}-${i.cat}" style="background:rgba(255,255,255,0.7); border:1px solid rgba(0,0,0,0.05); padding:4px 10px; border-radius:15px; display:inline-flex; align-items:center; gap:4px; font-weight:bold; box-shadow:0 1px 2px rgba(0,0,0,0.02); transition:0.2s;">
-                                <a href="javascript:void(0);" onclick="window.__openDetailFromAlert('${i.id}')" style="color:inherit; text-decoration:underline; text-underline-offset:2px;">${i.name}</a> 
-                                <span style="color:#e74c3c;">(${i.val}${i.unit})</span>
-                                <span onclick="window.__ackAlert('${i.id}', '${i.cat}', ${i.val})" title="확인 완료 (7일 숨김)" style="cursor:pointer; margin-left:2px; font-size:11px; opacity:0.4; transition:0.2s;" onmouseover="this.style.opacity='1'" onmouseout="this.style.opacity='0.4'">✅</span>
-                            </span>
-                        `).join('')}
+                    <div style="font-size:13px; color:#2c3e50; line-height:1.6; flex:1;">
+                        ${items.map(i => `<span style="background:rgba(255,255,255,0.7); border:1px solid rgba(0,0,0,0.05); padding:3px 10px; border-radius:15px; margin-right:6px; margin-bottom:6px; display:inline-block; font-weight:bold; box-shadow:0 1px 2px rgba(0,0,0,0.02);">${i}</span>`).join('')}
                     </div>
                 </div>
             `;
@@ -539,28 +528,7 @@ async function init() {
         alertHtml += buildAlertRow('최근 취침 주의 (7일)', '💤', alertSleep, '#f39c12', '#fcf3cf');
         alertHtml += buildAlertRow('복귀 안 함 주의 (7일)', '🚶', alertNoReturn, '#27ae60', '#e9f7ef');
 
-        // 📦 보관함 UI 렌더러
-        let ackedHtml = '';
-        if (ackedList.length > 0) {
-            ackedHtml = `
-                <div style="margin-top: 15px; padding-top: 15px; border-top: 1px dashed #bdc3c7;">
-                    <div onclick="const el = document.getElementById('acked-alert-list'); el.style.display = el.style.display === 'none' ? 'flex' : 'none';" style="cursor:pointer; color:#7f8c8d; font-size:13px; font-weight:bold; display:flex; align-items:center; gap:5px; transition:0.2s;" onmouseover="this.style.color='#2c3e50'" onmouseout="this.style.color='#7f8c8d'">
-                        ▶ ✔️ 확인 완료된 학생 보관함 펼치기 (${ackedList.length}건)
-                    </div>
-                    <div id="acked-alert-list" style="display:none; flex-wrap:wrap; gap:8px; margin-top:12px; padding:15px; background:#f8f9fa; border-radius:8px; border:1px solid #ecf0f1; box-shadow:inset 0 2px 4px rgba(0,0,0,0.02);">
-                        ${ackedList.map(i => `
-                            <span style="background:#fff; border:1px solid #dee2e6; padding:4px 12px; border-radius:15px; display:inline-flex; align-items:center; gap:4px; font-size:12px; color:#7f8c8d; box-shadow:0 1px 2px rgba(0,0,0,0.02);">
-                                <span style="font-size:11px; background:#ecf0f1; padding:2px 6px; border-radius:4px; color:#95a5a6; margin-right:2px;">${i.catLabel}</span>
-                                <a href="javascript:void(0);" onclick="window.__openDetailFromAlert('${i.id}')" style="color:#2c3e50; font-weight:bold; text-decoration:underline; text-underline-offset:2px;">${i.name}</a>
-                                <span style="opacity:0.8; color:#e74c3c; font-weight:bold;">(${i.val}${i.unit})</span>
-                                <span onclick="window.__undoAlert('${i.id}', '${i.cat}')" title="숨김 해제 (원상복구)" style="cursor:pointer; margin-left:4px; font-size:12px; transition:0.2s;" onmouseover="this.style.color='#e74c3c'" onmouseout="this.style.color='#7f8c8d'">✕</span>
-                            </span>
-                        `).join('')}
-                    </div>
-                </div>
-            `;
-        }
-
+        // 스마트 알림판을 넣을 컨테이너 처리 (바둑판 바로 위에 삽입)
         let alertContainer = document.getElementById('smart-alert-container');
         if (!alertContainer) {
             alertContainer = document.createElement('div');
@@ -568,14 +536,8 @@ async function init() {
             dashboard.parentNode.insertBefore(alertContainer, dashboard);
         }
         
-        if (alertHtml || ackedHtml) {
-            alertContainer.innerHTML = `
-                <div style="margin-bottom:25px; padding:20px; background:#ffffff; border-radius:12px; box-shadow:0 4px 12px rgba(0,0,0,0.05); border:1px solid #ecf0f1;">
-                    <h3 style="margin:0 0 15px 0; color:#2c3e50; font-size:17px; display:flex; align-items:center; gap:8px;">📌 집중 관리 대상 (스마트 알림판)</h3>
-                    ${alertHtml}
-                    ${ackedHtml}
-                </div>
-            `;
+        if (alertHtml) {
+            alertContainer.innerHTML = `<div style="margin-bottom:25px;"><h3 style="margin:0 0 15px 0; color:#2c3e50; font-size:16px;">📌 집중 관리 대상 (스마트 알림판)</h3>${alertHtml}</div>`;
             alertContainer.style.display = 'block';
         } else {
             alertContainer.style.display = 'none';
