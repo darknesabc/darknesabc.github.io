@@ -117,6 +117,37 @@ window.__fetchAllAttendance = async function(studentId) {
 };
 
 // =========================================================
+// 💡 [추가 기능] 오늘 하루 전체 출결 1000개 무제한 가져오기
+// =========================================================
+window.__fetchTodayAttendance = async function(todayStr) {
+    let allData = [];
+    let fetchMore = true;
+    let startIdx = 0;
+    
+    while (fetchMore) {
+        const { data, error } = await _supabase
+            .from('attendance')
+            .select('*')
+            .eq('attendance_date', todayStr)
+            .range(startIdx, startIdx + 999);
+
+        if (error) {
+            console.error("출결 로드 에러:", error);
+            break;
+        }
+        
+        if (data && data.length > 0) {
+            allData = allData.concat(data);
+            startIdx += 1000;
+            if (data.length < 1000) fetchMore = false;
+        } else {
+            fetchMore = false;
+        }
+    }
+    return { data: allData };
+};
+
+// =========================================================
 // 💡 [추가 기능] 엔터키 로그인 지원
 // =========================================================
 document.addEventListener('keydown', function(e) {
@@ -198,7 +229,7 @@ async function init() {
 
         const [resStudents, resAtt, resSleep, resMove, resEdu, resSurvey] = await Promise.all([
             query,
-            _supabase.from('attendance').select('*').eq('attendance_date', today), // 👈 현재 교시 필터 삭제
+            window.__fetchTodayAttendance(today), // 👈 무제한 함수로 교체!
             _supabase.from('sleep_log').select('*').eq('sleep_date', today),
             _supabase.from('move_log').select('*').eq('move_date', today).order('move_time', { ascending: false }),
             _supabase.from('edu_score_log').select('*'),
