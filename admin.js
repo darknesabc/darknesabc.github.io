@@ -421,9 +421,16 @@ async function init() {
                 }
             });
             stSurvey7d.forEach(sv => {
-                const dStr = sv.survey_date; const timeType = sv.arrival_time_type || ""; let startP = 0, endP = 0;
+                const dStr = sv.survey_date; 
+                const reason = sv.reason ? sv.reason.split('(')[0].trim() : ''; // 💡 사유 추출 추가!
+                const timeType = sv.arrival_time_type || ""; let startP = 0, endP = 0;
+                
                 if (timeType.includes("결석")) { startP = 1; endP = 8; } else if (timeType.includes("오전")) { startP = 1; endP = 3; } else if (timeType.includes("오후")) { startP = 1; endP = 6; } else if (timeType.includes("야간") || timeType.includes("저녁")) { startP = 1; endP = 7; }
-                if (startP > 0) { if (!schedMap7d[dStr]) schedMap7d[dStr] = {}; for(let p=startP; p<=endP; p++) schedMap7d[dStr][p] = `[설문]`; }
+                
+                if (startP > 0) { 
+                    if (!schedMap7d[dStr]) schedMap7d[dStr] = {}; 
+                    for(let p=startP; p<=endP; p++) schedMap7d[dStr][p] = `[설문] ${reason}`.trim(); // 💡 사유를 이어붙임!
+                }
             });
             stMove7d.forEach(mv => { 
                 if (mv.reason === "화장실/정수기") return; 
@@ -480,7 +487,11 @@ async function init() {
             }
             const todayLateCount = latePeriods.size;
 
-            let surveyReason = schedMap7d[today]?.[curPInt] && schedMap7d[today][curPInt].includes('[설문]') ? "[설문]" : "";
+            let surveyReason = "";
+            if (schedMap7d[today]?.[curPInt]?.includes('[설문]')) {
+                // 💡 화장실 등 다른 사유와 섞여 있을 경우를 대비해 [설문]이 포함된 텍스트 덩어리만 정확히 뽑아냅니다.
+                surveyReason = schedMap7d[today][curPInt].split(' / ').find(item => item.includes('[설문]')).trim();
+            }
             let status = "미입력", sub = "", color = "none", code = att ? att.status_code : "";
             if (code === "1") { status = "출석"; color = "1"; sub = validMove || surveyReason || (att ? att.memo : ""); }
             else if (validMove) { status = validMove; color = "move"; }
