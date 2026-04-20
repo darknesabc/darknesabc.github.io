@@ -457,10 +457,7 @@ async function init() {
 
             const stAttsToday = stAtts7d.filter(a => a.attendance_date === today);
             const att = stAttsToday.find(a => String(a.period) === String(currentP));
-            const moveToday = stMove7d.find(ml => ml.move_date === today);
-            const isOut = moveToday && (moveToday.return_period === "복귀안함" || parseInt(moveToday.return_period) >= curPInt);
-            const validMove = (isOut && moveToday.reason !== "화장실/정수기") ? moveToday.reason : "";
-            
+                        
             let schedMap7d = {};
             stEduAll.forEach(ed => {
                 if (ed.score_date >= start7dIso && ed.score_date <= today && ed.reason.includes('지각')) {
