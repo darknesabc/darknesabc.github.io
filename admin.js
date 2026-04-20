@@ -467,11 +467,9 @@ async function init() {
                 }
             });
             stSurvey7d.forEach(sv => {
-                const dStr = sv.survey_date; 
-                let reason = sv.reason ? sv.reason.split('(')[0].trim() : ''; // 💡 사유 텍스트 추출 추가
-                const timeType = sv.arrival_time_type || ""; let startP = 0, endP = 0;
+                const dStr = sv.survey_date; const timeType = sv.arrival_time_type || ""; let startP = 0, endP = 0;
                 if (timeType.includes("결석")) { startP = 1; endP = 8; } else if (timeType.includes("오전")) { startP = 1; endP = 3; } else if (timeType.includes("오후")) { startP = 1; endP = 6; } else if (timeType.includes("야간") || timeType.includes("저녁")) { startP = 1; endP = 7; }
-                if (startP > 0) { if (!schedMap7d[dStr]) schedMap7d[dStr] = {}; for(let p=startP; p<=endP; p++) schedMap7d[dStr][p] = `[설문] ${reason}`.trim(); } // 💡 사유 병합
+                if (startP > 0) { if (!schedMap7d[dStr]) schedMap7d[dStr] = {}; for(let p=startP; p<=endP; p++) schedMap7d[dStr][p] = `[설문]`; }
             });
             stMove7d.forEach(mv => { 
                 // 💡 [추가] 화장실 가거나, '취소'된 일정은 스케줄 칸을 차지하지 않도록 무시!
@@ -573,36 +571,12 @@ async function init() {
                 // 💡 화장실 등 다른 사유와 섞여 있을 경우를 대비해 [설문]이 포함된 텍스트 덩어리만 정확히 뽑아냅니다.
                 surveyReason = schedMap7d[today][curPInt].split(' / ').find(item => item.includes('[설문]')).trim();
             }
-            
-            // 💡 [수정] 스케줄(메모)과 임시이벤트(설문, 이동)가 겹칠 때 둘 다 보여주기 위한 로직
             let status = "미입력", sub = "", color = "none", code = att ? att.status_code : "";
-            const primaryMemo = (att && att.memo && att.memo !== '-') ? att.memo.trim() : "";
-
-            if (code === "1") { 
-                status = "출석"; color = "1"; 
-                sub = validMove || surveyReason || primaryMemo; 
-            }
-            else if (validMove) { 
-                status = validMove; color = "move"; 
-                sub = primaryMemo; // 이동 중이어도 원래 스케줄을 아래에 조그맣게 표시
-            }
-            else if (surveyReason) { 
-                // 설문이 있으면서 원래 스케줄도 있으면, 메인은 스케줄로!
-                if (primaryMemo) {
-                    status = primaryMemo;
-                    sub = surveyReason;
-                } else {
-                    status = surveyReason; 
-                }
-                color = "schedule"; 
-            }
-            else if (primaryMemo) { 
-                status = primaryMemo; color = "schedule"; 
-            }
-            else { 
-                status = code === "3" ? "결석" : (code === "2" ? "지각" : "미입력"); 
-                color = code || "none"; 
-            }
+            if (code === "1") { status = "출석"; color = "1"; sub = validMove || surveyReason || (att ? att.memo : ""); }
+            else if (validMove) { status = validMove; color = "move"; }
+            else if (surveyReason) { status = surveyReason; color = "schedule"; }
+            else if (att && att.memo) { status = att.memo; color = "schedule"; }
+            else { status = code === "3" ? "결석" : (code === "2" ? "지각" : "미입력"); color = code || "none"; }
 
             let absBadge = '';
             if (todayAbsenceCount >= 6) absBadge = `<span style="background:#e74c3c; color:#fff; padding:2px 6px; border-radius:4px; font-size:12px; font-weight:900;">❌위험(${todayAbsenceCount})</span>`;
@@ -2803,19 +2777,10 @@ window.__openDetailModal = async function(type, studentId, studentName) {
                         const baseMemo = cellData && cellData.memo ? cellData.memo.trim() : ''; 
                         const extraMemo = schedMap[dateStr]?.[p] || ''; 
                         
-                        // 💡 [핵심] 기존(base) 메모와 추가(extra) 메모가 둘 다 있으면 예쁘게 합쳐서 보여줍니다!
-                        let memo = '-';
-                        if (baseMemo && baseMemo !== '-' && extraMemo) {
-                            // 둘 다 있으면: "시대물1현정훈 [설문]" 형태로 병합
-                            memo = `${baseMemo} <span style="color:#e74c3c; background:#fdf3f2; padding:1px 4px; border-radius:3px; font-size:10px; margin-left:3px;">${extraMemo}</span>`; 
-                        } else {
-                            memo = extraMemo || baseMemo || '-'; 
-                        }
+                        // 💡 [핵심] 외부 일정이 있으면 우선 표시하고, 없으면 DB에 기록된 고정 메모(과외 등)를 표시합니다.
+                        let memo = extraMemo || baseMemo || '-'; 
 
-                        // 💡 취소된 일정이면 임시 이벤트(extraMemo)만 날리고 원래 정규스케줄(baseMemo)은 복구!
-                        if (memo.includes("취소")) { 
-                            memo = baseMemo || '-'; 
-                        }
+                        if (memo.includes("취소")) { memo = '-'; }
 
                         let statusHtml = '-';
                         if (isFuture) { 
@@ -2834,7 +2799,8 @@ window.__openDetailModal = async function(type, studentId, studentName) {
                             } 
                         }
                         
-                        const memoStyle = (memo !== '-') ? 'color:#2980b9; font-weight:900; background:#ebf5fb; border-radius:4px; padding:4px 6px; display:inline-block; line-height:1.2; box-shadow:0 1px 2px rgba(0,0,0,0.05);' : 'color:#7f8c8d;'; 
+                        // 💡 [배지 디자인] 스케줄이 있으면 파란색 배경의 배지로 한눈에 띄게 만듭니다.
+                        const memoStyle = (memo !== '-') ? 'color:#2980b9; font-weight:900; background:#ebf5fb; border-radius:4px; padding:3px 6px; display:inline-block; line-height:1.2; box-shadow:0 1px 2px rgba(0,0,0,0.05);' : 'color:#7f8c8d;'; 
                         contentHtml += `<td class="st-memo" style="vertical-align:middle;"><span style="${memoStyle}">${memo}</span></td><td>${statusHtml}</td>`;
                     });
                     contentHtml += `</tr>`;
