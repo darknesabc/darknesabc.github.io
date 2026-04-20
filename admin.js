@@ -2738,6 +2738,7 @@ window.__openDetailModal = async function(type, studentId, studentName) {
                 contentHtml += `</tr><tr>`; for(let i=0; i<7; i++) { contentHtml += `<th>스케줄</th><th>출/결</th>`; } contentHtml += `</tr></thead><tbody>`;
                 for(let p=1; p<=8; p++) {
                     contentHtml += `<tr><td style="background:#fcfcfc; font-weight:bold;">${p}교시</td>`;
+                    
                     weekDates.forEach(dateStr => {
                         const isFuture = dateStr > todayIso || (dateStr === todayIso && p > currentP); 
                         const cellData = (weekMap[mon][dateStr] && weekMap[mon][dateStr][p]) ? weekMap[mon][dateStr][p] : null; 
@@ -2771,8 +2772,9 @@ window.__openDetailModal = async function(type, studentId, studentName) {
                         const memoStyle = (isFuture && memo !== '-') ? 'color:#3498db; font-weight:900;' : ''; 
                         contentHtml += `<td class="st-memo" style="${memoStyle}">${memo}</td><td>${statusHtml}</td>`;
                     });
-            contentArea.innerHTML = contentHtml;
-        } 
+                    
+                    contentHtml += `</tr>`;
+                }
         else {
             window.__modalData = { type: type, items: [] }; let tableQuery = null;
             if (type === 'move') { tableQuery = _supabase.from('move_log').select('*').eq('student_id', studentId).order('move_date', {ascending: false}).order('move_time', {ascending: false}); } else if (type === 'sleep') { tableQuery = _supabase.from('sleep_log').select('*').eq('student_id', studentId).order('sleep_date', {ascending: false}); } else if (type === 'eduscore') { tableQuery = _supabase.from('edu_score_log').select('*').eq('student_id', studentId).order('score_date', {ascending: false}); }
