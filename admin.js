@@ -2739,14 +2739,38 @@ window.__openDetailModal = async function(type, studentId, studentName) {
                 for(let p=1; p<=8; p++) {
                     contentHtml += `<tr><td style="background:#fcfcfc; font-weight:bold;">${p}교시</td>`;
                     weekDates.forEach(dateStr => {
-                        const isFuture = dateStr > todayIso || (dateStr === todayIso && p > currentP); const cellData = (weekMap[mon][dateStr] && weekMap[mon][dateStr][p]) ? weekMap[mon][dateStr][p] : null; const baseMemo = cellData && cellData.memo ? cellData.memo.trim() : ''; const extraMemo = schedMap[dateStr]?.[p] || ''; let memo = extraMemo || baseMemo || '-'; let statusHtml = '-';
-                        if (isFuture) { statusHtml = '<span style="color:#bdc3c7;">-</span>'; } else { if (!cellData) { statusHtml = '<span style="color:#ccc;">미입력</span>'; } else { const isLate = cellData.status === '2' || memo.includes('지각'); const isUnexcusedAbs = cellData.status === '3' && !isLate && (!memo || memo === '-'); if (isLate) { statusHtml = `<div class="st-2">지각</div>`; } else if (cellData.status === '1') { statusHtml = `<div class="st-1">출석</div>`; } else if (isUnexcusedAbs) { statusHtml = `<div class="st-3">결석</div>`; } else if (cellData.status === '3') { statusHtml = `<div style="background:#f1f2f6; color:#7f8c8d; font-weight:bold; border-radius:3px; padding:2px 0;">공결</div>`; } else { statusHtml = cellData.status; } } }
-                        const memoStyle = (isFuture && memo !== '-') ? 'color:#3498db; font-weight:900;' : ''; contentHtml += `<td class="st-memo" style="${memoStyle}">${memo}</td><td>${statusHtml}</td>`;
+                        const isFuture = dateStr > todayIso || (dateStr === todayIso && p > currentP); 
+                        const cellData = (weekMap[mon][dateStr] && weekMap[mon][dateStr][p]) ? weekMap[mon][dateStr][p] : null; 
+                        const baseMemo = cellData && cellData.memo ? cellData.memo.trim() : ''; 
+                        const extraMemo = schedMap[dateStr]?.[p] || ''; 
+                        
+                        let memo = extraMemo || baseMemo || '-'; 
+
+                        // 💡 [초강력 방어막 3] 출결 메모든 이동 스케줄이든 '취소' 글자가 있으면 무조건 화면에서 지우고 공결 처리를 막음!
+                        if (memo.includes("취소")) {
+                            memo = '-';
+                        }
+
+                        let statusHtml = '-';
+                        if (isFuture) { 
+                            statusHtml = '<span style="color:#bdc3c7;">-</span>'; 
+                        } else { 
+                            if (!cellData) { 
+                                statusHtml = '<span style="color:#ccc;">미입력</span>'; 
+                            } else { 
+                                const isLate = cellData.status === '2' || memo.includes('지각'); 
+                                const isUnexcusedAbs = cellData.status === '3' && !isLate && (!memo || memo === '-'); 
+                                
+                                if (isLate) { statusHtml = `<div class="st-2">지각</div>`; } 
+                                else if (cellData.status === '1') { statusHtml = `<div class="st-1">출석</div>`; } 
+                                else if (isUnexcusedAbs) { statusHtml = `<div class="st-3">결석</div>`; } 
+                                else if (cellData.status === '3') { statusHtml = `<div style="background:#f1f2f6; color:#7f8c8d; font-weight:bold; border-radius:3px; padding:2px 0;">공결</div>`; } 
+                                else { statusHtml = cellData.status; } 
+                            } 
+                        }
+                        const memoStyle = (isFuture && memo !== '-') ? 'color:#3498db; font-weight:900;' : ''; 
+                        contentHtml += `<td class="st-memo" style="${memoStyle}">${memo}</td><td>${statusHtml}</td>`;
                     });
-                    contentHtml += `</tr>`;
-                }
-                contentHtml += `</tbody></table></div>`;
-            });
             contentArea.innerHTML = contentHtml;
         } 
         else {
