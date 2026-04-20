@@ -510,7 +510,7 @@ async function init() {
                 if (mv.reason === "화장실/정수기") return;
                 
                 const dStr = mv.target_date; // 🌟 move_date 대신 target_date 사용
-                let rp = parseInt(mv.return_period, 10) || 0const movesTodayList = stMove7d.filter(ml => ml.move_date === today && ml.reason !== "화장실/정수기" && !ml.reason.includes("취소"));; 
+                let rp = parseInt(mv.return_period, 10) || 0; 
                 if (mv.return_period === "복귀안함") rp = 8; 
 
                 const sp = window.__getPeriodFromTime(mv.move_time); 
