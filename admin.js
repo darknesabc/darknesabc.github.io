@@ -470,23 +470,42 @@ async function init() {
                 }
             });
             stSurvey7d.forEach(sv => {
-                const dStr = sv.survey_date; 
-                const reason = sv.reason ? sv.reason.split('(')[0].trim() : ''; // 💡 사유 추출 추가!
-                const timeType = sv.arrival_time_type || ""; let startP = 0, endP = 0;
-                
+                const dStr = sv.survey_date; const timeType = sv.arrival_time_type || ""; let startP = 0, endP = 0;
                 if (timeType.includes("결석")) { startP = 1; endP = 8; } else if (timeType.includes("오전")) { startP = 1; endP = 3; } else if (timeType.includes("오후")) { startP = 1; endP = 6; } else if (timeType.includes("야간") || timeType.includes("저녁")) { startP = 1; endP = 7; }
-                
-                if (startP > 0) { 
-                    if (!schedMap7d[dStr]) schedMap7d[dStr] = {}; 
-                    for(let p=startP; p<=endP; p++) schedMap7d[dStr][p] = `[설문] ${reason}`.trim(); // 💡 사유를 이어붙임!
-                }
+                if (startP > 0) { if (!schedMap7d[dStr]) schedMap7d[dStr] = {}; for(let p=startP; p<=endP; p++) schedMap7d[dStr][p] = `[설문]`; }
             });
             stMove7d.forEach(mv => { 
                 if (mv.reason === "화장실/정수기") return; 
-                const dStr = mv.move_date; let rp = parseInt(mv.return_period, 10) || 0; if (mv.return_period === "복귀안함") rp = 8; 
+                const dStr = mv.move_date; 
+                let rp = parseInt(mv.return_period, 10) || 0; 
+                if (mv.return_period === "복귀안함") rp = 8; 
+                if (rp > 8) rp = 8; // 💡 [방어막 1] 교시가 2026교시처럼 8을 넘어가면 무조건 8교시로 강제 컷!
+
                 const sp = window.__getPeriodFromTime(mv.move_time); 
-                if (rp > 0) { const start = sp > 0 ? sp : rp; if (!schedMap7d[dStr]) schedMap7d[dStr] = {}; for(let p=start; p<=rp; p++) schedMap7d[dStr][p] = schedMap7d[dStr][p] ? schedMap7d[dStr][p] + ` / ${mv.reason}` : mv.reason; } 
+                if (rp > 0) { 
+                    const start = sp > 0 ? sp : rp; 
+                    if (!schedMap7d[dStr]) schedMap7d[dStr] = {}; 
+                    for(let p=start; p<=rp; p++) schedMap7d[dStr][p] = schedMap7d[dStr][p] ? schedMap7d[dStr][p] + ` / ${mv.reason}` : mv.reason; 
+                } 
             });
+
+            // 💡 [방어막 2] 오늘 일어난 이동 중, '현재 교시'를 덮고 있는 가장 최근 이동 내역 하나만 핀포인트로 뽑아내기
+            const movesTodayList = stMove7d.filter(ml => ml.move_date === today && ml.reason !== "화장실/정수기");
+            movesTodayList.sort((a, b) => (b.move_time || "").localeCompare(a.move_time || "")); // 최신순(내림차순) 정렬
+            
+            let validMove = "";
+            for (let mv of movesTodayList) {
+                let rp = parseInt(mv.return_period, 10) || 0;
+                if (mv.return_period === "복귀안함") rp = 8;
+                if (rp > 8) rp = 8; // 여기서도 2026 방어
+                const sp = window.__getPeriodFromTime(mv.move_time);
+                
+                // 지금 현재 교시(curPInt)가 이동 시작교시(sp) ~ 복귀교시(rp) 사이에 있다면?
+                if (curPInt >= sp && curPInt <= rp) {
+                    validMove = mv.reason;
+                    break; // 가장 최신 것 하나만 찾고 즉시 종료!
+                }
+            }
 
             let abs7dCount = 0, late7dCount = 0, todayAbsenceCount = 0;
 
