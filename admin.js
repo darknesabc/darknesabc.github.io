@@ -467,9 +467,11 @@ async function init() {
                 }
             });
             stSurvey7d.forEach(sv => {
-                const dStr = sv.survey_date; const timeType = sv.arrival_time_type || ""; let startP = 0, endP = 0;
+                const dStr = sv.survey_date; 
+                let reason = sv.reason ? sv.reason.split('(')[0].trim() : ''; // 💡 사유 텍스트 추출 추가
+                const timeType = sv.arrival_time_type || ""; let startP = 0, endP = 0;
                 if (timeType.includes("결석")) { startP = 1; endP = 8; } else if (timeType.includes("오전")) { startP = 1; endP = 3; } else if (timeType.includes("오후")) { startP = 1; endP = 6; } else if (timeType.includes("야간") || timeType.includes("저녁")) { startP = 1; endP = 7; }
-                if (startP > 0) { if (!schedMap7d[dStr]) schedMap7d[dStr] = {}; for(let p=startP; p<=endP; p++) schedMap7d[dStr][p] = `[설문]`; }
+                if (startP > 0) { if (!schedMap7d[dStr]) schedMap7d[dStr] = {}; for(let p=startP; p<=endP; p++) schedMap7d[dStr][p] = `[설문] ${reason}`.trim(); } // 💡 사유 병합
             });
             stMove7d.forEach(mv => { 
                 // 💡 [추가] 화장실 가거나, '취소'된 일정은 스케줄 칸을 차지하지 않도록 무시!
