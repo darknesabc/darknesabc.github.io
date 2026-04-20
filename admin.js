@@ -2728,8 +2728,8 @@ window.__openDetailModal = async function(type, studentId, studentName) {
                 if (timeType.includes("결석")) { startP = 1; endP = 8; } else if (timeType.includes("오전")) { startP = 1; endP = 3; } else if (timeType.includes("오후")) { startP = 1; endP = 6; } else if (timeType.includes("야간") || timeType.includes("저녁")) { startP = 1; endP = 7; }
                 if (startP > 0) { if (!schedMap[dStr]) schedMap[dStr] = {}; for(let p=startP; p<=endP; p++) schedMap[dStr][p] = `[설문] ${reason}`; }
             });
-            const getPeriodFromTime = (timeStr) => { /* ... */ };
-const processedModalMoveData = window.__processMoveLogs(moveData);
+            const getPeriodFromTime = (timeStr) => { if (!timeStr) return 0; const [h, m] = timeStr.split(':').map(Number); const t = h * 60 + m; if (t < 8*60+30) return 1; if (t < 10*60+10) return 2; if (t < 12*60) return 3; if (t < 14*60+30) return 4; if (t < 15*60+50) return 5; if (t < 17*60+30) return 6; if (t < 20*60+10) return 7; return 8; };
+            const processedModalMoveData = window.__processMoveLogs(moveData);
 processedModalMoveData.forEach(mv => { 
     if (mv.reason === "화장실/정수기") return; 
     
