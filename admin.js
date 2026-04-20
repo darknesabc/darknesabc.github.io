@@ -2734,7 +2734,7 @@ window.__openDetailModal = async function(type, studentId, studentName) {
                 weekMap[mon][row.attendance_date][row.period] = { status: row.status_code, memo: row.memo }; 
             });
 
-            // 💡 [핵심 해결 1] 출결 기록은 없지만 스케줄(상담, 병원 등)만 미리 잡혀있는 '미래 날짜'도 억지로 달력 칸을 생성해 줍니다!
+            // 💡 [미래 일정 복구!] 출결 기록은 없지만 스케줄(상담, 병원 등)만 미리 잡혀있는 '미래 날짜'도 억지로 달력 칸을 생성해 줍니다!
             Object.keys(schedMap).forEach(dStr => {
                 const mon = getMonday(dStr);
                 if (!weekMap[mon]) weekMap[mon] = {};
@@ -2743,14 +2743,14 @@ window.__openDetailModal = async function(type, studentId, studentName) {
 
             const weeks = Object.keys(weekMap).sort().reverse();
             
-            // 💡 [핵심 해결 2] 드롭다운에서 가장 먼저 보일 '기본 화면'을 무조건 '이번 주'로 똑똑하게 맞춥니다.
+            // 💡 드롭다운에서 가장 먼저 보일 '기본 화면'을 무조건 '이번 주'로 똑똑하게 맞춥니다.
             const currentMon = getMonday(todayIso);
             let activeWeek = weeks.includes(currentMon) ? currentMon : (weeks[0] || currentMon);
 
             contentHtml += `<div style="margin-bottom:15px;"><select id="week-selector" onchange="document.querySelectorAll('.week-table-container').forEach(el => el.style.display='none'); document.getElementById('week-'+this.value).style.display='block';" style="padding:8px 12px; border-radius:6px; border:1px solid #bdc3c7; background:#f8f9fa; font-size:14px; cursor:pointer; color:#2c3e50; font-weight:bold;">`;
             const formatDateShort = (dStr) => { const d = new Date(dStr); const days = ['일','월','화','수','목','금','토']; return `${d.getMonth()+1}/${d.getDate()}(${days[d.getDay()]})`; };
             
-            // 드롭다운 이름도 직관적으로 변경 (이번 주, 예정 주차 등)
+            // 💡 드롭다운 이름도 직관적으로 변경 (이번 주, 예정 스케줄 등)
             weeks.forEach((mon) => { 
                 const endDay = new Date(mon); endDay.setDate(endDay.getDate() + 6); 
                 let label = `${formatDateShort(mon)} 주차`;
@@ -2767,8 +2767,18 @@ window.__openDetailModal = async function(type, studentId, studentName) {
                 // 선택된 주차만 화면에 보이게 설정
                 const displayStyle = (mon === activeWeek) ? 'block' : 'none';
                 contentHtml += `<div id="week-${mon}" class="week-table-container" style="display:${displayStyle}; overflow-x:auto;"><table class="att-table"><thead><tr><th rowspan="2" style="width:40px;">교시</th>`;
-                const weekDates = []; for(let i=0; i<7; i++) { const d = new Date(mon); d.setDate(d.getDate() + i); const dStr = d.toISOString().split('T')[0]; weekDates.push(dStr); const dateColor = i === 6 ? '#e74c3c' : '#2c3e50'; contentHtml += `<th colspan="2" style="color:${dateColor}">${formatDateShort(dStr)}</th>`; }
-                contentHtml += `</tr><tr>`; for(let i=0; i<7; i++) { contentHtml += `<th>스케줄</th><th>출/결</th>`; } contentHtml += `</tr></thead><tbody>`;
+                const weekDates = []; 
+                for(let i=0; i<7; i++) { 
+                    const d = new Date(mon); d.setDate(d.getDate() + i); 
+                    const dStr = d.toISOString().split('T')[0]; 
+                    weekDates.push(dStr); 
+                    const dateColor = i === 6 ? '#e74c3c' : '#2c3e50'; 
+                    contentHtml += `<th colspan="2" style="color:${dateColor}">${formatDateShort(dStr)}</th>`; 
+                }
+                contentHtml += `</tr><tr>`; 
+                for(let i=0; i<7; i++) { contentHtml += `<th>스케줄</th><th>출/결</th>`; } 
+                contentHtml += `</tr></thead><tbody>`;
+                
                 for(let p=1; p<=8; p++) {
                     contentHtml += `<tr><td style="background:#fcfcfc; font-weight:bold;">${p}교시</td>`;
                     
@@ -2780,7 +2790,7 @@ window.__openDetailModal = async function(type, studentId, studentName) {
                         
                         let memo = extraMemo || baseMemo || '-'; 
 
-                        // [초강력 방어막] 취소된 일정 무시
+                        // 💡 [초강력 방어막] 출결 메모든 이동 스케줄이든 '취소' 글자가 있으면 무조건 화면에서 지우고 공결 처리를 막음!
                         if (memo.includes("취소")) {
                             memo = '-';
                         }
@@ -2803,7 +2813,7 @@ window.__openDetailModal = async function(type, studentId, studentName) {
                             } 
                         }
                         
-                        // 💡 [업그레이드] 과거나 미래 상관없이, 메모(스케줄)가 있으면 무조건 예쁜 파란색 배지로 눈에 띄게 강조!
+                        // 💡 [파란색 배지 강조 복구!] 스케줄(메모)이 있으면 무조건 예쁜 파란색 배지로 눈에 띄게 강조!
                         const memoStyle = (memo !== '-') ? 'color:#2980b9; font-weight:900; background:#ebf5fb; border-radius:4px; padding:3px 6px; display:inline-block; line-height:1.2; box-shadow:0 1px 2px rgba(0,0,0,0.05);' : 'color:#7f8c8d;'; 
                         contentHtml += `<td class="st-memo" style="vertical-align:middle;"><span style="${memoStyle}">${memo}</span></td><td>${statusHtml}</td>`;
                     });
