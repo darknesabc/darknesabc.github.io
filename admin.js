@@ -851,8 +851,8 @@ window.__loadStudentDetail = async function(student) {
 
             if (rp > 0) { 
                 const start = sp > 0 ? sp : rp; 
-                if (!schedMap7d[dStr]) schedMap7d[dStr] = {}; 
-                for(let p=start; p<=rp; p++) schedMap7d[dStr][p] = schedMap7d[dStr][p] ? schedMap7d[dStr][p] + ` / ${mv.reason}` : mv.reason; 
+                if (!schedMap[dStr]) schedMap[dStr] = {}; // 👈 schedMap7d 가 아니라 schedMap 입니다!
+                for(let p=start; p<=rp; p++) schedMap[dStr][p] = schedMap[dStr][p] ? schedMap[dStr][p] + ` / ${mv.reason}` : mv.reason; 
             } 
         });
         
