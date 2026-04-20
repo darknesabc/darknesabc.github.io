@@ -2726,15 +2726,16 @@ window.__openDetailModal = async function(type, studentId, studentName) {
             const weekMap = {}; 
             const getMonday = (dStr) => { const d = new Date(dStr); const day = d.getDay() || 7; d.setDate(d.getDate() - day + 1); return d.toISOString().split('T')[0]; };
             
-            // 1. 기존 출결 데이터로 주차별 달력 생성
+            // 1. 기존 출결 데이터(DB의 memo 포함)로 주차별 달력 기초 데이터 생성
             data.forEach(row => { 
                 const mon = getMonday(row.attendance_date); 
                 if (!weekMap[mon]) weekMap[mon] = {}; 
                 if (!weekMap[mon][row.attendance_date]) weekMap[mon][row.attendance_date] = {}; 
+                // DB의 memo 컬럼에 든 '국어과외', '러셀수학' 등의 데이터를 가져옵니다.
                 weekMap[mon][row.attendance_date][row.period] = { status: row.status_code, memo: row.memo }; 
             });
 
-            // 💡 [미래 일정 복구!] 출결 기록은 없지만 스케줄(상담, 병원 등)만 미리 잡혀있는 '미래 날짜'도 억지로 달력 칸을 생성해 줍니다!
+            // 2. 이동/설문 데이터(상담, 병원 등)를 달력에 추가 병합
             Object.keys(schedMap).forEach(dStr => {
                 const mon = getMonday(dStr);
                 if (!weekMap[mon]) weekMap[mon] = {};
@@ -2743,14 +2744,13 @@ window.__openDetailModal = async function(type, studentId, studentName) {
 
             const weeks = Object.keys(weekMap).sort().reverse();
             
-            // 💡 드롭다운에서 가장 먼저 보일 '기본 화면'을 무조건 '이번 주'로 똑똑하게 맞춥니다.
+            // 현재 주차를 기본으로 보여주기 위한 설정
             const currentMon = getMonday(todayIso);
             let activeWeek = weeks.includes(currentMon) ? currentMon : (weeks[0] || currentMon);
 
             contentHtml += `<div style="margin-bottom:15px;"><select id="week-selector" onchange="document.querySelectorAll('.week-table-container').forEach(el => el.style.display='none'); document.getElementById('week-'+this.value).style.display='block';" style="padding:8px 12px; border-radius:6px; border:1px solid #bdc3c7; background:#f8f9fa; font-size:14px; cursor:pointer; color:#2c3e50; font-weight:bold;">`;
             const formatDateShort = (dStr) => { const d = new Date(dStr); const days = ['일','월','화','수','목','금','토']; return `${d.getMonth()+1}/${d.getDate()}(${days[d.getDay()]})`; };
             
-            // 💡 드롭다운 이름도 직관적으로 변경 (이번 주, 예정 스케줄 등)
             weeks.forEach((mon) => { 
                 const endDay = new Date(mon); endDay.setDate(endDay.getDate() + 6); 
                 let label = `${formatDateShort(mon)} 주차`;
@@ -2761,39 +2761,26 @@ window.__openDetailModal = async function(type, studentId, studentName) {
                 contentHtml += `<option value="${mon}" ${isSelected}>${label}</option>`; 
             });
             
-            contentHtml += `</select></div><style>.att-table { width:100%; border-collapse:collapse; text-align:center; font-size:12px; color:#2c3e50; min-width:800px; } .att-table th, .att-table td { border:1px solid #dfe6e9; padding:8px 2px; } .att-table th { background:#f1f2f6; font-weight:bold; } .st-1 { background:#e8f8f5; color:#27ae60; font-weight:bold; border-radius:3px; padding:2px 0; } .st-2 { background:#fef9e7; color:#f39c12; font-weight:bold; border-radius:3px; padding:2px 0; } .st-3 { background:#fadedb; color:#e74c3c; font-weight:bold; border-radius:3px; padding:2px 0; } .st-memo { font-size:11px; color:#7f8c8d; max-width:80px; word-break:keep-all; font-weight:bold; }</style>`;
+            contentHtml += `</select></div><style>.att-table { width:100%; border-collapse:collapse; text-align:center; font-size:12px; color:#2c3e50; min-width:800px; } .att-table th, .att-table td { border:1px solid #dfe6e9; padding:8px 2px; } .att-table th { background:#f1f2f6; font-weight:bold; } .st-1 { background:#e8f8f5; color:#27ae60; font-weight:bold; border-radius:3px; padding:2px 0; } .st-2 { background:#fef9e7; color:#f39c12; font-weight:bold; border-radius:3px; padding:2px 0; } .st-3 { background:#fadedb; color:#e74c3c; font-weight:bold; border-radius:3px; padding:2px 0; } .st-memo { font-size:11px; color:#7f8c8d; max-width:110px; word-break:keep-all; font-weight:bold; }</style>`;
             
             weeks.forEach((mon) => {
-                // 선택된 주차만 화면에 보이게 설정
                 const displayStyle = (mon === activeWeek) ? 'block' : 'none';
                 contentHtml += `<div id="week-${mon}" class="week-table-container" style="display:${displayStyle}; overflow-x:auto;"><table class="att-table"><thead><tr><th rowspan="2" style="width:40px;">교시</th>`;
-                const weekDates = []; 
-                for(let i=0; i<7; i++) { 
-                    const d = new Date(mon); d.setDate(d.getDate() + i); 
-                    const dStr = d.toISOString().split('T')[0]; 
-                    weekDates.push(dStr); 
-                    const dateColor = i === 6 ? '#e74c3c' : '#2c3e50'; 
-                    contentHtml += `<th colspan="2" style="color:${dateColor}">${formatDateShort(dStr)}</th>`; 
-                }
-                contentHtml += `</tr><tr>`; 
-                for(let i=0; i<7; i++) { contentHtml += `<th>스케줄</th><th>출/결</th>`; } 
-                contentHtml += `</tr></thead><tbody>`;
+                const weekDates = []; for(let i=0; i<7; i++) { const d = new Date(mon); d.setDate(d.getDate() + i); const dStr = d.toISOString().split('T')[0]; weekDates.push(dStr); const dateColor = i === 6 ? '#e74c3c' : '#2c3e50'; contentHtml += `<th colspan="2" style="color:${dateColor}">${formatDateShort(dStr)}</th>`; }
+                contentHtml += `</tr><tr>`; for(let i=0; i<7; i++) { contentHtml += `<th>스케줄</th><th>출/결</th>`; } contentHtml += `</tr></thead><tbody>`;
                 
                 for(let p=1; p<=8; p++) {
                     contentHtml += `<tr><td style="background:#fcfcfc; font-weight:bold;">${p}교시</td>`;
-                    
                     weekDates.forEach(dateStr => {
                         const isFuture = dateStr > todayIso || (dateStr === todayIso && p > currentP); 
                         const cellData = (weekMap[mon][dateStr] && weekMap[mon][dateStr][p]) ? weekMap[mon][dateStr][p] : null; 
                         const baseMemo = cellData && cellData.memo ? cellData.memo.trim() : ''; 
                         const extraMemo = schedMap[dateStr]?.[p] || ''; 
                         
+                        // 💡 [핵심] 외부 일정이 있으면 우선 표시하고, 없으면 DB에 기록된 고정 메모(과외 등)를 표시합니다.
                         let memo = extraMemo || baseMemo || '-'; 
 
-                        // 💡 [초강력 방어막] 출결 메모든 이동 스케줄이든 '취소' 글자가 있으면 무조건 화면에서 지우고 공결 처리를 막음!
-                        if (memo.includes("취소")) {
-                            memo = '-';
-                        }
+                        if (memo.includes("취소")) { memo = '-'; }
 
                         let statusHtml = '-';
                         if (isFuture) { 
@@ -2804,20 +2791,18 @@ window.__openDetailModal = async function(type, studentId, studentName) {
                             } else { 
                                 const isLate = cellData.status === '2' || memo.includes('지각'); 
                                 const isUnexcusedAbs = cellData.status === '3' && !isLate && (!memo || memo === '-'); 
-                                
-                                if (isLate) { statusHtml = `<div class="st-2">지각</div>`; } 
-                                else if (cellData.status === '1') { statusHtml = `<div class="st-1">출석</div>`; } 
-                                else if (isUnexcusedAbs) { statusHtml = `<div class="st-3">결석</div>`; } 
-                                else if (cellData.status === '3') { statusHtml = `<div style="background:#f1f2f6; color:#7f8c8d; font-weight:bold; border-radius:3px; padding:2px 0;">공결</div>`; } 
-                                else { statusHtml = cellData.status; } 
+                                if (isLate) statusHtml = `<div class="st-2">지각</div>`;
+                                else if (cellData.status === '1') statusHtml = `<div class="st-1">출석</div>`;
+                                else if (isUnexcusedAbs) statusHtml = `<div class="st-3">결석</div>`;
+                                else if (cellData.status === '3') statusHtml = `<div style="background:#f1f2f6; color:#7f8c8d; font-weight:bold; border-radius:3px; padding:2px 0;">공결</div>`;
+                                else statusHtml = cellData.status;
                             } 
                         }
                         
-                        // 💡 [파란색 배지 강조 복구!] 스케줄(메모)이 있으면 무조건 예쁜 파란색 배지로 눈에 띄게 강조!
+                        // 💡 [배지 디자인] 스케줄이 있으면 파란색 배경의 배지로 한눈에 띄게 만듭니다.
                         const memoStyle = (memo !== '-') ? 'color:#2980b9; font-weight:900; background:#ebf5fb; border-radius:4px; padding:3px 6px; display:inline-block; line-height:1.2; box-shadow:0 1px 2px rgba(0,0,0,0.05);' : 'color:#7f8c8d;'; 
                         contentHtml += `<td class="st-memo" style="vertical-align:middle;"><span style="${memoStyle}">${memo}</span></td><td>${statusHtml}</td>`;
                     });
-                    
                     contentHtml += `</tr>`;
                 }
                 contentHtml += `</tbody></table></div>`;
