@@ -339,6 +339,40 @@ window.__processEduScores = function(rawEduData) {
 };
 
 // =========================================================
+// 💡 [신규 기능] 이동/상담 로그 전처리 헬퍼 (스케줄 달력용)
+// 취소된 상담 제외 & 상담의 실제 날짜(return_period) 추출
+// =========================================================
+window.__processMoveLogs = function(rawMoveData) {
+    if (!rawMoveData || !Array.isArray(rawMoveData)) return [];
+
+    // 1. '상담 취소'된 시간(return_period) 수집
+    const canceledPeriods = new Set();
+    rawMoveData.forEach(log => {
+        if (log.reason.includes('취소') && log.return_period) {
+            canceledPeriods.add(log.return_period);
+        }
+    });
+
+    const processed = [];
+    rawMoveData.forEach(log => {
+        // 2. 취소된 기록이거나 취소 원본 기록이면 달력(스케줄)에서 제외
+        if (log.reason.includes('취소')) return;
+        if (log.reason.includes('상담') && canceledPeriods.has(log.return_period)) return;
+
+        // 3. 스케줄 매핑용 기준 날짜 추출 (move_date 대신 상담 예약일 사용)
+        let targetDate = log.move_date;
+        if (log.reason.includes('상담') && log.return_period && log.return_period.includes('-')) {
+            // "2026-04-21 13:20" 형태에서 "2026-04-21" 추출
+            targetDate = log.return_period.split(' ')[0];
+        }
+
+        processed.push({ ...log, target_date: targetDate });
+    });
+
+    return processed;
+};
+
+// =========================================================
 // 2. 메인 화면 초기화 (바둑판 카드)
 // =========================================================
 async function init() {
@@ -451,7 +485,7 @@ async function init() {
         students.forEach(s => {
             const stAtts7d = resAtt.data.filter(a => a.student_id === s.student_id);
             const stSleep7d = resSleep.data.filter(sl => sl.student_id === s.student_id);
-            const stMove7d = resMove.data.filter(ml => ml.student_id === s.student_id);
+            const stMove7d = window.__processMoveLogs(resMove.data.filter(ml => ml.student_id === s.student_id));
             const stSurvey7d = resSurvey.data.filter(sv => sv.student_id === s.student_id);
             const stEduAll = processedEduData.filter(el => el.student_id === s.student_id);
 
@@ -471,12 +505,12 @@ async function init() {
                 if (timeType.includes("결석")) { startP = 1; endP = 8; } else if (timeType.includes("오전")) { startP = 1; endP = 3; } else if (timeType.includes("오후")) { startP = 1; endP = 6; } else if (timeType.includes("야간") || timeType.includes("저녁")) { startP = 1; endP = 7; }
                 if (startP > 0) { if (!schedMap7d[dStr]) schedMap7d[dStr] = {}; for(let p=startP; p<=endP; p++) schedMap7d[dStr][p] = `[설문]`; }
             });
-            stMove7d.forEach(mv => { 
+            stMove7d.forEach(mv => {
                 // 💡 [추가] 화장실 가거나, '취소'된 일정은 스케줄 칸을 차지하지 않도록 무시!
-                if (mv.reason === "화장실/정수기" || mv.reason.includes("취소")) return; 
+                if (mv.reason === "화장실/정수기") return;
                 
-                const dStr = mv.move_date; 
-                let rp = parseInt(mv.return_period, 10) || 0; 
+                const dStr = mv.target_date; // 🌟 move_date 대신 target_date 사용
+                let rp = parseInt(mv.return_period, 10) || 0const movesTodayList = stMove7d.filter(ml => ml.move_date === today && ml.reason !== "화장실/정수기" && !ml.reason.includes("취소"));; 
                 if (mv.return_period === "복귀안함") rp = 8; 
 
                 const sp = window.__getPeriodFromTime(mv.move_time); 
@@ -495,7 +529,7 @@ async function init() {
             });
 
             // 💡 [추가] 배지 띄울 때도 '취소'된 기록은 대상에서 제외!
-            const movesTodayList = stMove7d.filter(ml => ml.move_date === today && ml.reason !== "화장실/정수기" && !ml.reason.includes("취소"));
+            const movesTodayList = stMove7d.filter(ml => ml.target_date === today && ml.reason !== "화장실/정수기");
             movesTodayList.sort((a, b) => (b.move_time || "").localeCompare(a.move_time || "")); // 최신순(내림차순) 정렬
             
             let validMove = "";
@@ -836,11 +870,11 @@ window.__loadStudentDetail = async function(student) {
         });
 
         // 3. 이동(Move) 스케줄 반영 (복귀안함 등)
-        resMove.data.forEach(mv => { 
-            // 💡 [추가] 상세 모달창 달력에서도 '취소'된 일정은 무시!
-            if (mv.reason === "화장실/정수기" || mv.reason.includes("취소")) return; 
-            
-            const dStr = mv.move_date; 
+const processedMoveData = window.__processMoveLogs(resMove.data);
+processedMoveData.forEach(mv => { 
+    if (mv.reason === "화장실/정수기") return; 
+    
+    const dStr = mv.target_date; // 🌟 move_date 대신 target_date 사용
             let rp = parseInt(mv.return_period, 10) || 0; 
             if (mv.return_period === "복귀안함") rp = 8; 
             
@@ -2694,12 +2728,12 @@ window.__openDetailModal = async function(type, studentId, studentName) {
                 if (timeType.includes("결석")) { startP = 1; endP = 8; } else if (timeType.includes("오전")) { startP = 1; endP = 3; } else if (timeType.includes("오후")) { startP = 1; endP = 6; } else if (timeType.includes("야간") || timeType.includes("저녁")) { startP = 1; endP = 7; }
                 if (startP > 0) { if (!schedMap[dStr]) schedMap[dStr] = {}; for(let p=startP; p<=endP; p++) schedMap[dStr][p] = `[설문] ${reason}`; }
             });
-            const getPeriodFromTime = (timeStr) => { if (!timeStr) return 0; const [h, m] = timeStr.split(':').map(Number); const t = h * 60 + m; if (t < 8*60+30) return 1; if (t < 10*60+10) return 2; if (t < 12*60) return 3; if (t < 14*60+30) return 4; if (t < 15*60+50) return 5; if (t < 17*60+30) return 6; if (t < 20*60+10) return 7; return 8; };
-            moveData.forEach(mv => { 
-                // 💡 [방어막 1] 화장실/정수기 뿐만 아니라 '취소'가 들어간 사유도 모달창에서 무시!
-                if (mv.reason === "화장실/정수기" || mv.reason.includes("취소")) return; 
-                
-                const dStr = mv.move_date; 
+            const getPeriodFromTime = (timeStr) => { /* ... */ };
+const processedModalMoveData = window.__processMoveLogs(moveData);
+processedModalMoveData.forEach(mv => { 
+    if (mv.reason === "화장실/정수기") return; 
+    
+    const dStr = mv.target_date; // 🌟 move_date 대신 target_date 사용
                 let rp = parseInt(mv.return_period, 10) || 0; 
                 if (mv.return_period === "복귀안함") rp = 8; 
                 const sp = getPeriodFromTime(mv.move_time); 
