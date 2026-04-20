@@ -336,6 +336,9 @@ async function init() {
                 <div style="display:flex; gap:5px; background:#eee; padding:4px; border-radius:8px;">
                     <button onclick="window.__changeSort('seat')" style="padding:6px 15px; border-radius:6px; border:none; cursor:pointer; font-size:13px; font-weight:bold; transition:0.2s; ${window.__currentSortMode==='seat'?'background:#2c3e50; color:white;':'background:transparent; color:#7f8c8d;'}">자리순</button>
                     <button onclick="window.__changeSort('name')" style="padding:6px 15px; border-radius:6px; border:none; cursor:pointer; font-size:13px; font-weight:bold; transition:0.2s; ${window.__currentSortMode==='name'?'background:#2c3e50; color:white;':'background:transparent; color:#7f8c8d;'}">이름순</button>
+                    
+                    ${(loggedInId === 'admin_4F' || loggedInRole === 'super') ? `<button onclick="window.__changeSort('teacher')" style="padding:6px 15px; border-radius:6px; border:none; cursor:pointer; font-size:13px; font-weight:bold; transition:0.2s; ${window.__currentSortMode==='teacher'?'background:#2c3e50; color:white;':'background:transparent; color:#7f8c8d;'}">담임별</button>` : ''}
+                    
                     <button id="dashboard-fold-btn" onclick="window.__toggleDashboard()" style="padding:6px 15px; border-radius:6px; border:none; cursor:pointer; font-size:13px; font-weight:bold; transition:0.2s; background:#7f8c8d; color:white; margin-left:10px;">바둑판 접기 ⬆</button>
                 </div>
             </div>
@@ -365,6 +368,14 @@ async function init() {
 
         if (window.__currentSortMode === 'name') {
             students.sort((a, b) => a.name.localeCompare(b.name, 'ko'));
+        } else if (window.__currentSortMode === 'teacher') {
+            // 💡 [신규] 담임별 정렬 로직
+            students.sort((a, b) => {
+                const tA = a.teacher_name || '미배정';
+                const tB = b.teacher_name || '미배정';
+                if (tA === tB) return a.name.localeCompare(b.name, 'ko'); // 같은 반이면 이름순 정렬
+                return tA.localeCompare(tB, 'ko');
+            });
         } else {
             students.sort((a, b) => a.seat_no.localeCompare(b.seat_no, undefined, {numeric: true}));
         }
@@ -373,6 +384,8 @@ async function init() {
 
         dashboard.innerHTML = '';
         const curPInt = parseInt(currentP, 10);
+        
+        window.__currentTeacherLabel = null; // 💡 담임별 그룹핑을 위한 변수 초기화
 
         // 🚨 [스마트 기능] 숨김 기록 확인 함수
         const ackData = JSON.parse(localStorage.getItem('smartAlertAck') || '{}');
@@ -514,6 +527,18 @@ async function init() {
             else if (totalEduScore >= 10) eduBadge = `<span style="background:#af7ac5; color:#fff; padding:2px 6px; border-radius:4px; font-size:12px; font-weight:bold;">🚨경고(${totalEduScore})</span>`;
             else if (totalEduScore > 0) eduBadge = `<span style="background:#fab1a0; color:#c0392b; padding:1px 4px; border-radius:3px; font-size:12px;">🚨${totalEduScore}</span>`;
 
+            // 💡 [신규] 담임별 정렬일 때만 카드 그리기 직전에 꽉 차는 그룹 헤더(구분선) 삽입!
+            if (window.__currentSortMode === 'teacher' && window.__currentTeacherLabel !== s.teacher_name) {
+                window.__currentTeacherLabel = s.teacher_name || '미배정';
+                const tCount = students.filter(x => x.teacher_name === s.teacher_name).length;
+                dashboard.innerHTML += `
+                    <div style="grid-column: 1 / -1; background:#34495e; color:#fff; padding:8px 15px; border-radius:8px; font-weight:bold; font-size:14px; margin-top:15px; margin-bottom:5px; display:flex; justify-content:space-between; align-items:center; box-shadow:0 2px 4px rgba(0,0,0,0.1);">
+                        <span>👨‍🏫 ${window.__currentTeacherLabel} 선생님 반</span>
+                        <span style="background:rgba(255,255,255,0.2); padding:2px 10px; border-radius:12px; font-size:12px;">총 ${tCount}명</span>
+                    </div>
+                `;
+            }
+           
             dashboard.innerHTML += `
                 <div class="card status-${color}" style="position:relative; cursor:pointer;" onclick="window.__loadStudentDetail(window.__dashboardItems.find(x => x.studentId === '${s.student_id}'))">
                     <div class="seat" style="font-size:11px; opacity:0.7;">${s.seat_no}</div>
