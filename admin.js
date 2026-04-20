@@ -501,10 +501,21 @@ async function init() {
                 }
             });
             stSurvey7d.forEach(sv => {
-                const dStr = sv.survey_date; const timeType = sv.arrival_time_type || ""; let startP = 0, endP = 0;
-                if (timeType.includes("결석")) { startP = 1; endP = 8; } else if (timeType.includes("오전")) { startP = 1; endP = 3; } else if (timeType.includes("오후")) { startP = 1; endP = 6; } else if (timeType.includes("야간") || timeType.includes("저녁")) { startP = 1; endP = 7; }
-                if (startP > 0) { if (!schedMap7d[dStr]) schedMap7d[dStr] = {}; for(let p=startP; p<=endP; p++) schedMap7d[dStr][p] = `[설문]`; }
-            });
+    const dStr = sv.survey_date; 
+    const timeType = sv.arrival_time_type || ""; 
+    let reason = sv.reason ? sv.reason.split('(')[0].trim() : ''; // 💡 사유(학원, 병원 등) 추출 추가
+    let startP = 0, endP = 0;
+    
+    if (timeType.includes("결석")) { startP = 1; endP = 8; } else if (timeType.includes("오전")) { startP = 1; endP = 3; } else if (timeType.includes("오후")) { startP = 1; endP = 6; } else if (timeType.includes("야간") || timeType.includes("저녁")) { startP = 1; endP = 7; }
+    
+    if (startP > 0) { 
+        if (!schedMap7d[dStr]) schedMap7d[dStr] = {}; 
+        for(let p=startP; p<=endP; p++) {
+            // 💡 사유가 있으면 [설문] 학원 형태로, 없으면 [설문]만 출력
+            schedMap7d[dStr][p] = reason ? `[설문] ${reason}` : `[설문]`; 
+        }
+    }
+});
             stMove7d.forEach(mv => {
                 // 💡 [추가] 화장실 가거나, '취소'된 일정은 스케줄 칸을 차지하지 않도록 무시!
                 if (mv.reason === "화장실/정수기") return;
@@ -855,19 +866,24 @@ window.__loadStudentDetail = async function(student) {
 
         // 2. 설문(Survey) 스케줄 반영
         resSurvey.data.forEach(sv => {
-            const dStr = sv.survey_date; 
-            const timeType = sv.arrival_time_type || ""; 
-            let startP = 0, endP = 0;
-            if (timeType.includes("결석")) { startP = 1; endP = 8; } 
-            else if (timeType.includes("오전")) { startP = 1; endP = 3; } 
-            else if (timeType.includes("오후")) { startP = 1; endP = 6; } 
-            else if (timeType.includes("야간") || timeType.includes("저녁")) { startP = 1; endP = 7; }
-            
-            if (startP > 0) { 
-                if (!schedMap[dStr]) schedMap[dStr] = {}; 
-                for(let p=startP; p<=endP; p++) schedMap[dStr][p] = schedMap[dStr][p] ? schedMap[dStr][p] + ` / [설문]` : `[설문]`; 
-            }
-        });
+    const dStr = sv.survey_date; 
+    const timeType = sv.arrival_time_type || ""; 
+    let reason = sv.reason ? sv.reason.split('(')[0].trim() : ''; // 💡 여기도 사유 추출 추가
+    let startP = 0, endP = 0;
+    
+    if (timeType.includes("결석")) { startP = 1; endP = 8; } 
+    else if (timeType.includes("오전")) { startP = 1; endP = 3; } 
+    else if (timeType.includes("오후")) { startP = 1; endP = 6; } 
+    else if (timeType.includes("야간") || timeType.includes("저녁")) { startP = 1; endP = 7; }
+    
+    if (startP > 0) { 
+        if (!schedMap[dStr]) schedMap[dStr] = {}; 
+        const displayLabel = reason ? `[설문] ${reason}` : `[설문]`; // 💡 라벨 생성 로직 분리
+        for(let p=startP; p<=endP; p++) {
+            schedMap[dStr][p] = schedMap[dStr][p] ? schedMap[dStr][p] + ` / ${displayLabel}` : displayLabel; 
+        }
+    }
+});
 
         // 3. 이동(Move) 스케줄 반영 (복귀안함 등)
 const processedMoveData = window.__processMoveLogs(resMove.data);
