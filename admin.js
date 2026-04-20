@@ -571,12 +571,36 @@ async function init() {
                 // 💡 화장실 등 다른 사유와 섞여 있을 경우를 대비해 [설문]이 포함된 텍스트 덩어리만 정확히 뽑아냅니다.
                 surveyReason = schedMap7d[today][curPInt].split(' / ').find(item => item.includes('[설문]')).trim();
             }
+            
+            // 💡 [수정] 스케줄(메모)과 임시이벤트(설문, 이동)가 겹칠 때 둘 다 보여주기 위한 로직
             let status = "미입력", sub = "", color = "none", code = att ? att.status_code : "";
-            if (code === "1") { status = "출석"; color = "1"; sub = validMove || surveyReason || (att ? att.memo : ""); }
-            else if (validMove) { status = validMove; color = "move"; }
-            else if (surveyReason) { status = surveyReason; color = "schedule"; }
-            else if (att && att.memo) { status = att.memo; color = "schedule"; }
-            else { status = code === "3" ? "결석" : (code === "2" ? "지각" : "미입력"); color = code || "none"; }
+            const primaryMemo = (att && att.memo && att.memo !== '-') ? att.memo.trim() : "";
+
+            if (code === "1") { 
+                status = "출석"; color = "1"; 
+                sub = validMove || surveyReason || primaryMemo; 
+            }
+            else if (validMove) { 
+                status = validMove; color = "move"; 
+                sub = primaryMemo; // 이동 중이어도 원래 스케줄을 아래에 조그맣게 표시
+            }
+            else if (surveyReason) { 
+                // 설문이 있으면서 원래 스케줄도 있으면, 메인은 스케줄로!
+                if (primaryMemo) {
+                    status = primaryMemo;
+                    sub = surveyReason;
+                } else {
+                    status = surveyReason; 
+                }
+                color = "schedule"; 
+            }
+            else if (primaryMemo) { 
+                status = primaryMemo; color = "schedule"; 
+            }
+            else { 
+                status = code === "3" ? "결석" : (code === "2" ? "지각" : "미입력"); 
+                color = code || "none"; 
+            }
 
             let absBadge = '';
             if (todayAbsenceCount >= 6) absBadge = `<span style="background:#e74c3c; color:#fff; padding:2px 6px; border-radius:4px; font-size:12px; font-weight:900;">❌위험(${todayAbsenceCount})</span>`;
@@ -2772,41 +2796,6 @@ window.__openDetailModal = async function(type, studentId, studentName) {
                 for(let p=1; p<=8; p++) {
                     contentHtml += `<tr><td style="background:#fcfcfc; font-weight:bold;">${p}교시</td>`;
                     weekDates.forEach(dateStr => {
-                        const isFuture = dateStr > todayIso || (dateStr === todayIso && p > currentP); 
-                        const cellData = (weekMap[mon][dateStr] && weekMap[mon][dateStr][p]) ? weekMap[mon][dateStr][p] : null; 
-                        const baseMemo = cellData && cellData.memo ? cellData.memo.trim() : ''; 
-                        const extraMemo = schedMap[dateStr]?.[p] || ''; 
-                        
-                        // 💡 [핵심] 외부 일정이 있으면 우선 표시하고, 없으면 DB에 기록된 고정 메모(과외 등)를 표시합니다.
-                        let memo = extraMemo || baseMemo || '-'; 
-
-                        if (memo.includes("취소")) { memo = '-'; }
-
-                        let statusHtml = '-';
-                        if (isFuture) { 
-                            statusHtml = '<span style="color:#bdc3c7;">-</span>'; 
-                        } else { 
-                            if (!cellData) { 
-                                statusHtml = '<span style="color:#ccc;">미입력</span>'; 
-                            } else { 
-                                const isLate = cellData.status === '2' || memo.includes('지각'); 
-                                const isUnexcusedAbs = cellData.status === '3' && !isLate && (!memo || memo === '-'); 
-                                if (isLate) statusHtml = `<div class="st-2">지각</div>`;
-                                else if (cellData.status === '1') statusHtml = `<div class="st-1">출석</div>`;
-                                else if (isUnexcusedAbs) statusHtml = `<div class="st-3">결석</div>`;
-                                else if (cellData.status === '3') statusHtml = `<div style="background:#f1f2f6; color:#7f8c8d; font-weight:bold; border-radius:3px; padding:2px 0;">공결</div>`;
-                                else statusHtml = cellData.status;
-                            } 
-                        }
-                        
-                        // 💡 [배지 디자인] 스케줄이 있으면 파란색 배경의 배지로 한눈에 띄게 만듭니다.
-                        const memoStyle = (memo !== '-') ? 'color:#2980b9; font-weight:900; background:#ebf5fb; border-radius:4px; padding:3px 6px; display:inline-block; line-height:1.2; box-shadow:0 1px 2px rgba(0,0,0,0.05);' : 'color:#7f8c8d;'; 
-                        contentHtml += `<td class="st-memo" style="vertical-align:middle;"><span style="${memoStyle}">${memo}</span></td><td>${statusHtml}</td>`;
-                    });
-                    contentHtml += `</tr>`;
-                }
-                contentHtml += `</tbody></table></div>`;
-            });
             contentArea.innerHTML = contentHtml;
         } 
         else {
