@@ -476,9 +476,16 @@ async function init() {
                 const dStr = mv.move_date; 
                 let rp = parseInt(mv.return_period, 10) || 0; 
                 if (mv.return_period === "복귀안함") rp = 8; 
-                if (rp > 8) rp = 8; // 💡 [방어막 1] 교시가 2026교시처럼 8을 넘어가면 무조건 8교시로 강제 컷!
 
                 const sp = window.__getPeriodFromTime(mv.move_time); 
+
+                // 💡 [핵심 추가 1] 상담이거나, 복귀 교시에 날짜(-)가 잘못 입력된 경우 무조건 시작 교시(sp) 딱 1칸만 차지하도록 강제 고정!
+                if (mv.reason.includes("상담") || String(mv.return_period).includes("-")) {
+                    rp = sp;
+                }
+
+                if (rp > 8) rp = 8; // 2026교시 방어막
+
                 if (rp > 0) { 
                     const start = sp > 0 ? sp : rp; 
                     if (!schedMap7d[dStr]) schedMap7d[dStr] = {}; 
@@ -488,19 +495,25 @@ async function init() {
 
             // 💡 [방어막 2] 오늘 일어난 이동 중, '현재 교시'를 덮고 있는 가장 최근 이동 내역 하나만 핀포인트로 뽑아내기
             const movesTodayList = stMove7d.filter(ml => ml.move_date === today && ml.reason !== "화장실/정수기");
-            movesTodayList.sort((a, b) => (b.move_time || "").localeCompare(a.move_time || "")); // 최신순(내림차순) 정렬
+            movesTodayList.sort((a, b) => (b.move_time || "").localeCompare(a.move_time || "")); // 최신순 정렬
             
             let validMove = "";
             for (let mv of movesTodayList) {
                 let rp = parseInt(mv.return_period, 10) || 0;
                 if (mv.return_period === "복귀안함") rp = 8;
-                if (rp > 8) rp = 8; // 여기서도 2026 방어
                 const sp = window.__getPeriodFromTime(mv.move_time);
+                
+                // 💡 [핵심 추가 2] 상담이거나, 복귀 교시에 날짜(-)가 잘못 입력된 경우 무조건 시작 교시 1칸으로 고정!
+                if (mv.reason.includes("상담") || String(mv.return_period).includes("-")) {
+                    rp = sp;
+                }
+
+                if (rp > 8) rp = 8; 
                 
                 // 지금 현재 교시(curPInt)가 이동 시작교시(sp) ~ 복귀교시(rp) 사이에 있다면?
                 if (curPInt >= sp && curPInt <= rp) {
                     validMove = mv.reason;
-                    break; // 가장 최신 것 하나만 찾고 즉시 종료!
+                    break; 
                 }
             }
 
@@ -828,13 +841,21 @@ window.__loadStudentDetail = async function(student) {
             let rp = parseInt(mv.return_period, 10) || 0; 
             if (mv.return_period === "복귀안함") rp = 8; 
             const sp = getPeriodFromTime(mv.move_time); 
+            
+            // 💡 [핵심 추가 3] 상담이거나, 복귀 교시에 날짜(-)가 잘못 입력된 경우 무조건 시작 교시 1칸으로 고정!
+            if (mv.reason.includes("상담") || String(mv.return_period).includes("-")) {
+                rp = sp;
+            }
+
+            if (rp > 8) rp = 8; // 2026교시 방어막
+
             if (rp > 0) { 
-                if (!schedMap[dStr]) schedMap[dStr] = {}; 
                 const start = sp > 0 ? sp : rp; 
-                for(let p=start; p<=rp; p++) schedMap[dStr][p] = schedMap[dStr][p] ? schedMap[dStr][p] + ` / ${mv.reason}` : mv.reason; 
+                if (!schedMap7d[dStr]) schedMap7d[dStr] = {}; 
+                for(let p=start; p<=rp; p++) schedMap7d[dStr][p] = schedMap7d[dStr][p] ? schedMap7d[dStr][p] + ` / ${mv.reason}` : mv.reason; 
             } 
         });
-
+        
         let totalAtt = 0, totalLate = 0, totalAbs = 0, totalExcused = 0;
         let att7d = 0, late7d = 0, abs7d = 0, excused7d = 0;
         const recentAbsences = [];
