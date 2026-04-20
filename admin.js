@@ -2796,6 +2796,49 @@ window.__openDetailModal = async function(type, studentId, studentName) {
                 for(let p=1; p<=8; p++) {
                     contentHtml += `<tr><td style="background:#fcfcfc; font-weight:bold;">${p}교시</td>`;
                     weekDates.forEach(dateStr => {
+                        const isFuture = dateStr > todayIso || (dateStr === todayIso && p > currentP); 
+                        const cellData = (weekMap[mon][dateStr] && weekMap[mon][dateStr][p]) ? weekMap[mon][dateStr][p] : null; 
+                        const baseMemo = cellData && cellData.memo ? cellData.memo.trim() : ''; 
+                        const extraMemo = schedMap[dateStr]?.[p] || ''; 
+                        
+                        // 💡 [핵심] 기존(base) 메모와 추가(extra) 메모가 둘 다 있으면 예쁘게 합쳐서 보여줍니다!
+                        let memo = '-';
+                        if (baseMemo && baseMemo !== '-' && extraMemo) {
+                            // 둘 다 있으면: "시대물1현정훈 [설문]" 형태로 병합
+                            memo = `${baseMemo} <span style="color:#e74c3c; background:#fdf3f2; padding:1px 4px; border-radius:3px; font-size:10px; margin-left:3px;">${extraMemo}</span>`; 
+                        } else {
+                            memo = extraMemo || baseMemo || '-'; 
+                        }
+
+                        // 💡 취소된 일정이면 임시 이벤트(extraMemo)만 날리고 원래 정규스케줄(baseMemo)은 복구!
+                        if (memo.includes("취소")) { 
+                            memo = baseMemo || '-'; 
+                        }
+
+                        let statusHtml = '-';
+                        if (isFuture) { 
+                            statusHtml = '<span style="color:#bdc3c7;">-</span>'; 
+                        } else { 
+                            if (!cellData) { 
+                                statusHtml = '<span style="color:#ccc;">미입력</span>'; 
+                            } else { 
+                                const isLate = cellData.status === '2' || memo.includes('지각'); 
+                                const isUnexcusedAbs = cellData.status === '3' && !isLate && (!memo || memo === '-'); 
+                                if (isLate) statusHtml = `<div class="st-2">지각</div>`;
+                                else if (cellData.status === '1') statusHtml = `<div class="st-1">출석</div>`;
+                                else if (isUnexcusedAbs) statusHtml = `<div class="st-3">결석</div>`;
+                                else if (cellData.status === '3') statusHtml = `<div style="background:#f1f2f6; color:#7f8c8d; font-weight:bold; border-radius:3px; padding:2px 0;">공결</div>`;
+                                else statusHtml = cellData.status;
+                            } 
+                        }
+                        
+                        const memoStyle = (memo !== '-') ? 'color:#2980b9; font-weight:900; background:#ebf5fb; border-radius:4px; padding:4px 6px; display:inline-block; line-height:1.2; box-shadow:0 1px 2px rgba(0,0,0,0.05);' : 'color:#7f8c8d;'; 
+                        contentHtml += `<td class="st-memo" style="vertical-align:middle;"><span style="${memoStyle}">${memo}</span></td><td>${statusHtml}</td>`;
+                    });
+                    contentHtml += `</tr>`;
+                }
+                contentHtml += `</tbody></table></div>`;
+            });
             contentArea.innerHTML = contentHtml;
         } 
         else {
