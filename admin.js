@@ -467,31 +467,25 @@ async function init() {
                 }
             });
             stSurvey7d.forEach(sv => {
-                const dStr = sv.survey_date; const timeType = sv.arrival_time_type || ""; let startP = 0, endP = 0;
-                if (timeType.includes("결석")) { startP = 1; endP = 8; } else if (timeType.includes("오전")) { startP = 1; endP = 3; } else if (timeType.includes("오후")) { startP = 1; endP = 6; } else if (timeType.includes("야간") || timeType.includes("저녁")) { startP = 1; endP = 7; }
-                if (startP > 0) { if (!schedMap7d[dStr]) schedMap7d[dStr] = {}; for(let p=startP; p<=endP; p++) schedMap7d[dStr][p] = `[설문]`; }
-            });
-            stMove7d.forEach(mv => { 
-                // 💡 [추가] 화장실 가거나, '취소'된 일정은 스케줄 칸을 차지하지 않도록 무시!
-                if (mv.reason === "화장실/정수기" || mv.reason.includes("취소")) return; 
+                const dStr = sv.survey_date; 
+                const timeType = sv.arrival_time_type || ""; 
+                let startP = 0, endP = 0;
                 
-                const dStr = mv.move_date; 
-                let rp = parseInt(mv.return_period, 10) || 0; 
-                if (mv.return_period === "복귀안함") rp = 8; 
-
-                const sp = window.__getPeriodFromTime(mv.move_time); 
+                // 💡 [수정] 상세 모달창처럼 설문 사유(reason)를 추출합니다.
+                let reason = sv.reason ? sv.reason.split('(')[0].trim() : ''; 
                 
-                if (mv.reason.includes("상담") || String(mv.return_period).includes("-")) {
-                    rp = sp;
-                }
-
-                if (rp > 8) rp = 8; 
-
-                if (rp > 0) { 
-                    const start = sp > 0 ? sp : rp; 
+                if (timeType.includes("결석")) { startP = 1; endP = 8; } 
+                else if (timeType.includes("오전")) { startP = 1; endP = 3; } 
+                else if (timeType.includes("오후")) { startP = 1; endP = 6; } 
+                else if (timeType.includes("야간") || timeType.includes("저녁")) { startP = 1; endP = 7; }
+                
+                if (startP > 0) { 
                     if (!schedMap7d[dStr]) schedMap7d[dStr] = {}; 
-                    for(let p=start; p<=rp; p++) schedMap7d[dStr][p] = schedMap7d[dStr][p] ? schedMap7d[dStr][p] + ` / ${mv.reason}` : mv.reason; 
-                } 
+                    for(let p=startP; p<=endP; p++) {
+                        // 💡 [수정] 사유가 있으면 붙여주고, 없으면 [설문]만 출력합니다.
+                        schedMap7d[dStr][p] = reason ? `[설문] ${reason}` : `[설문]`; 
+                    }
+                }
             });
 
             // 💡 [추가] 배지 띄울 때도 '취소'된 기록은 대상에서 제외!
