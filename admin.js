@@ -2775,6 +2775,10 @@ window.__openDetailModal = async function(type, studentId, studentName) {
                     
                     contentHtml += `</tr>`;
                 }
+                contentHtml += `</tbody></table></div>`;
+            });
+            contentArea.innerHTML = contentHtml;
+        } 
         else {
             window.__modalData = { type: type, items: [] }; let tableQuery = null;
             if (type === 'move') { tableQuery = _supabase.from('move_log').select('*').eq('student_id', studentId).order('move_date', {ascending: false}).order('move_time', {ascending: false}); } else if (type === 'sleep') { tableQuery = _supabase.from('sleep_log').select('*').eq('student_id', studentId).order('sleep_date', {ascending: false}); } else if (type === 'eduscore') { tableQuery = _supabase.from('edu_score_log').select('*').eq('student_id', studentId).order('score_date', {ascending: false}); }
