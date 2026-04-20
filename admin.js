@@ -2823,14 +2823,37 @@ processedModalMoveData.forEach(mv => {
                     contentHtml += `<tr><td style="background:#fcfcfc; font-weight:bold;">${p}교시</td>`;
                     weekDates.forEach(dateStr => {
                         const isFuture = dateStr > todayIso || (dateStr === todayIso && p > currentP); 
-                        const cellData = (weekMap[mon][dateStr] && weekMap[mon][dateStr][p]) ? weekMap[mon][dateStr][p] : null; 
-                        const baseMemo = cellData && cellData.memo ? cellData.memo.trim() : ''; 
-                        const extraMemo = schedMap[dateStr]?.[p] || ''; 
-                        
-                        // 💡 [핵심] 외부 일정이 있으면 우선 표시하고, 없으면 DB에 기록된 고정 메모(과외 등)를 표시합니다.
-                        let memo = extraMemo || baseMemo || '-'; 
+const cellData = (weekMap[mon][dateStr] && weekMap[mon][dateStr][p]) ? weekMap[mon][dateStr][p] : null; 
+const baseMemo = cellData && cellData.memo && cellData.memo !== '-' ? cellData.memo.trim() : ''; 
+const extraMemo = schedMap[dateStr]?.[p] || ''; 
 
-                        if (memo.includes("취소")) { memo = '-'; }
+let memoParts = [];
+if (baseMemo) memoParts.push(baseMemo); // 1순위: 기본 출결 메모(과외/학원)는 항상 맨 앞에 포함!
+
+// 2순위: 결석/출석 상태에 따른 스마트 필터링
+if (extraMemo) {
+    const isAbsent = cellData && cellData.status === '3'; // 결석(3) 여부 확인
+    let extraArr = extraMemo.split(' / ');
+    let filteredExtra = [];
+
+    extraArr.forEach(part => {
+        if (part.includes('[설문]')) {
+            if (isAbsent) filteredExtra.push(part); // 결석일 때만 설문 사유 표시
+        } else if (part.includes('지각')) {
+            filteredExtra.push(part); // 지각 기록은 상태와 무관하게 표시
+        } else {
+            // 이동 기록 (상담, 화장실 등)
+            if (!isAbsent) filteredExtra.push(part); // 결석이 아닐 때(출석)만 이동 표시
+        }
+    });
+
+    if (filteredExtra.length > 0) {
+        memoParts.push(filteredExtra.join(' / '));
+    }
+}
+
+let memo = memoParts.length > 0 ? memoParts.join(' / ') : '-'; 
+if (memo === '취소') { memo = '-'; }
 
                         let statusHtml = '-';
                         if (isFuture) { 
