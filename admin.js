@@ -2780,7 +2780,7 @@ window.__openDetailModal = async function(type, studentId, studentName) {
                         
                         let memo = extraMemo || baseMemo || '-'; 
 
-                        // 💡 [초강력 방어막 3] 출결 메모든 이동 스케줄이든 '취소' 글자가 있으면 무조건 화면에서 지우고 공결 처리를 막음!
+                        // [초강력 방어막] 취소된 일정 무시
                         if (memo.includes("취소")) {
                             memo = '-';
                         }
@@ -2802,8 +2802,10 @@ window.__openDetailModal = async function(type, studentId, studentName) {
                                 else { statusHtml = cellData.status; } 
                             } 
                         }
-                        const memoStyle = (isFuture && memo !== '-') ? 'color:#3498db; font-weight:900;' : ''; 
-                        contentHtml += `<td class="st-memo" style="${memoStyle}">${memo}</td><td>${statusHtml}</td>`;
+                        
+                        // 💡 [업그레이드] 과거나 미래 상관없이, 메모(스케줄)가 있으면 무조건 예쁜 파란색 배지로 눈에 띄게 강조!
+                        const memoStyle = (memo !== '-') ? 'color:#2980b9; font-weight:900; background:#ebf5fb; border-radius:4px; padding:3px 6px; display:inline-block; line-height:1.2; box-shadow:0 1px 2px rgba(0,0,0,0.05);' : 'color:#7f8c8d;'; 
+                        contentHtml += `<td class="st-memo" style="vertical-align:middle;"><span style="${memoStyle}">${memo}</span></td><td>${statusHtml}</td>`;
                     });
                     
                     contentHtml += `</tr>`;
