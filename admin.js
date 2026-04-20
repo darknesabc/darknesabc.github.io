@@ -2696,14 +2696,15 @@ window.__openDetailModal = async function(type, studentId, studentName) {
             });
             const getPeriodFromTime = (timeStr) => { if (!timeStr) return 0; const [h, m] = timeStr.split(':').map(Number); const t = h * 60 + m; if (t < 8*60+30) return 1; if (t < 10*60+10) return 2; if (t < 12*60) return 3; if (t < 14*60+30) return 4; if (t < 15*60+50) return 5; if (t < 17*60+30) return 6; if (t < 20*60+10) return 7; return 8; };
             moveData.forEach(mv => { 
-                if (mv.reason === "화장실/정수기") return; 
+                // 💡 [방어막 1] 화장실/정수기 뿐만 아니라 '취소'가 들어간 사유도 모달창에서 무시!
+                if (mv.reason === "화장실/정수기" || mv.reason.includes("취소")) return; 
+                
                 const dStr = mv.move_date; 
                 let rp = parseInt(mv.return_period, 10) || 0; 
                 if (mv.return_period === "복귀안함") rp = 8; 
-                
                 const sp = getPeriodFromTime(mv.move_time); 
                 
-                // 💡 [핵심 추가] 상담이거나, 복귀 교시에 날짜(-)가 잘못 입력된 경우 무조건 시작 교시(sp) 딱 1칸만 차지하도록 강제 고정!
+                // 💡 [방어막 2] 상담이거나, 복귀 교시에 날짜(-)가 잘못 입력된 경우 무조건 시작 교시 1칸으로 고정!
                 if (mv.reason.includes("상담") || String(mv.return_period).includes("-")) {
                     rp = sp;
                 }
@@ -2713,12 +2714,13 @@ window.__openDetailModal = async function(type, studentId, studentName) {
                 if (!schedMap[dStr]) schedMap[dStr] = {}; 
                 if (rp > 0) { 
                     const start = sp > 0 ? sp : rp; 
-                    for(let p=start; p<=rp; p++) schedMap[dStr][p] = mv.reason; 
+                    for(let p=start; p<=rp; p++) schedMap[dStr][p] = schedMap[dStr][p] ? schedMap[dStr][p] + ` / ${mv.reason}` : mv.reason; 
                 } else { 
                     const targetP = sp > 0 ? sp : 1; 
                     schedMap[dStr][targetP] = schedMap[dStr][targetP] ? schedMap[dStr][targetP] + ` / ${mv.reason}` : mv.reason; 
                 } 
             });
+            
             eduData.forEach(ed => { if (ed.reason.includes('지각')) { const dStr = ed.score_date; const sp = getPeriodFromTime(ed.score_time) || 1; if (!schedMap[dStr]) schedMap[dStr] = {}; schedMap[dStr][sp] = schedMap[dStr][sp] ? schedMap[dStr][sp] + ` / ${ed.reason}` : ed.reason; } });
 
             const weekMap = {}; const getMonday = (dStr) => { const d = new Date(dStr); const day = d.getDay() || 7; d.setDate(d.getDate() - day + 1); return d.toISOString().split('T')[0]; };
