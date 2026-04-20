@@ -467,25 +467,31 @@ async function init() {
                 }
             });
             stSurvey7d.forEach(sv => {
-                const dStr = sv.survey_date; 
-                const timeType = sv.arrival_time_type || ""; 
-                let startP = 0, endP = 0;
+                const dStr = sv.survey_date; const timeType = sv.arrival_time_type || ""; let startP = 0, endP = 0;
+                if (timeType.includes("결석")) { startP = 1; endP = 8; } else if (timeType.includes("오전")) { startP = 1; endP = 3; } else if (timeType.includes("오후")) { startP = 1; endP = 6; } else if (timeType.includes("야간") || timeType.includes("저녁")) { startP = 1; endP = 7; }
+                if (startP > 0) { if (!schedMap7d[dStr]) schedMap7d[dStr] = {}; for(let p=startP; p<=endP; p++) schedMap7d[dStr][p] = `[설문]`; }
+            });
+            stMove7d.forEach(mv => { 
+                // 💡 [추가] 화장실 가거나, '취소'된 일정은 스케줄 칸을 차지하지 않도록 무시!
+                if (mv.reason === "화장실/정수기" || mv.reason.includes("취소")) return; 
                 
-                // 💡 [수정] 상세 모달창처럼 설문 사유(reason)를 추출합니다.
-                let reason = sv.reason ? sv.reason.split('(')[0].trim() : ''; 
+                const dStr = mv.move_date; 
+                let rp = parseInt(mv.return_period, 10) || 0; 
+                if (mv.return_period === "복귀안함") rp = 8; 
+
+                const sp = window.__getPeriodFromTime(mv.move_time); 
                 
-                if (timeType.includes("결석")) { startP = 1; endP = 8; } 
-                else if (timeType.includes("오전")) { startP = 1; endP = 3; } 
-                else if (timeType.includes("오후")) { startP = 1; endP = 6; } 
-                else if (timeType.includes("야간") || timeType.includes("저녁")) { startP = 1; endP = 7; }
-                
-                if (startP > 0) { 
-                    if (!schedMap7d[dStr]) schedMap7d[dStr] = {}; 
-                    for(let p=startP; p<=endP; p++) {
-                        // 💡 [수정] 사유가 있으면 붙여주고, 없으면 [설문]만 출력합니다.
-                        schedMap7d[dStr][p] = reason ? `[설문] ${reason}` : `[설문]`; 
-                    }
+                if (mv.reason.includes("상담") || String(mv.return_period).includes("-")) {
+                    rp = sp;
                 }
+
+                if (rp > 8) rp = 8; 
+
+                if (rp > 0) { 
+                    const start = sp > 0 ? sp : rp; 
+                    if (!schedMap7d[dStr]) schedMap7d[dStr] = {}; 
+                    for(let p=start; p<=rp; p++) schedMap7d[dStr][p] = schedMap7d[dStr][p] ? schedMap7d[dStr][p] + ` / ${mv.reason}` : mv.reason; 
+                } 
             });
 
             // 💡 [추가] 배지 띄울 때도 '취소'된 기록은 대상에서 제외!
@@ -565,41 +571,12 @@ async function init() {
                 // 💡 화장실 등 다른 사유와 섞여 있을 경우를 대비해 [설문]이 포함된 텍스트 덩어리만 정확히 뽑아냅니다.
                 surveyReason = schedMap7d[today][curPInt].split(' / ').find(item => item.includes('[설문]')).trim();
             }
-            // 💡 [수정] 바둑판에도 여러 일정이 겹쳤을 때 최대한 많이 보여주기!
             let status = "미입력", sub = "", color = "none", code = att ? att.status_code : "";
-            const primaryMemo = (att && att.memo && att.memo !== '-') ? att.memo.trim() : "";
-
-            // 💡 스케줄 병합 로직 (중복 단어 제거)
-            const buildStatus = (mainText, subText) => {
-                if (!subText) return mainText;
-                if (!mainText) return subText;
-                
-                // 메인 텍스트와 서브 텍스트가 다를 경우에만 합침
-                let combined = `${mainText} / ${subText}`;
-                // 중복되는 단어 제거 (예: "하원 / 하원" -> "하원")
-                return Array.from(new Set(combined.split(' / ').map(s => s.trim()))).join(' / ');
-            };
-
-            if (code === "1") { 
-                status = "출석"; color = "1"; 
-                sub = buildStatus(validMove || surveyReason, primaryMemo); 
-            }
-            else if (validMove) { 
-                status = validMove; color = "move"; 
-                sub = primaryMemo; 
-            }
-            else if (surveyReason) { 
-                status = primaryMemo || surveyReason;
-                sub = primaryMemo ? surveyReason : "";
-                color = "schedule"; 
-            }
-            else if (primaryMemo) { 
-                status = primaryMemo; color = "schedule"; 
-            }
-            else { 
-                status = code === "3" ? "결석" : (code === "2" ? "지각" : "미입력"); 
-                color = code || "none"; 
-            }
+            if (code === "1") { status = "출석"; color = "1"; sub = validMove || surveyReason || (att ? att.memo : ""); }
+            else if (validMove) { status = validMove; color = "move"; }
+            else if (surveyReason) { status = surveyReason; color = "schedule"; }
+            else if (att && att.memo) { status = att.memo; color = "schedule"; }
+            else { status = code === "3" ? "결석" : (code === "2" ? "지각" : "미입력"); color = code || "none"; }
 
             let absBadge = '';
             if (todayAbsenceCount >= 6) absBadge = `<span style="background:#e74c3c; color:#fff; padding:2px 6px; border-radius:4px; font-size:12px; font-weight:900;">❌위험(${todayAbsenceCount})</span>`;
