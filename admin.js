@@ -580,9 +580,14 @@ async function init() {
         if (alertHtml || ackedHtml) {
             alertContainer.innerHTML = `
                 <div style="margin-bottom:25px; padding:20px; background:#ffffff; border-radius:12px; box-shadow:0 4px 12px rgba(0,0,0,0.05); border:1px solid #ecf0f1;">
-                    <h3 style="margin:0 0 15px 0; color:#2c3e50; font-size:17px; display:flex; align-items:center; gap:8px;">📌 집중 관리 대상 (스마트 알림판)</h3>
-                    ${alertHtml}
-                    ${ackedHtml}
+                    <div style="display:flex; justify-content:space-between; align-items:center;">
+                        <h3 style="margin:0; color:#2c3e50; font-size:17px; display:flex; align-items:center; gap:8px;">📌 집중 관리 대상 (스마트 알림판)</h3>
+                        <button id="smart-alert-toggle-btn" onclick="window.__toggleSmartAlert()" style="background:#7f8c8d; color:white; border:none; padding:6px 15px; border-radius:6px; font-weight:bold; font-size:12px; cursor:pointer; transition:0.2s;">알림판 접기 ⬆</button>
+                    </div>
+                    <div id="smart-alert-content" style="margin-top:15px;">
+                        ${alertHtml}
+                        ${ackedHtml}
+                    </div>
                 </div>
             `;
             alertContainer.style.display = 'block';
@@ -611,6 +616,26 @@ window.__toggleDashboard = function() {
         dashboard.style.display = 'none';
         if (mainFoldBtn) { mainFoldBtn.innerText = '바둑판 펴기 ⬇'; mainFoldBtn.style.background = '#27ae60'; }
         if (detailFoldBtn) { detailFoldBtn.innerText = '바둑판 펴기 ⬇'; detailFoldBtn.style.background = '#27ae60'; }
+    }
+};
+
+// 👇👇👇 [여기서부터 새로 추가!] 👇👇👇
+// =========================================================
+// 💡 [신규 기능] 스마트 알림판 접기/펴기 함수
+// =========================================================
+window.__toggleSmartAlert = function() {
+    const content = document.getElementById('smart-alert-content');
+    const btn = document.getElementById('smart-alert-toggle-btn');
+    if (!content || !btn) return;
+    
+    if (content.style.display === 'none') {
+        content.style.display = 'block';
+        btn.innerText = '알림판 접기 ⬆';
+        btn.style.background = '#7f8c8d'; // 회색
+    } else {
+        content.style.display = 'none';
+        btn.innerText = '알림판 펴기 ⬇';
+        btn.style.background = '#27ae60'; // 초록색
     }
 };
 
