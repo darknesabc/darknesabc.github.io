@@ -2828,7 +2828,33 @@ const baseMemo = cellData && cellData.memo && cellData.memo !== '-' ? cellData.m
 const extraMemo = schedMap[dateStr]?.[p] || ''; 
 
 let memoParts = [];
-if (baseMemo) memoParts.push(baseMemo); // 1순위: 기본 출결 메모(과외/학원)는 항상 맨 앞에 포함!
+if (baseMemo) memoParts.push(baseMemo); // 1순위: 기본 출결 메모
+
+if (extraMemo) {
+    const isAbsent = cellData && cellData.status === '3'; 
+    let extraArr = extraMemo.split(' / ');
+    let filteredExtra = [];
+
+    extraArr.forEach(part => {
+        if (part.includes('[설문]')) {
+            // 설문 기록은 기존처럼 결석일 때만 표시
+            if (isAbsent) filteredExtra.push(part); 
+        } else if (part.includes('지각')) {
+            // 지각 기록은 항상 표시
+            filteredExtra.push(part); 
+        } else {
+            // 💡 이동 기록 (내부 학원/보충, 상담 등)은 결석 여부와 상관없이 무조건 표시!
+            filteredExtra.push(part); 
+        }
+    });
+
+    if (filteredExtra.length > 0) {
+        memoParts.push(filteredExtra.join(' / '));
+    }
+}
+
+let memo = memoParts.length > 0 ? memoParts.join(' / ') : '-'; 
+if (memo === '취소') { memo = '-'; }
 
 // 2순위: 결석/출석 상태에 따른 스마트 필터링
 if (extraMemo) {
