@@ -100,6 +100,41 @@ window.__openDetailFromAlert = function(studentId) {
 };
 
 // =========================================================
+// 💡 [신규 기능] 담임별 보기 시 특정 반 접기/펴기 함수
+// =========================================================
+window.__toggleTeacherGroup = function(groupId) {
+    const cards = document.querySelectorAll('.' + groupId);
+    const icon = document.getElementById('icon-' + groupId);
+    if (cards.length === 0) return;
+    
+    // 첫 번째 카드의 상태를 보고 현재 접혀있는지 펴져있는지 판단
+    const isCurrentlyHidden = cards[0].style.display === 'none';
+    
+    cards.forEach(card => {
+        if (isCurrentlyHidden) {
+            // 펴기: display를 먼저 살리고, 찰나의 지연 후 투명도/크기 복구 (부드러운 애니메이션)
+            card.style.display = ''; 
+            setTimeout(() => { 
+                card.style.opacity = '1'; 
+                card.style.transform = 'scale(1)'; 
+            }, 10);
+        } else {
+            // 접기: 투명도/크기를 먼저 줄이고, 애니메이션이 끝나면 display: none 처리
+            card.style.opacity = '0'; 
+            card.style.transform = 'scale(0.95)';
+            setTimeout(() => { 
+                card.style.display = 'none'; 
+            }, 200); 
+        }
+    });
+    
+    // 헤더의 화살표 아이콘(▼/◀) 회전 애니메이션
+    if (icon) {
+        icon.style.transform = isCurrentlyHidden ? 'rotate(0deg)' : 'rotate(-90deg)';
+    }
+};
+
+// =========================================================
 // 1. 공통 유틸리티 (로그인, 로그아웃, 시간)
 // =========================================================
 async function handleLogin() {
@@ -385,7 +420,8 @@ async function init() {
         dashboard.innerHTML = '';
         const curPInt = parseInt(currentP, 10);
         
-        window.__currentTeacherLabel = null; // 💡 담임별 그룹핑을 위한 변수 초기화
+        window.__currentTeacherLabel = null; 
+        let teacherIdx = 0; // 💡 [신규] 반별로 고유 번호를 매겨서 묶기 위한 변수
 
         // 🚨 [스마트 기능] 숨김 기록 확인 함수
         const ackData = JSON.parse(localStorage.getItem('smartAlertAck') || '{}');
@@ -527,20 +563,31 @@ async function init() {
             else if (totalEduScore >= 10) eduBadge = `<span style="background:#af7ac5; color:#fff; padding:2px 6px; border-radius:4px; font-size:12px; font-weight:bold;">🚨경고(${totalEduScore})</span>`;
             else if (totalEduScore > 0) eduBadge = `<span style="background:#fab1a0; color:#c0392b; padding:1px 4px; border-radius:3px; font-size:12px;">🚨${totalEduScore}</span>`;
 
-            // 💡 [신규] 담임별 정렬일 때만 카드 그리기 직전에 꽉 차는 그룹 헤더(구분선) 삽입!
+            // 💡 담임별 정렬일 때 꽉 차는 그룹 헤더(구분선) 삽입! (클릭 토글 기능 추가)
             if (window.__currentSortMode === 'teacher' && window.__currentTeacherLabel !== s.teacher_name) {
                 window.__currentTeacherLabel = s.teacher_name || '미배정';
-                const tCount = students.filter(x => x.teacher_name === s.teacher_name).length;
+                teacherIdx++; // 새로운 반이 나올 때마다 번호 1 증가
+                const tCount = students.filter(x => (x.teacher_name || '미배정') === window.__currentTeacherLabel).length;
+                
                 dashboard.innerHTML += `
-                    <div style="grid-column: 1 / -1; background:#34495e; color:#fff; padding:8px 15px; border-radius:8px; font-weight:bold; font-size:14px; margin-top:15px; margin-bottom:5px; display:flex; justify-content:space-between; align-items:center; box-shadow:0 2px 4px rgba(0,0,0,0.1);">
-                        <span>👨‍🏫 ${window.__currentTeacherLabel} 선생님 반</span>
-                        <span style="background:rgba(255,255,255,0.2); padding:2px 10px; border-radius:12px; font-size:12px;">총 ${tCount}명</span>
+                    <div onclick="window.__toggleTeacherGroup('teacher-group-${teacherIdx}')" style="grid-column: 1 / -1; cursor:pointer; background:#34495e; color:#fff; padding:8px 15px; border-radius:8px; font-weight:bold; font-size:14px; margin-top:15px; margin-bottom:5px; display:flex; justify-content:space-between; align-items:center; box-shadow:0 2px 4px rgba(0,0,0,0.1); transition:0.2s;" onmouseover="this.style.background='#2c3e50'" onmouseout="this.style.background='#34495e'">
+                        <span style="display:flex; align-items:center; gap:8px;">
+                            👨‍🏫 ${window.__currentTeacherLabel} 선생님 반 
+                            <span style="font-size:11px; font-weight:normal; opacity:0.7; background:rgba(0,0,0,0.2); padding:2px 6px; border-radius:4px;">클릭하여 접기/펴기</span>
+                        </span>
+                        <div style="display:flex; align-items:center; gap:10px;">
+                            <span style="background:rgba(255,255,255,0.2); padding:2px 10px; border-radius:12px; font-size:12px;">총 ${tCount}명</span>
+                            <span id="icon-teacher-group-${teacherIdx}" style="font-size:12px; transition:transform 0.3s; transform:rotate(0deg);">▼</span>
+                        </div>
                     </div>
                 `;
             }
-           
+
+            // 💡 [신규] 카드 껍데기에 반별 고유 클래스(teacher-group-번호)를 붙여줍니다.
+            const groupClass = window.__currentSortMode === 'teacher' ? `teacher-group-${teacherIdx}` : '';
+            
             dashboard.innerHTML += `
-                <div class="card status-${color}" style="position:relative; cursor:pointer;" onclick="window.__loadStudentDetail(window.__dashboardItems.find(x => x.studentId === '${s.student_id}'))">
+                <div class="card status-${color} ${groupClass}" style="position:relative; cursor:pointer; transition: opacity 0.2s, transform 0.2s;" onclick="window.__loadStudentDetail(window.__dashboardItems.find(x => x.studentId === '${s.student_id}'))">
                     <div class="seat" style="font-size:11px; opacity:0.7;">${s.seat_no}</div>
                     <div class="name" style="font-size:18px; margin: 5px 0;">${s.name}</div>
                     <div class="status-badge badge-${color}" style="font-size:13px; font-weight:900; display: inline-block; max-width: 140px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; vertical-align: middle; line-height: 1.4; padding: 2px 8px; margin: 2px auto;">
