@@ -2856,31 +2856,6 @@ if (extraMemo) {
 let memo = memoParts.length > 0 ? memoParts.join(' / ') : '-'; 
 if (memo === '취소') { memo = '-'; }
 
-// 2순위: 결석/출석 상태에 따른 스마트 필터링
-if (extraMemo) {
-    const isAbsent = cellData && cellData.status === '3'; // 결석(3) 여부 확인
-    let extraArr = extraMemo.split(' / ');
-    let filteredExtra = [];
-
-    extraArr.forEach(part => {
-        if (part.includes('[설문]')) {
-            if (isAbsent) filteredExtra.push(part); // 결석일 때만 설문 사유 표시
-        } else if (part.includes('지각')) {
-            filteredExtra.push(part); // 지각 기록은 상태와 무관하게 표시
-        } else {
-            // 이동 기록 (상담, 화장실 등)
-            if (!isAbsent) filteredExtra.push(part); // 결석이 아닐 때(출석)만 이동 표시
-        }
-    });
-
-    if (filteredExtra.length > 0) {
-        memoParts.push(filteredExtra.join(' / '));
-    }
-}
-
-let memo = memoParts.length > 0 ? memoParts.join(' / ') : '-'; 
-if (memo === '취소') { memo = '-'; }
-
                         let statusHtml = '-';
                         if (isFuture) { 
                             statusHtml = '<span style="color:#bdc3c7;">-</span>'; 
