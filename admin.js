@@ -571,12 +571,41 @@ async function init() {
                 // 💡 화장실 등 다른 사유와 섞여 있을 경우를 대비해 [설문]이 포함된 텍스트 덩어리만 정확히 뽑아냅니다.
                 surveyReason = schedMap7d[today][curPInt].split(' / ').find(item => item.includes('[설문]')).trim();
             }
+            // 💡 [수정] 바둑판에도 여러 일정이 겹쳤을 때 최대한 많이 보여주기!
             let status = "미입력", sub = "", color = "none", code = att ? att.status_code : "";
-            if (code === "1") { status = "출석"; color = "1"; sub = validMove || surveyReason || (att ? att.memo : ""); }
-            else if (validMove) { status = validMove; color = "move"; }
-            else if (surveyReason) { status = surveyReason; color = "schedule"; }
-            else if (att && att.memo) { status = att.memo; color = "schedule"; }
-            else { status = code === "3" ? "결석" : (code === "2" ? "지각" : "미입력"); color = code || "none"; }
+            const primaryMemo = (att && att.memo && att.memo !== '-') ? att.memo.trim() : "";
+
+            // 💡 스케줄 병합 로직 (중복 단어 제거)
+            const buildStatus = (mainText, subText) => {
+                if (!subText) return mainText;
+                if (!mainText) return subText;
+                
+                // 메인 텍스트와 서브 텍스트가 다를 경우에만 합침
+                let combined = `${mainText} / ${subText}`;
+                // 중복되는 단어 제거 (예: "하원 / 하원" -> "하원")
+                return Array.from(new Set(combined.split(' / ').map(s => s.trim()))).join(' / ');
+            };
+
+            if (code === "1") { 
+                status = "출석"; color = "1"; 
+                sub = buildStatus(validMove || surveyReason, primaryMemo); 
+            }
+            else if (validMove) { 
+                status = validMove; color = "move"; 
+                sub = primaryMemo; 
+            }
+            else if (surveyReason) { 
+                status = primaryMemo || surveyReason;
+                sub = primaryMemo ? surveyReason : "";
+                color = "schedule"; 
+            }
+            else if (primaryMemo) { 
+                status = primaryMemo; color = "schedule"; 
+            }
+            else { 
+                status = code === "3" ? "결석" : (code === "2" ? "지각" : "미입력"); 
+                color = code || "none"; 
+            }
 
             let absBadge = '';
             if (todayAbsenceCount >= 6) absBadge = `<span style="background:#e74c3c; color:#fff; padding:2px 6px; border-radius:4px; font-size:12px; font-weight:900;">❌위험(${todayAbsenceCount})</span>`;
