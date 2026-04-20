@@ -472,19 +472,20 @@ async function init() {
                 if (startP > 0) { if (!schedMap7d[dStr]) schedMap7d[dStr] = {}; for(let p=startP; p<=endP; p++) schedMap7d[dStr][p] = `[설문]`; }
             });
             stMove7d.forEach(mv => { 
-                if (mv.reason === "화장실/정수기") return; 
+                // 💡 [추가] 화장실 가거나, '취소'된 일정은 스케줄 칸을 차지하지 않도록 무시!
+                if (mv.reason === "화장실/정수기" || mv.reason.includes("취소")) return; 
+                
                 const dStr = mv.move_date; 
                 let rp = parseInt(mv.return_period, 10) || 0; 
                 if (mv.return_period === "복귀안함") rp = 8; 
 
                 const sp = window.__getPeriodFromTime(mv.move_time); 
-
-                // 💡 [핵심 추가 1] 상담이거나, 복귀 교시에 날짜(-)가 잘못 입력된 경우 무조건 시작 교시(sp) 딱 1칸만 차지하도록 강제 고정!
+                
                 if (mv.reason.includes("상담") || String(mv.return_period).includes("-")) {
                     rp = sp;
                 }
 
-                if (rp > 8) rp = 8; // 2026교시 방어막
+                if (rp > 8) rp = 8; 
 
                 if (rp > 0) { 
                     const start = sp > 0 ? sp : rp; 
@@ -493,9 +494,9 @@ async function init() {
                 } 
             });
 
-            // 💡 [방어막 2] 오늘 일어난 이동 중, '현재 교시'를 덮고 있는 가장 최근 이동 내역 하나만 핀포인트로 뽑아내기
-            const movesTodayList = stMove7d.filter(ml => ml.move_date === today && ml.reason !== "화장실/정수기");
-            movesTodayList.sort((a, b) => (b.move_time || "").localeCompare(a.move_time || "")); // 최신순 정렬
+            // 💡 [추가] 배지 띄울 때도 '취소'된 기록은 대상에서 제외!
+            const movesTodayList = stMove7d.filter(ml => ml.move_date === today && ml.reason !== "화장실/정수기" && !ml.reason.includes("취소"));
+            movesTodayList.sort((a, b) => (b.move_time || "").localeCompare(a.move_time || "")); // 최신순(내림차순) 정렬
             
             let validMove = "";
             for (let mv of movesTodayList) {
@@ -836,23 +837,28 @@ window.__loadStudentDetail = async function(student) {
 
         // 3. 이동(Move) 스케줄 반영 (복귀안함 등)
         resMove.data.forEach(mv => { 
-            if (mv.reason === "화장실/정수기") return; 
+            // 💡 [추가] 상세 모달창 달력에서도 '취소'된 일정은 무시!
+            if (mv.reason === "화장실/정수기" || mv.reason.includes("취소")) return; 
+            
             const dStr = mv.move_date; 
             let rp = parseInt(mv.return_period, 10) || 0; 
             if (mv.return_period === "복귀안함") rp = 8; 
+            
             const sp = getPeriodFromTime(mv.move_time); 
             
-            // 💡 [핵심 추가 3] 상담이거나, 복귀 교시에 날짜(-)가 잘못 입력된 경우 무조건 시작 교시 1칸으로 고정!
             if (mv.reason.includes("상담") || String(mv.return_period).includes("-")) {
                 rp = sp;
             }
 
-            if (rp > 8) rp = 8; // 2026교시 방어막
+            if (rp > 8) rp = 8; 
 
+            if (!schedMap[dStr]) schedMap[dStr] = {}; 
             if (rp > 0) { 
                 const start = sp > 0 ? sp : rp; 
-                if (!schedMap[dStr]) schedMap[dStr] = {}; // 👈 schedMap7d 가 아니라 schedMap 입니다!
-                for(let p=start; p<=rp; p++) schedMap[dStr][p] = schedMap[dStr][p] ? schedMap[dStr][p] + ` / ${mv.reason}` : mv.reason; 
+                for(let p=start; p<=rp; p++) schedMap[dStr][p] = mv.reason; 
+            } else { 
+                const targetP = sp > 0 ? sp : 1; 
+                schedMap[dStr][targetP] = schedMap[dStr][targetP] ? schedMap[dStr][targetP] + ` / ${mv.reason}` : mv.reason; 
             } 
         });
         
