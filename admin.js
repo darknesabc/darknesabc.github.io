@@ -1493,8 +1493,8 @@ window.__openUnivSimulation = async function() {
                 
                 if (baseA === baseB && baseA.length > 0) {
                     // 💡 [완벽 수정] '서울'이나 '괄호 없음'을 찾는 대신, '분교 키워드'가 없으면 무조건 본교(안암 등)로 인정!
-                    const isBranchA = /(에리카|ERICA|와이즈|WISE|바이오|글로벌|글로컬|미래|세종|천안|다빈치|메디컬)/i.test(a);
-                    const isBranchB = /(에리카|ERICA|와이즈|WISE|바이오|글로벌|글로컬|미래|세종|천안|다빈치|메디컬)/i.test(b);
+                    const isBranchA = /(에리카|ERICA|와이즈|WISE|바이오|글로벌|글로컬|미래|세종|천안|다빈치|메디컬|국제)/i.test(a);
+                    const isBranchB = /(에리카|ERICA|와이즈|WISE|바이오|글로벌|글로컬|미래|세종|천안|다빈치|메디컬|국제)/i.test(b);
                     
                     // 본교(분교 키워드 없음)를 무조건 상단으로 올립니다.
                     if (!isBranchA && isBranchB) return -1; 
