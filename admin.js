@@ -1520,20 +1520,6 @@ window.__openUnivSimulation = async function() {
                 return a.localeCompare(b); 
             });
 
-                const catA = getCategoryRank(a, deptA, regA);
-                const catB = getCategoryRank(b, deptB, regB);
-                if (catA !== catB) return catA - catB; 
-                
-                const rankA = getUnivRank(a);
-                const rankB = getUnivRank(b);
-                if (rankA !== rankB) return rankA - rankB; 
-                
-                if (a.includes(b) && a.length > b.length) return 1;
-                if (b.includes(a) && b.length > a.length) return -1;
-                
-                return a.localeCompare(b); 
-            });
-
             return { matches, sortedUnivs };
         };
 
