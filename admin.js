@@ -1492,8 +1492,8 @@ window.__openUnivSimulation = async function() {
                 const baseB = b.replace(/\(.*?\)/g, '').trim();
                 
                 if (baseA === baseB && baseA.length > 0) {
-                    const isMainA = a.includes("서울") || (!a.includes("(") && !/(에리카|ERICA|와이즈|WISE|바이오|글로벌|글로컬|미래|세종|천안|다빈치|메디컬)/i.test(a));
-                    const isMainB = b.includes("서울") || (!b.includes("(") && !/(에리카|ERICA|와이즈|WISE|바이오|글로벌|글로컬|미래|세종|천안|다빈치|메디컬)/i.test(b));
+                    const isBranchA = /(에리카|ERICA|와이즈|WISE|바이오|글로벌|글로컬|미래|세종|천안|다빈치|메디컬)/i.test(a);
+                    const isBranchB = /(에리카|ERICA|와이즈|WISE|바이오|글로벌|글로컬|미래|세종|천안|다빈치|메디컬)/i.test(b);
                     
                     if (isMainA && !isMainB) return -1;
                     if (!isMainA && isMainB) return 1;
