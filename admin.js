@@ -342,7 +342,7 @@ window.__processEduScores = function(rawEduData) {
 
 // =========================================================
 // 💡 [신규 기능] 이동/상담 로그 전처리 헬퍼 (스케줄 달력용)
-// 취소된 상담 제외 & 상담의 실제 날짜(return_period) 추출
+// 취소된 상담 제외 & 상담의 실제 날짜와 시간(return_period) 추출
 // =========================================================
 window.__processMoveLogs = function(rawMoveData) {
     if (!rawMoveData || !Array.isArray(rawMoveData)) return [];
@@ -361,14 +361,21 @@ window.__processMoveLogs = function(rawMoveData) {
         if (log.reason.includes('취소')) return;
         if (log.reason.includes('상담') && canceledPeriods.has(log.return_period)) return;
 
-        // 3. 스케줄 매핑용 기준 날짜 추출 (move_date 대신 상담 예약일 사용)
+        // 3. 💡 [핵심 수정] 스케줄 매핑용 기준 날짜 및 시간 동시 추출
         let targetDate = log.move_date;
+        let targetTime = log.move_time; // 기본값은 원본 신청 시간
+
         if (log.reason.includes('상담') && log.return_period && log.return_period.includes('-')) {
-            // "2026-04-21 13:20" 형태에서 "2026-04-21" 추출
-            targetDate = log.return_period.split(' ')[0];
+            // "2026-04-21 13:20" 형태를 쪼개서 날짜와 시간 각각 담기
+            const parts = log.return_period.split(' ');
+            targetDate = parts[0]; // "2026-04-21"
+            if (parts.length > 1) {
+                targetTime = parts[1]; // "13:20"
+            }
         }
 
-        processed.push({ ...log, target_date: targetDate });
+        // target_time 속성 추가
+        processed.push({ ...log, target_date: targetDate, target_time: targetTime });
     });
 
     return processed;
@@ -538,7 +545,7 @@ async function init() {
                 let rp = parseInt(mv.return_period, 10) || 0; 
                 if (mv.return_period === "복귀안함") rp = 8; 
 
-                const sp = window.__getPeriodFromTime(mv.move_time); 
+                const sp = window.__getPeriodFromTime(mv.target_time); 
                 
                 if (mv.reason.includes("상담") || String(mv.return_period).includes("-")) {
                     rp = sp;
@@ -561,7 +568,7 @@ async function init() {
             for (let mv of movesTodayList) {
                 let rp = parseInt(mv.return_period, 10) || 0;
                 if (mv.return_period === "복귀안함") rp = 8;
-                const sp = window.__getPeriodFromTime(mv.move_time);
+                const sp = window.__getPeriodFromTime(mv.target_time);
                 
                 // 💡 [핵심 추가 2] 상담이거나, 복귀 교시에 날짜(-)가 잘못 입력된 경우 무조건 시작 교시 1칸으로 고정!
                 if (mv.reason.includes("상담") || String(mv.return_period).includes("-")) {
