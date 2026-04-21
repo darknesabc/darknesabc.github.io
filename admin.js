@@ -1462,7 +1462,7 @@ window.__openUnivSimulation = async function() {
             };
 
             const getCategoryRank = (univ, dept, regionStr) => {
-                if (/(의예|의학|의과)/.test(dept) && !/(식물|의공|의생명|의료|의과학)/.test(dept)) return 10;
+                if (/(의예|의학|의과)/.test(dept) && !/(식물|의공|의생명|의료|의과학|스포츠|수의|치의|한의)/.test(dept)) return 10;
                 if (/(치의예|치의학)/.test(dept)) return 11;
                 if (/(한의예|한의학)/.test(dept)) return 12;
                 if (/(수의예|수의과)/.test(dept)) return 13;
