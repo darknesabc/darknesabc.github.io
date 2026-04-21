@@ -915,7 +915,7 @@ processedMoveData.forEach(mv => {
             let rp = parseInt(mv.return_period, 10) || 0; 
             if (mv.return_period === "복귀안함") rp = 8; 
             
-            const sp = getPeriodFromTime(mv.move_time); 
+            const sp = getPeriodFromTime(mv.target_time); 
             
             if (mv.reason.includes("상담") || String(mv.return_period).includes("-")) {
                 rp = sp;
@@ -2773,7 +2773,7 @@ processedModalMoveData.forEach(mv => {
     const dStr = mv.target_date; // 🌟 move_date 대신 target_date 사용
                 let rp = parseInt(mv.return_period, 10) || 0; 
                 if (mv.return_period === "복귀안함") rp = 8; 
-                const sp = getPeriodFromTime(mv.move_time); 
+                const sp = getPeriodFromTime(mv.target_time); 
                 
                 // 💡 [방어막 2] 상담이거나, 복귀 교시에 날짜(-)가 잘못 입력된 경우 무조건 시작 교시 1칸으로 고정!
                 if (mv.reason.includes("상담") || String(mv.return_period).includes("-")) {
