@@ -151,6 +151,8 @@ async function handleLogin() {
             localStorage.setItem('managerName', data.manager_name);
             localStorage.setItem('managerRole', data.role);
             localStorage.setItem('managerId', data.manager_id);
+            // 💡 [추가] 로그인한 현재 시간을 밀리초(ms)로 저장
+            localStorage.setItem('loginTimestamp', Date.now()); 
             location.reload(); 
         } else { loginMsg.innerText = "로그인 정보가 올바르지 않습니다."; }
     } catch (err) { loginMsg.innerText = "에러: " + err.message; }
@@ -376,6 +378,18 @@ window.__processMoveLogs = function(rawMoveData) {
 // 2. 메인 화면 초기화 (바둑판 카드)
 // =========================================================
 async function init() {
+    // 💡 [추가] 세션 만료 검사 로직 (최상단에 배치)
+    const loginTime = localStorage.getItem('loginTimestamp');
+    if (loginTime) {
+        const HOURS_LIMIT = 8; // ⏳ 8시간 지나면 만료
+        const LIMIT_MS = HOURS_LIMIT * 60 * 60 * 1000;
+        if (Date.now() - parseInt(loginTime, 10) > LIMIT_MS) {
+            alert("보안을 위해 로그아웃 되었습니다. 다시 로그인해주세요.");
+            handleLogout(); // 싹 비우고 새로고침
+            return;
+        }
+    }
+
     if (!loggedInManager) {
         document.getElementById('login-section').style.display = 'flex';
         document.getElementById('admin-content').style.display = 'none';
