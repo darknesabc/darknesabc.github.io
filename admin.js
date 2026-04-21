@@ -1534,8 +1534,7 @@ window.__openUnivSimulation = async function() {
                 return a.localeCompare(b); 
             });
 
-            return { matches, sortedUnivs };
-        };
+        
 
         window.runUniversitySimulation = function() {
             const st = window.__currentSimStatus;
