@@ -1461,48 +1461,64 @@ window.__openUnivSimulation = async function() {
                 return safeIdx !== -1 ? safeIdx : 999;
             };
 
-            const getCategoryRank = (univ, dept, regionStr) => {
-                if (/(의예|의학|의과)/.test(dept) && !/(식물|의공|의생명|의료|의과학)/.test(dept)) return 10;
-                if (/(치의예|치의학)/.test(dept)) return 11;
-                if (/(한의예|한의학)/.test(dept)) return 12;
-                if (/(수의예|수의과)/.test(dept)) return 13;
-                if (/(약학|약대)/.test(dept) && !/(신약|제약|약과학|한약)/.test(dept)) return 14;
-
-                if (/(미래|세종|천안|글로컬|WISE|와이즈|다빈치|에리카|ERICA|바이오|글로벌|메디컬)/i.test(univ)) return 35;
-
-                const isRanked = univRankOrder.some(u => univ.startsWith(u) || univ === u);
-                if (isRanked) return 20;
-
-                const region = String(regionStr || "");
-                if (region.includes("서울")) return 21; 
-                if (region.includes("경기") || region.includes("인천")) return 30; 
-                if (/(부산대|경북대|전남대|충남대|전북대|충북대|강원대|경상국립대|제주대)/.test(univ)) return 40;
-                
-                return 50;
+            // 💡 [완벽 교정판] 모든 학과를 스캔하여 '진짜' 최고 등급을 찾아내는 엔진
+            const getBestCategoryRank = (univName) => {
+                let bestRank = 50; 
+                ['가','나','다','군외'].forEach(g => {
+                    if (matches[g][univName]) {
+                        matches[g][univName].forEach(d => {
+                            const dept = d.dept;
+                            const region = String(d.region || "");
+                            let rank = 50;
+                            
+                            // 🚨 가짜 의대(스포츠의학, 의생명 등) 및 치/한/수 중복 판정 완벽 차단!
+                            if (/(의예|의학|의과)/.test(dept) && !/(식물|의공|의생명|의료|의과학|스포츠|수의|치의|한의)/.test(dept)) rank = 10;
+                            else if (/(치의예|치의학)/.test(dept)) rank = 11;
+                            else if (/(한의예|한의학)/.test(dept)) rank = 12;
+                            else if (/(수의예|수의과)/.test(dept)) rank = 13;
+                            else if (/(약학|약대)/.test(dept) && !/(신약|제약|약과학|한약)/.test(dept)) rank = 14;
+                            else if (/(미래|세종|천안|글로컬|WISE|와이즈|다빈치|에리카|ERICA|바이오|글로벌|메디컬|국제)/i.test(univName)) rank = 35;
+                            else if (univRankOrder.some(u => univName.startsWith(u) || univName === u)) rank = 20;
+                            else if (region.includes("서울")) rank = 21;
+                            else if (region.includes("경기") || region.includes("인천")) rank = 30;
+                            else if (/(부산대|경북대|전남대|충남대|전북대|충북대|강원대|경상국립대|제주대)/.test(univName)) rank = 40;
+                            
+                            if (rank < bestRank) bestRank = rank;
+                        });
+                    }
+                });
+                return bestRank;
             };
 
             const sortedUnivs = Array.from(univSet).sort((a, b) => {
-                let deptA = "", deptB = "", regA = "", regB = "";
-                ['가','나','다','군외'].forEach(g => {
-                    if(matches[g][a] && matches[g][a][0]) { deptA = matches[g][a][0].dept; regA = matches[g][a][0].region; }
-                    if(matches[g][b] && matches[g][b][0]) { deptB = matches[g][b][0].dept; regB = matches[g][b][0].region; }
-                });
+                // 1. 진짜 카테고리 등급으로 대결 (의치한약수 > 명문대 > 인서울 > 경기/인천)
+                const catA = getBestCategoryRank(a);
+                const catB = getBestCategoryRank(b);
+                if (catA !== catB) return catA - catB; 
                 
+                // 2. 같은 카테고리면 Top 40 서열표 대결
+                const rankA = getUnivRank(a);
+                const rankB = getUnivRank(b);
+                if (rankA !== rankB) return rankA - rankB; 
+                
+                // 3. 본교 ↔ 분교 완벽 분리 (분교가 본교를 이기는 하극상 차단)
                 const baseA = a.replace(/\(.*?\)/g, '').trim();
                 const baseB = b.replace(/\(.*?\)/g, '').trim();
                 
                 if (baseA === baseB && baseA.length > 0) {
-                    // 💡 [완벽 수정] '서울'이나 '괄호 없음'을 찾는 대신, '분교 키워드'가 없으면 무조건 본교(안암 등)로 인정!
                     const isBranchA = /(에리카|ERICA|와이즈|WISE|바이오|글로벌|글로컬|미래|세종|천안|다빈치|메디컬|국제)/i.test(a);
                     const isBranchB = /(에리카|ERICA|와이즈|WISE|바이오|글로벌|글로컬|미래|세종|천안|다빈치|메디컬|국제)/i.test(b);
-                    
-                    // 본교(분교 키워드 없음)를 무조건 상단으로 올립니다.
                     if (!isBranchA && isBranchB) return -1; 
                     if (isBranchA && !isBranchB) return 1;
-                    
-                    // 둘 다 본교거나 둘 다 분교일 때만 가나다순 정렬
-                    return a.localeCompare(b);
                 }
+                
+                // 4. 이름이 겹칠 때 짧은 것(본교) 우선 (예: 연세대 > 연세대(미래))
+                if (a.includes(b) && a.length > b.length) return 1;
+                if (b.includes(a) && b.length > a.length) return -1;
+                
+                // 5. 남은 것은 평화롭게 가나다순 정렬
+                return a.localeCompare(b); 
+            });
 
                 const catA = getCategoryRank(a, deptA, regA);
                 const catB = getCategoryRank(b, deptB, regB);
