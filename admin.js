@@ -135,19 +135,18 @@ window.__toggleTeacherGroup = function(groupId) {
 };
 
 // =========================================================
-// 1. 공통 유틸리티 (로그인, 로그아웃, 시간) - 🌟 보안 Auth 적용 🌟
+// 1. 공통 유틸리티 (로그인, 로그아웃, 시간) - 🌟 완벽 버전 🌟
 // =========================================================
 async function handleLogin() {
-    const id = document.getElementById('admin-id').value.trim();
+    const id = document.getElementById('admin-id').value.trim(); // 예: dladydgo 입력
     const pw = document.getElementById('admin-pw').value.trim();
     const loginMsg = document.getElementById('login-msg');
     
     if (!id || !pw) { loginMsg.innerText = "아이디와 비밀번호를 모두 입력해주세요."; return; }
 
     try {
-        // 💡 1. Supabase Auth 공식 로그인 (토큰 발급)
-        // 아이디에 @가 없으면 뒤에 가상의 도메인을 붙여서 이메일 형식으로 만들어줍니다.
-        const loginEmail = id.includes('@') ? id : `${id}@academy.com`;
+        // 💡 1. Auth 로그인: 입력한 아이디에 무조건 @megastudy.net을 붙여서 이메일로 만듭니다.
+        const loginEmail = id.includes('@') ? id : `${id}@megastudy.net`;
 
         const { data: authData, error: authError } = await _supabase.auth.signInWithPassword({
             email: loginEmail,
@@ -156,18 +155,19 @@ async function handleLogin() {
 
         if (authError) throw authError;
 
-        // 💡 2. 로그인이 성공하여 신분증(토큰)이 생겼으므로, 
-        // 이제 RLS를 통과하여 managers 테이블을 읽어올 수 있습니다!
+        // 💡 2. 매니저 정보 조회: managers 테이블에는 '@' 앞의 '원래 아이디'만 가지고 검색합니다!
+        const searchId = id.includes('@') ? id.split('@')[0] : id;
+
         const { data: managerData, error: managerError } = await _supabase
             .from('managers')
             .select('*')
-            .eq('manager_id', id)
+            .eq('manager_id', searchId) // dladydgo 로 검색!
             .maybeSingle();
         
         if (managerError) throw managerError;
 
         if (managerData) {
-            // 기존처럼 권한과 이름을 로컬 스토리지에 저장하고 새로고침
+            // 권한 정보 로컬 스토리지에 저장 후 화면 새로고침
             localStorage.setItem('managerName', managerData.manager_name);
             localStorage.setItem('managerRole', managerData.role);
             localStorage.setItem('managerId', managerData.manager_id);
