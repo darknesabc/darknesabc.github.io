@@ -135,17 +135,19 @@ window.__toggleTeacherGroup = function(groupId) {
 };
 
 // =========================================================
-// 1. 공통 유틸리티 (로그인, 로그아웃, 시간) - 🌟 완벽 버전 🌟
+// 1. 공통 유틸리티 (로그인, 로그아웃, 시간) - 🌟 완벽 디버깅 버전 🌟
 // =========================================================
 async function handleLogin() {
-    const id = document.getElementById('admin-id').value.trim(); // 예: dladydgo 입력
+    const id = document.getElementById('admin-id').value.trim(); 
     const pw = document.getElementById('admin-pw').value.trim();
     const loginMsg = document.getElementById('login-msg');
     
     if (!id || !pw) { loginMsg.innerText = "아이디와 비밀번호를 모두 입력해주세요."; return; }
 
+    loginMsg.innerText = "보안 로그인 처리 중입니다..."; // 진행 상태 표시
+
     try {
-        // 💡 1. Auth 로그인: 입력한 아이디에 무조건 @megastudy.net을 붙여서 이메일로 만듭니다.
+        // 1. Auth 로그인 (아이디만 입력해도 알아서 이메일로 변환)
         const loginEmail = id.includes('@') ? id : `${id}@megastudy.net`;
 
         const { data: authData, error: authError } = await _supabase.auth.signInWithPassword({
@@ -155,30 +157,36 @@ async function handleLogin() {
 
         if (authError) throw authError;
 
-        // 💡 2. 매니저 정보 조회: managers 테이블에는 '@' 앞의 '원래 아이디'만 가지고 검색합니다!
+        // 2. managers 테이블에서 내 권한 정보 가져오기
         const searchId = id.includes('@') ? id.split('@')[0] : id;
 
+        // 💡 대소문자 무시(.ilike)하고 검색, maybeSingle 대신 배열로 받아 정확히 확인
         const { data: managerData, error: managerError } = await _supabase
             .from('managers')
             .select('*')
-            .eq('manager_id', searchId) // dladydgo 로 검색!
-            .maybeSingle();
-        
-        if (managerError) throw managerError;
+            .ilike('manager_id', searchId); 
 
-        if (managerData) {
-            // 권한 정보 로컬 스토리지에 저장 후 화면 새로고침
-            localStorage.setItem('managerName', managerData.manager_name);
-            localStorage.setItem('managerRole', managerData.role);
-            localStorage.setItem('managerId', managerData.manager_id);
+        // 만약 RLS나 DB 자체에서 에러가 났다면 화면에 에러 이유를 출력
+        if (managerError) {
+            loginMsg.innerHTML = `<span style="color:#e74c3c;">DB 조회 에러: ${managerError.message}</span>`;
+            return;
+        }
+
+        // 성공적으로 매니저 정보를 찾았다면
+        if (managerData && managerData.length > 0) {
+            const mgr = managerData[0];
+            localStorage.setItem('managerName', mgr.manager_name);
+            localStorage.setItem('managerRole', mgr.role);
+            localStorage.setItem('managerId', mgr.manager_id);
             localStorage.setItem('loginTimestamp', Date.now()); 
             location.reload(); 
         } else { 
-            loginMsg.innerText = "DB에 관리자 권한 정보가 등록되어 있지 않습니다."; 
+            // DB에 데이터가 없거나 못 가져왔을 때, 어떤 아이디로 찾았는지 정확히 표시
+            loginMsg.innerHTML = `<span style="color:#e74c3c;">DB에 <b>[${searchId}]</b> 관리자 정보가 없습니다.</span><br><span style="font-size:12px; color:#7f8c8d;">(managers 테이블에 아이디가 있는지, RLS 정책이 맞는지 확인해주세요)</span>`;
         }
     } catch (err) { 
         loginMsg.innerText = "로그인 실패: 아이디나 비밀번호를 확인해주세요."; 
-        console.error("로그인 에러:", err.message);
+        console.error("로그인 에러:", err);
     }
 }
 
