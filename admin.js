@@ -135,7 +135,7 @@ window.__toggleTeacherGroup = function(groupId) {
 };
 
 // =========================================================
-// 1. 공통 유틸리티 (안전한 Supabase Auth 로그인으로 교체!)
+// 1. 공통 유틸리티 (로그인, 로그아웃, 시간) - 🌟 보안 Auth 적용 🌟
 // =========================================================
 async function handleLogin() {
     const id = document.getElementById('admin-id').value.trim();
@@ -145,24 +145,40 @@ async function handleLogin() {
     if (!id || !pw) { loginMsg.innerText = "아이디와 비밀번호를 모두 입력해주세요."; return; }
 
     try {
-        // 💡 [핵심] managers 테이블을 직접 조회하지 않고, Supabase 공식 인증 엔진 사용
-        const { data, error } = await _supabase.auth.signInWithPassword({
-            email: id, // Supabase Auth는 이메일 기반이므로 ID를 이메일 형식으로 사용 (예: admin@test.com)
+        // 💡 1. Supabase Auth 공식 로그인 (토큰 발급)
+        // 아이디에 @가 없으면 뒤에 가상의 도메인을 붙여서 이메일 형식으로 만들어줍니다.
+        const loginEmail = id.includes('@') ? id : `${id}@academy.com`;
+
+        const { data: authData, error: authError } = await _supabase.auth.signInWithPassword({
+            email: loginEmail,
             password: pw
         });
 
-        if (error) throw error;
+        if (authError) throw authError;
 
-        // 로그인에 성공하면 Supabase가 알아서 '보안 신분증(Session)'을 발급해 보관합니다.
-        if (data.session) {
-            // 이후 데이터베이스에 select()를 요청할 때, 이 신분증이 자동으로 함께 제출됩니다!
-            localStorage.setItem('managerName', id.split('@')[0]); // 임시로 이메일 앞자리를 이름으로 사용
-            localStorage.setItem('managerRole', 'admin'); 
+        // 💡 2. 로그인이 성공하여 신분증(토큰)이 생겼으므로, 
+        // 이제 RLS를 통과하여 managers 테이블을 읽어올 수 있습니다!
+        const { data: managerData, error: managerError } = await _supabase
+            .from('managers')
+            .select('*')
+            .eq('manager_id', id)
+            .maybeSingle();
+        
+        if (managerError) throw managerError;
+
+        if (managerData) {
+            // 기존처럼 권한과 이름을 로컬 스토리지에 저장하고 새로고침
+            localStorage.setItem('managerName', managerData.manager_name);
+            localStorage.setItem('managerRole', managerData.role);
+            localStorage.setItem('managerId', managerData.manager_id);
             localStorage.setItem('loginTimestamp', Date.now()); 
             location.reload(); 
+        } else { 
+            loginMsg.innerText = "DB에 관리자 권한 정보가 등록되어 있지 않습니다."; 
         }
     } catch (err) { 
-        loginMsg.innerText = "로그인 정보가 올바르지 않거나 권한이 없습니다."; 
+        loginMsg.innerText = "로그인 실패: 아이디나 비밀번호를 확인해주세요."; 
+        console.error("로그인 에러:", err.message);
     }
 }
 
