@@ -135,7 +135,7 @@ window.__toggleTeacherGroup = function(groupId) {
 };
 
 // =========================================================
-// 1. 공통 유틸리티 (로그인, 로그아웃, 시간)
+// 1. 공통 유틸리티 (안전한 Supabase Auth 로그인으로 교체!)
 // =========================================================
 async function handleLogin() {
     const id = document.getElementById('admin-id').value.trim();
@@ -145,17 +145,25 @@ async function handleLogin() {
     if (!id || !pw) { loginMsg.innerText = "아이디와 비밀번호를 모두 입력해주세요."; return; }
 
     try {
-        const { data, error } = await _supabase.from('managers').select('*').eq('manager_id', id).eq('password', pw).maybeSingle();
+        // 💡 [핵심] managers 테이블을 직접 조회하지 않고, Supabase 공식 인증 엔진 사용
+        const { data, error } = await _supabase.auth.signInWithPassword({
+            email: id, // Supabase Auth는 이메일 기반이므로 ID를 이메일 형식으로 사용 (예: admin@test.com)
+            password: pw
+        });
+
         if (error) throw error;
-        if (data) {
-            localStorage.setItem('managerName', data.manager_name);
-            localStorage.setItem('managerRole', data.role);
-            localStorage.setItem('managerId', data.manager_id);
-            // 💡 [추가] 로그인한 현재 시간을 밀리초(ms)로 저장
+
+        // 로그인에 성공하면 Supabase가 알아서 '보안 신분증(Session)'을 발급해 보관합니다.
+        if (data.session) {
+            // 이후 데이터베이스에 select()를 요청할 때, 이 신분증이 자동으로 함께 제출됩니다!
+            localStorage.setItem('managerName', id.split('@')[0]); // 임시로 이메일 앞자리를 이름으로 사용
+            localStorage.setItem('managerRole', 'admin'); 
             localStorage.setItem('loginTimestamp', Date.now()); 
             location.reload(); 
-        } else { loginMsg.innerText = "로그인 정보가 올바르지 않습니다."; }
-    } catch (err) { loginMsg.innerText = "에러: " + err.message; }
+        }
+    } catch (err) { 
+        loginMsg.innerText = "로그인 정보가 올바르지 않거나 권한이 없습니다."; 
+    }
 }
 
 function handleLogout() { localStorage.clear(); location.reload(); }
