@@ -7,7 +7,7 @@ let loggedInRole = localStorage.getItem('managerRole');
 let loggedInId = localStorage.getItem('managerId');
 
 // 💡 글로벌 상태 변수
-window.__currentSortMode = 'seat'; // 기본값: 자리순
+window.__currentSortMode = 'name'; // 기본값: 이름순
 window.__radarCurrentType = 'unit'; // 레이더 차트 (단원별/행동영역별)
 window.__radarCurrentSubj = null;   // 레이더 차트 (선택된 과목)
 window.__examTypeToggles = {
