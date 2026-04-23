@@ -2493,13 +2493,13 @@ window.__renderGradeTrendUI = function() {
                         <button onclick="window.__switchGMode('raw')" style="${btnSty(window.__currentGradeMode==='raw', '#3498db', '#7f8c8d')}">원점수</button>
                     </div>
                 </div>
-            </div>
-            
-            <div style="display:flex; align-items:center; gap:10px; margin-bottom:15px; ${window.__currentViewMode==='table' ? 'display:none;' : ''}">
-                <span style="font-size:13px; font-weight:bold; color:#2c3e50; background:#f8f9fa; padding:6px 12px; border-radius:6px; border:1px solid #dee2e6;">
-                    🎯 비교 집단 상위 % 설정: 
-                    <input type="number" value="${window.__cutoffPercent}" min="1" max="100" step="1" onchange="window.__changeCutoffPercent(this.value)" style="width:50px; border:none; border-bottom:2px solid #3498db; background:transparent; text-align:center; font-weight:900; font-size:14px; color:#2980b9; outline:none; margin:0 5px;"> %
-                </span>
+                
+                <div style="${window.__currentViewMode==='table' ? 'display:none;' : 'display:flex; align-items:center;'}">
+                    <span style="font-size:12px; font-weight:bold; color:#2c3e50; background:#f8f9fa; padding:5px 12px; border-radius:6px; border:1px solid #dee2e6; box-shadow:inset 0 1px 2px rgba(0,0,0,0.02);">
+                        🎯 비교 집단 상위 
+                        <input type="number" value="${window.__cutoffPercent}" min="1" max="100" step="1" onchange="window.__changeCutoffPercent(this.value)" style="width:40px; border:none; border-bottom:2px solid #3498db; background:transparent; text-align:center; font-weight:900; font-size:14px; color:#2980b9; outline:none; margin:0 3px;"> %
+                    </span>
+                </div>
             </div>
 
             <div style="display:flex; flex-wrap:wrap; gap:8px; margin-bottom:15px; ${window.__currentViewMode==='table' ? 'display:none;' : ''}">
