@@ -2731,6 +2731,7 @@ window.__renderGradeDisplay = function() {
                 <tbody>
         `;
 
+        // ... (기존 scores.forEach 반복문 유지)
         scores.forEach(s => {
             const stdName = (n) => {
                 if (!n || n === '-' || n === 'null') return '-';
@@ -2755,11 +2756,37 @@ window.__renderGradeDisplay = function() {
             </tr>`;
         });
 
+        // 👇👇👇 [여기서부터 새로 추가하는 부분] 👇👇👇
+        if (scores.length > 1) { // 2개 이상의 시험이 선택되었을 때만 평균 행 표시
+            const calcAvg = (key) => {
+                const validScores = scores.map(s => Number(s[key])).filter(val => !isNaN(val) && val > 0);
+                if (validScores.length === 0) return '-';
+                return (validScores.reduce((acc, curr) => acc + curr, 0) / validScores.length).toFixed(1);
+            };
+
+            const calcHistGradeAvg = () => {
+                const validScores = scores.map(s => Number(s.hist_grade || s.hist_exp_grade)).filter(val => !isNaN(val) && val > 0);
+                if (validScores.length === 0) return '-';
+                return (validScores.reduce((acc, curr) => acc + curr, 0) / validScores.length).toFixed(1);
+            };
+
+            h += `
+            <tr style="background:#e8f4f8; font-weight:bold; border-top: 2px solid #bdc3c7;">
+                <td style="color:#2980b9; font-weight:900;">선택 평균 (${scores.length}회)</td>
+                <td class="g-kor">${calcAvg('kor_raw_total')}</td><td class="g-kor">${calcAvg('kor_exp_std')}</td><td class="g-kor">${calcAvg('kor_exp_pct')}</td><td class="g-kor" style="color:#2980b9;">${calcAvg('kor_exp_grade')}</td>
+                <td class="g-math">${calcAvg('math_raw_total')}</td><td class="g-math">${calcAvg('math_exp_std')}</td><td class="g-math">${calcAvg('math_exp_pct')}</td><td class="g-math" style="color:#c0392b;">${calcAvg('math_exp_grade')}</td>
+                <td class="g-eng">${calcAvg('eng_raw')}</td><td class="g-eng" style="color:#8e44ad;">${calcAvg('eng_grade')}</td>
+                <td class="g-hist">${calcAvg('extra_raw')}</td><td class="g-hist" style="color:#7f8c8d;">${calcHistGradeAvg()}</td>
+                <td class="g-tam1" style="color:#bdc3c7;">-</td><td class="g-tam1">${calcAvg('tam1_raw')}</td><td class="g-tam1">${calcAvg('tam1_exp_std')}</td><td class="g-tam1">${calcAvg('tam1_exp_pct')}</td><td class="g-tam1" style="color:#27ae60;">${calcAvg('tam1_exp_grade')}</td>
+                <td class="g-tam2" style="color:#bdc3c7;">-</td><td class="g-tam2">${calcAvg('tam2_raw')}</td><td class="g-tam2">${calcAvg('tam2_exp_std')}</td><td class="g-tam2">${calcAvg('tam2_exp_pct')}</td><td class="g-tam2" style="color:#d35400;">${calcAvg('tam2_exp_grade')}</td>
+            </tr>`;
+        }
+        // 👆👆👆 [추가 끝] 👆👆👆
+
         h += '</tbody></table></div>'; 
         area.innerHTML = h;
     }
 };
-
 window.__switchGView = function(v) { window.__currentViewMode = v; window.__renderGradeTrendUI(); };
 window.__switchGMode = function(m) { window.__currentGradeMode = m; window.__renderGradeTrendUI(); };
 
