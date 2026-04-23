@@ -2481,17 +2481,17 @@ window.__renderGradeTrendUI = function() {
                 </div>
             </div>
 
-            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:15px;">
-                <div style="display:flex; align-items:center; gap:15px;">
-                    <h4 style="margin:0; color:#2c3e50;">📈 성적 추이</h4>
-                    <div style="display:flex; gap:5px; background:#f1f2f6; padding:3px; border-radius:6px;">
-                        <button onclick="window.__switchGView('graph')" style="${btnSty(window.__currentViewMode==='graph', '#2c3e50', '#7f8c8d')}">그래프</button>
-                        <button onclick="window.__switchGView('table')" style="${btnSty(window.__currentViewMode==='table', '#2c3e50', '#7f8c8d')}">표</button>
-                    </div>
-                    <div style="display:flex; gap:5px; background:#f1f2f6; padding:3px; border-radius:6px;">
-                        <button onclick="window.__switchGMode('pct')" style="${btnSty(window.__currentGradeMode==='pct', '#3498db', '#7f8c8d')}">백분위</button>
-                        <button onclick="window.__switchGMode('raw')" style="${btnSty(window.__currentGradeMode==='raw', '#3498db', '#7f8c8d')}">원점수</button>
-                    </div>
+            <div style="display:flex; align-items:center; flex-wrap:wrap; gap:15px; margin-bottom:15px;">
+                <h4 style="margin:0; color:#2c3e50;">📈 성적 추이</h4>
+                
+                <div style="display:flex; gap:5px; background:#f1f2f6; padding:3px; border-radius:6px;">
+                    <button onclick="window.__switchGView('graph')" style="${btnSty(window.__currentViewMode==='graph', '#2c3e50', '#7f8c8d')}">그래프</button>
+                    <button onclick="window.__switchGView('table')" style="${btnSty(window.__currentViewMode==='table', '#2c3e50', '#7f8c8d')}">표</button>
+                </div>
+                
+                <div style="display:flex; gap:5px; background:#f1f2f6; padding:3px; border-radius:6px;">
+                    <button onclick="window.__switchGMode('pct')" style="${btnSty(window.__currentGradeMode==='pct', '#3498db', '#7f8c8d')}">백분위</button>
+                    <button onclick="window.__switchGMode('raw')" style="${btnSty(window.__currentGradeMode==='raw', '#3498db', '#7f8c8d')}">원점수</button>
                 </div>
                 
                 <div style="${window.__currentViewMode==='table' ? 'display:none;' : 'display:flex; align-items:center;'}">
