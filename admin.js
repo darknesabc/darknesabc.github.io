@@ -681,11 +681,32 @@ async function init() {
                 surveyReason = schedMap7d[today][curPInt].split(' / ').find(item => item.includes('[설문]')).trim();
             }
             let status = "미입력", sub = "", color = "none", code = att ? att.status_code : "";
-            if (code === "1") { status = "출석"; color = "1"; sub = validMove || surveyReason || (att ? att.memo : ""); }
-            else if (validMove) { status = validMove; color = "move"; }
-            else if (surveyReason) { status = surveyReason; color = "schedule"; }
-            else if (att && att.memo) { status = att.memo; color = "schedule"; }
-            else { status = code === "3" ? "결석" : (code === "2" ? "지각" : "미입력"); color = code || "none"; }
+            const memoStr = (att && att.memo && att.memo !== '-') ? att.memo.trim() : "";
+
+            // 💡 [개선된 우선순위 로직] 이동/설문이 무조건 1순위(메인 배지), 메모는 서브 배지(회색 띠지)로 고정!
+            if (validMove) { 
+                status = validMove; 
+                color = "move"; 
+                sub = memoStr; // 이동이 메인, 메모는 서브
+            } 
+            else if (surveyReason) { 
+                status = surveyReason; 
+                color = "schedule"; 
+                sub = memoStr; // 설문이 메인, 메모는 서브
+            } 
+            else if (code === "1") { 
+                status = "출석"; 
+                color = "1"; 
+                sub = memoStr; // 둘 다 없으면 출석이 메인, 메모는 서브
+            } 
+            else if (memoStr) { 
+                status = memoStr; 
+                color = "schedule"; 
+            } 
+            else { 
+                status = code === "3" ? "결석" : (code === "2" ? "지각" : "미입력"); 
+                color = code || "none"; 
+            }
 
             let absBadge = '';
             if (todayAbsenceCount >= 6) absBadge = `<span style="background:#e74c3c; color:#fff; padding:2px 6px; border-radius:4px; font-size:12px; font-weight:900;">❌위험(${todayAbsenceCount})</span>`;
