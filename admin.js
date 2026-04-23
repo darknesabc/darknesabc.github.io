@@ -30,6 +30,17 @@ const getExamType = (label) => {
     return '기타';
 };
 
+// 💡 글로벌 상태 변수 (기존 변수들 아래에 추가)
+window.__cutoffPercent = 30; // 기본값 30%
+
+window.__changeCutoffPercent = function(val) {
+    let p = parseInt(val, 10);
+    if (isNaN(p) || p < 1) p = 1; // 최소 1%
+    if (p > 100) p = 100;         // 최대 100%
+    window.__cutoffPercent = p;
+    window.__renderGradeTrendUI(); // 화면(그래프) 즉시 새로고침
+};
+
 // =========================================================
 // 💡 [신규 기능] 전체(누적) 보기 토글 함수
 // =========================================================
@@ -2439,10 +2450,11 @@ window.__renderGradeTrendUI = function() {
         return `<button onclick="window.__toggleExamType('${key}')" style="border:1px solid ${isOn ? colors[key] : '#dee2e6'}; padding:6px 15px; border-radius:8px; cursor:pointer; font-size:12px; font-weight:bold; background:${isOn ? colors[key] : '#fff'}; color:${isOn ? '#fff' : '#bdc3c7'}; transition:0.2s; margin-right:5px;">${isOn ? '✅' : '⬜'} ${key}</button>`;
     };
 
-    // 30% 컷 토글 버튼
+    // 💡 [수정] 30% 고정이 아닌 동적 퍼센트를 보여주도록 수정
     const tglBtn = (key, label) => {
         const isOn = window.__toggles[key];
-        return `<button onclick="window.__toggleCutoff('${key}')" style="border:1px solid ${isOn ? '#3498db' : '#dee2e6'}; padding:5px 12px; border-radius:20px; cursor:pointer; font-size:11px; font-weight:bold; background:${isOn ? '#e8f4f8' : '#fff'}; color:${isOn ? '#2980b9' : '#7f8c8d'}; transition:0.2s;">${label}</button>`;
+        const displayLabel = label.replace('30%', window.__cutoffPercent + '%');
+        return `<button onclick="window.__toggleCutoff('${key}')" style="border:1px solid ${isOn ? '#3498db' : '#dee2e6'}; padding:5px 12px; border-radius:20px; cursor:pointer; font-size:11px; font-weight:bold; background:${isOn ? '#e8f4f8' : '#fff'}; color:${isOn ? '#2980b9' : '#7f8c8d'}; transition:0.2s;">${displayLabel}</button>`;
     };
 
     const latestScore = window.__currentStudentScores[window.__currentStudentScores.length - 1] || {};
@@ -2483,6 +2495,13 @@ window.__renderGradeTrendUI = function() {
                 </div>
             </div>
             
+            <div style="display:flex; align-items:center; gap:10px; margin-bottom:15px; ${window.__currentViewMode==='table' ? 'display:none;' : ''}">
+                <span style="font-size:13px; font-weight:bold; color:#2c3e50; background:#f8f9fa; padding:6px 12px; border-radius:6px; border:1px solid #dee2e6;">
+                    🎯 비교 집단 상위 % 설정: 
+                    <input type="number" value="${window.__cutoffPercent}" min="1" max="100" step="1" onchange="window.__changeCutoffPercent(this.value)" style="width:50px; border:none; border-bottom:2px solid #3498db; background:transparent; text-align:center; font-weight:900; font-size:14px; color:#2980b9; outline:none; margin:0 5px;"> %
+                </span>
+            </div>
+
             <div style="display:flex; flex-wrap:wrap; gap:8px; margin-bottom:15px; ${window.__currentViewMode==='table' ? 'display:none;' : ''}">
                 ${tglBtn('topTotal', '전체 상위 30%')}
                 ${tglBtn('topChoice', '선택 상위 30%')}
@@ -2552,7 +2571,8 @@ window.__renderGradeDisplay = function() {
         return s[`${subj}_raw_total`] !== undefined ? (s[`${subj}_raw_total`] ? Number(s[`${subj}_raw_total`]) : null) : (s[`${subj}_raw`] ? Number(s[`${subj}_raw`]) : null);
     };
 
-    const getTop30 = (examLabel, subj, valKey, filterMode, myScore) => {
+    // 💡 [수정] getTop30 -> getTopN 으로 변경하고 사용자가 입력한 % 반영
+    const getTopN = (examLabel, subj, valKey, filterMode, myScore) => {
         let pool = window.__allMockScores.filter(s => s.exam_label === examLabel);
         if (filterMode === 'topClass') pool = pool.filter(s => s.class_name === window.__currentStudentClass);
         else if (filterMode === 'topHS') pool = pool.filter(s => s.class_group && s.class_group.includes('HS'));
@@ -2586,7 +2606,10 @@ window.__renderGradeDisplay = function() {
         else vals = vals.filter(v => v > 0).sort((a, b) => b - a);
         
         if (vals.length === 0) return null;
-        let idx = Math.floor(vals.length * 0.3);
+
+        // 💡 핵심 교정 부분: 0.3 이었던 부분을 동적으로 계산
+        let ratio = window.__cutoffPercent / 100;
+        let idx = Math.floor(vals.length * ratio);
         if (idx >= vals.length) idx = vals.length - 1;
         return vals[idx];
     };
@@ -2625,7 +2648,8 @@ window.__renderGradeDisplay = function() {
                 if (window.__toggles[key]) {
                     datasets.push({ 
                         label: `${sbj.name} (${label})`, 
-                        data: scores.map(s => getTop30(s.exam_label, sbj.id, valKey, key, s)), 
+                        // 💡 여기서 getTop30 -> getTopN 으로 변경
+                        data: scores.map(s => getTopN(s.exam_label, sbj.id, valKey, key, s)), 
                         borderColor: color || colors[sbj.id], 
                         borderDash: dashPattern, 
                         borderWidth: 1.5, 
@@ -2637,14 +2661,15 @@ window.__renderGradeDisplay = function() {
                 }
             };
 
-            addLine('topTotal', '전체상위30%', [5, 5], colors[sbj.id]);
-            addLine('topChoice', '선택상위30%', [3, 3], '#9b59b6'); 
-            addLine('topClass', '우리반30%', [2, 2], '#1abc9c');
-            addLine('topHS', 'HS반30%', [4, 2], '#e67e22'); 
-            addLine('topGreen', '그린30%', [4, 2], '#2ecc71');
-            addLine('topBlue', '블루30%', [4, 2], '#3498db');
-            addLine('topMed', '서/의치대30%', [4, 2], '#c0392b'); 
-            addLine('topSKY', '연고대30%', [4, 2], '#2980b9');
+            const pct = window.__cutoffPercent; // 현재 설정된 퍼센트
+            addLine('topTotal', `전체상위${pct}%`, [5, 5], colors[sbj.id]);
+            addLine('topChoice', `선택상위${pct}%`, [3, 3], '#9b59b6'); 
+            addLine('topClass', `우리반${pct}%`, [2, 2], '#1abc9c');
+            addLine('topHS', `HS반${pct}%`, [4, 2], '#e67e22'); 
+            addLine('topGreen', `그린${pct}%`, [4, 2], '#2ecc71');
+            addLine('topBlue', `블루${pct}%`, [4, 2], '#3498db');
+            addLine('topMed', `서/의치대${pct}%`, [4, 2], '#c0392b'); 
+            addLine('topSKY', `연고대${pct}%`, [4, 2], '#2980b9');
         });
 
         Chart.defaults.color = '#7f8c8d';
