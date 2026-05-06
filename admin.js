@@ -1875,7 +1875,7 @@ window.__renderGradeSummaryTable = function() {
                         <td>${v(score.kor_exp_grade)}</td>
                         <td>${v(score.math_exp_grade)}</td>
                         <td class="sum-eng">${v(score.eng_grade)}</td>
-                        <td>${v(score.extra_grade || score.hist_grade || score.hist_exp_grade)}</td>
+                        <td>${v(score.extra_grade)}</td>
                         <td>${v(score.tam1_exp_grade)}</td>
                         <td>${v(score.tam2_exp_grade)}</td>
                     </tr>
@@ -2796,7 +2796,7 @@ window.__renderGradeDisplay = function() {
                 <td class="g-kor">${v(s.kor_raw_total)}</td><td class="g-kor">${v(s.kor_exp_std)}</td><td class="g-kor">${v(s.kor_exp_pct)}</td><td class="g-kor"><b>${v(s.kor_exp_grade)}</b></td>
                 <td class="g-math">${v(s.math_raw_total)}</td><td class="g-math">${v(s.math_exp_std)}</td><td class="g-math">${v(s.math_exp_pct)}</td><td class="g-math"><b>${v(s.math_exp_grade)}</b></td>
                 <td class="g-eng">${v(s.eng_raw)}</td><td class="g-eng"><b>${v(s.eng_grade)}</b></td>
-                <td class="g-hist">${v(s.extra_raw)}</td><td class="g-hist"><b>${v(s.hist_grade || s.hist_exp_grade)}</b></td>
+                <td class="g-hist">${v(s.extra_raw)}</td><td class="g-hist"><b>${v(s.extra_grade)}</b></td>
                 <td class="g-tam1" style="font-size:12px;">${stdName(s.tam1_name)}</td><td class="g-tam1">${v(s.tam1_raw)}</td><td class="g-tam1">${v(s.tam1_exp_std)}</td><td class="g-tam1">${v(s.tam1_exp_pct)}</td><td class="g-tam1"><b>${v(s.tam1_exp_grade)}</b></td>
                 <td class="g-tam2" style="font-size:12px;">${stdName(s.tam2_name)}</td><td class="g-tam2">${v(s.tam2_raw)}</td><td class="g-tam2">${v(s.tam2_exp_std)}</td><td class="g-tam2">${v(s.tam2_exp_pct)}</td><td class="g-tam2"><b>${v(s.tam2_exp_grade)}</b></td>
             </tr>`;
@@ -2811,10 +2811,10 @@ window.__renderGradeDisplay = function() {
             };
 
             const calcHistGradeAvg = () => {
-                const validScores = scores.map(s => Number(s.hist_grade || s.hist_exp_grade)).filter(val => !isNaN(val) && val > 0);
-                if (validScores.length === 0) return '-';
-                return (validScores.reduce((acc, curr) => acc + curr, 0) / validScores.length).toFixed(1);
-            };
+    const validScores = scores.map(s => Number(s.extra_grade)).filter(val => !isNaN(val) && val > 0);
+    if (validScores.length === 0) return '-';
+    return (validScores.reduce((acc, curr) => acc + curr, 0) / validScores.length).toFixed(1);
+};
 
             h += `
             <tr style="background:#e8f4f8; font-weight:bold; border-top: 2px solid #bdc3c7;">
