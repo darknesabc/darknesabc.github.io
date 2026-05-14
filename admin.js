@@ -2752,6 +2752,13 @@ window.__renderGradeDisplay = function() {
     } else {
         const v = (val) => (val === null || val === undefined || val === "" || val === "0" || val === 0) ? '-' : val;
         
+        // 💡 [추가] 가장 최근 시험의 데이터를 가져와서 표(Table) 헤더용 과목명 생성
+        const latestScore = scores[scores.length - 1] || {};
+        const kTitle = latestScore.kor_choice ? `국어(${latestScore.kor_choice})` : '국어';
+        const mTitle = latestScore.math_choice ? `수학(${latestScore.math_choice})` : '수학';
+        const t1Title = latestScore.tam1_name ? `탐구1(${latestScore.tam1_name})` : '탐구1';
+        const t2Title = latestScore.tam2_name ? `탐구2(${latestScore.tam2_name})` : '탐구2';
+        
         let h = `
         <div style="overflow-x:auto; border-radius:8px; border:1px solid #dee2e6; box-shadow: 0 2px 4px rgba(0,0,0,0.02);">
             <style>
@@ -2770,12 +2777,13 @@ window.__renderGradeDisplay = function() {
                 <thead>
                     <tr style="background:#f8f9fa;">
                         <th rowspan="2" style="font-weight:bold; color:#34495e; padding:12px;">시험구분</th>
-                        <th colspan="4" style="color:#2980b9;">국어</th>
-                        <th colspan="4" style="color:#c0392b;">수학</th>
+                        <!-- 💡 [수정] 그냥 '국어' 대신 위에서 만든 kTitle, mTitle 등의 변수를 넣습니다 -->
+                        <th colspan="4" style="color:#2980b9;">${kTitle}</th>
+                        <th colspan="4" style="color:#c0392b;">${mTitle}</th>
                         <th colspan="2" style="color:#8e44ad;">영어</th>
                         <th colspan="2" style="color:#7f8c8d;">한국사</th>
-                        <th colspan="5" style="color:#27ae60;">탐구1</th>
-                        <th colspan="5" style="color:#d35400;">탐구2</th>
+                        <th colspan="5" style="color:#27ae60;">${t1Title}</th>
+                        <th colspan="5" style="color:#d35400;">${t2Title}</th>
                     </tr>
                     <tr style="font-size:11px; color:#7f8c8d; background:#fff;">
                         <th>원점</th><th>표점</th><th>백분위</th><th>등급</th>
