@@ -2289,6 +2289,10 @@ window.__renderRadarChartUI = function() {
     const btnSty = (isActive, bg) => `padding:6px 15px; border-radius:20px; border:1px solid ${isActive?bg:'#dee2e6'}; cursor:pointer; font-size:12px; font-weight:bold; transition:0.2s; background:${isActive?bg:'#f8f9fa'}; color:${isActive?'#fff':'#7f8c8d'};`;
     const cumulBtnSty = `padding:6px 16px; border-radius:8px; border:none; cursor:pointer; font-size:13px; font-weight:bold; transition:0.2s; background:${isCumul ? '#e74c3c' : '#f1f2f6'}; color:${isCumul ? '#fff' : '#7f8c8d'}; box-shadow:${isCumul ? '0 2px 4px rgba(231,76,60,0.2)' : 'none'};`;
 
+    // 💡 [추가된 부분] 학생의 전체 시험 목록을 가져와서 셀렉트 박스(드롭다운) 옵션 만들기
+    const scores = window.__currentStudentScores || [];
+    const examOptionsHtml = scores.map(s => `<option value="${s.exam_label}" ${s.exam_label === window.__currentSummaryExam ? 'selected' : ''}>${s.exam_label}</option>`).join('');
+
     let tabsHtml = subjs.map(s => {
         const isActive = s === subj;
         const bg = isActive ? '#3498db' : '#f8f9fa';
@@ -2300,9 +2304,15 @@ window.__renderRadarChartUI = function() {
     area.innerHTML = `
         <div style="background:#ffffff; border-radius:12px; padding:25px; color:#2c3e50; border: 1px solid #dee2e6;">
             <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:15px; margin-bottom:20px;">
-                <div style="display:flex; align-items:center; gap:15px; flex-wrap:wrap;">
+                <div style="display:flex; align-items:center; gap:10px; flex-wrap:wrap;">
+                    
+                    <!-- 💡 [추가된 부분] 시험 선택 드롭다운 배치 -->
+                    <select onchange="window.__changeSummaryExam(this.value)" style="padding:6px 12px; border-radius:8px; border:1px solid #bdc3c7; background:#fff; font-weight:bold; cursor:pointer; font-size:13px; color:#2c3e50; box-shadow:0 2px 4px rgba(0,0,0,0.02);">
+                        ${examOptionsHtml}
+                    </select>
+
                     <button onclick="window.__toggleCumulativeRadar()" style="${cumulBtnSty}">
-                        ${isCumul ? '📈 전체 시험 누적' : '📄 해당 시험만'}
+                        ${isCumul ? '📈 전체 누적' : '📄 해당 시험만'}
                     </button>
                     <div style="width:1px; height:20px; background:#dee2e6; margin:0 5px;"></div>
                     <div>${tabsHtml}</div>
