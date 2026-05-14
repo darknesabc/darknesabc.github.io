@@ -683,52 +683,43 @@ async function init() {
             let status = "미입력", sub = "", color = "none", code = att ? att.status_code : "";
             const memoStr = (att && att.memo && att.memo !== '-') ? att.memo.trim() : "";
 
-            // 💡 [수정된 우선순위 로직] 
-// 1. 이동, 설문, 기존 메모가 중복될 경우를 대비해 하나의 텍스트로 합칩니다.
+            // 💡 [수정된 우선순위 로직 - 결석 사유 유지 버전]
 let subItems = [];
 if (validMove) subItems.push(validMove);
 if (surveyReason) subItems.push(surveyReason);
-if (memoStr) subItems.push(memoStr);
-let finalSub = subItems.join(' / '); // 예: "병원 / 엄마 전화"
+// 메모 내용이 이동/설문 텍스트와 완벽히 겹치지 않을 때만 추가 (중복 방지)
+if (memoStr && !subItems.includes(memoStr)) subItems.push(memoStr); 
+let combinedSub = subItems.join(' / '); 
 
-// 2. 출결 상태(1:출석, 2:지각, 3:결석)가 입력되어 있다면 무조건 메인 배지로 고정!
-if (code === "1") {
-    status = "출석";
-    color = "1";
-    sub = finalSub;  // 스케줄 내역을 회색 메모 띠지로 내림
+// 1. 출석(1) 또는 지각(2)인 경우 👉 학원에 온 상태 (메인: 출결, 서브: 전체 스케줄 띠지)
+if (code === "1" || code === "2") {
+    status = code === "1" ? "출석" : "지각";
+    color = code;
+    sub = combinedSub; 
 } 
-else if (code === "2") {
-    status = "지각";
-    color = "2";
-    sub = finalSub;
-} 
-else if (code === "3") {
-    status = "결석";
-    color = "3";
-    sub = finalSub;
-} 
-// 3. 출결 데이터가 아예 없는 경우('미입력' 상태)에만 스케줄을 메인 배지로 띄웁니다.
+// 2. 결석(3)이거나 미입력인 경우 👉 학원에 없는 상태 (기존 로직 유지: 사유가 메인 배지)
 else {
-    if (validMove) {
-        status = validMove;
-        color = "move";
-        sub = memoStr;
+    if (validMove) { 
+        status = validMove; 
+        color = "move"; 
+        sub = memoStr; // 이동이 메인, 메모는 서브
     } 
-    else if (surveyReason) {
-        status = surveyReason;
-        color = "schedule";
-        sub = memoStr;
+    else if (surveyReason) { 
+        status = surveyReason; 
+        color = "schedule"; 
+        sub = memoStr; // 설문이 메인, 메모는 서브
     } 
-    else if (memoStr) {
-        status = memoStr;
-        color = "schedule";
+    else if (memoStr) { 
+        status = memoStr; 
+        color = "schedule"; 
+        sub = "";
     } 
-    else {
-        status = "미입력";
-        color = "none";
+    else { 
+        status = code === "3" ? "결석" : "미입력"; 
+        color = code || "none"; 
+        sub = "";
     }
 }
-
             let absBadge = '';
             if (todayAbsenceCount >= 6) absBadge = `<span style="background:#e74c3c; color:#fff; padding:2px 6px; border-radius:4px; font-size:12px; font-weight:900;">❌위험(${todayAbsenceCount})</span>`;
             else if (todayAbsenceCount >= 3) absBadge = `<span style="background:#e67e22; color:#fff; padding:2px 6px; border-radius:4px; font-size:12px; font-weight:bold;">❌경고(${todayAbsenceCount})</span>`;
