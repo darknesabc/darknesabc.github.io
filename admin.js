@@ -683,17 +683,51 @@ async function init() {
             let status = "미입력", sub = "", color = "none", code = att ? att.status_code : "";
             const memoStr = (att && att.memo && att.memo !== '-') ? att.memo.trim() : "";
 
-            // 💡 [개선된 우선순위 로직] 이동/설문이 무조건 1순위(메인 배지), 메모는 서브 배지(회색 띠지)로 고정!
-            if (validMove) { 
-                status = validMove; 
-                color = "move"; 
-                sub = memoStr; // 이동이 메인, 메모는 서브
-            } 
-            else if (surveyReason) { 
-                status = surveyReason; 
-                color = "schedule"; 
-                sub = memoStr; // 설문이 메인, 메모는 서브
-            } 
+            // 💡 [수정된 우선순위 로직] 
+// 1. 이동, 설문, 기존 메모가 중복될 경우를 대비해 하나의 텍스트로 합칩니다.
+let subItems = [];
+if (validMove) subItems.push(validMove);
+if (surveyReason) subItems.push(surveyReason);
+if (memoStr) subItems.push(memoStr);
+let finalSub = subItems.join(' / '); // 예: "병원 / 엄마 전화"
+
+// 2. 출결 상태(1:출석, 2:지각, 3:결석)가 입력되어 있다면 무조건 메인 배지로 고정!
+if (code === "1") {
+    status = "출석";
+    color = "1";
+    sub = finalSub;  // 스케줄 내역을 회색 메모 띠지로 내림
+} 
+else if (code === "2") {
+    status = "지각";
+    color = "2";
+    sub = finalSub;
+} 
+else if (code === "3") {
+    status = "결석";
+    color = "3";
+    sub = finalSub;
+} 
+// 3. 출결 데이터가 아예 없는 경우('미입력' 상태)에만 스케줄을 메인 배지로 띄웁니다.
+else {
+    if (validMove) {
+        status = validMove;
+        color = "move";
+        sub = memoStr;
+    } 
+    else if (surveyReason) {
+        status = surveyReason;
+        color = "schedule";
+        sub = memoStr;
+    } 
+    else if (memoStr) {
+        status = memoStr;
+        color = "schedule";
+    } 
+    else {
+        status = "미입력";
+        color = "none";
+    }
+}
             else if (code === "1") { 
                 status = "출석"; 
                 color = "1"; 
