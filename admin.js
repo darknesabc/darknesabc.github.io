@@ -728,19 +728,6 @@ else {
         color = "none";
     }
 }
-            else if (code === "1") { 
-                status = "출석"; 
-                color = "1"; 
-                sub = memoStr; // 둘 다 없으면 출석이 메인, 메모는 서브
-            } 
-            else if (memoStr) { 
-                status = memoStr; 
-                color = "schedule"; 
-            } 
-            else { 
-                status = code === "3" ? "결석" : (code === "2" ? "지각" : "미입력"); 
-                color = code || "none"; 
-            }
 
             let absBadge = '';
             if (todayAbsenceCount >= 6) absBadge = `<span style="background:#e74c3c; color:#fff; padding:2px 6px; border-radius:4px; font-size:12px; font-weight:900;">❌위험(${todayAbsenceCount})</span>`;
