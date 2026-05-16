@@ -3140,7 +3140,7 @@ window.__openSusiSimulation = async function() {
 };
 
 // =========================================================
-// 🎯 3. 수시 메인 레이아웃 구성 (정시와 색상 100% 매칭)
+// 🎯 2. 수시 메인 레이아웃 구성 (엔터키 이벤트 핸들러 추가)
 // =========================================================
 window.__renderSusiMainLayout = function(grades) {
     const area = document.getElementById('susi-simulation-area');
@@ -3159,7 +3159,7 @@ window.__renderSusiMainLayout = function(grades) {
     area.innerHTML = `
         <div style="background:#fff; border-radius:12px; overflow:hidden; border:1px solid #dee2e6; box-shadow:0 6px 12px rgba(0,0,0,0.04); margin-bottom:25px;">
             <div style="background:#fff; border-bottom:2px solid #dee2e6; display:flex; justify-content:space-between; padding:15px 20px; align-items:center;">
-                <div style="color:#2c3e50; font-weight:900; font-size:16px;">🎓 수시 지원 시뮬레이터 보드</div>
+                <div style="color:#2c3e50; font-weight:900; font-size:16px;">🎓 수시(종합/교과/논술) 지원 시뮬레이션</div>
                 <div style="background:#e8f4f8; border:1px solid #3498db; color:#2980b9; padding:5px 12px; font-weight:bold; font-size:12px; border-radius:6px;">${scoreSummaryStr}</div>
             </div>
             <div style="padding:12px 20px; background:#fbfbfc; border-bottom:1px solid #dee2e6; display:flex; gap:6px; flex-wrap:wrap;">
@@ -3168,7 +3168,9 @@ window.__renderSusiMainLayout = function(grades) {
             <div style="padding:12px 20px; background:#fdfdfd; border-bottom:1px solid #dee2e6; display:flex; gap:15px; align-items:center; flex-wrap:wrap;">
                 <div style="display:flex; align-items:center; gap:6px;">
                     <span style="color:#7f8c8d; font-size:12px; font-weight:bold;">🔍 검색:</span>
-                    <input type="text" id="susi-search-input" value="${window.__susiFilterSearch}" placeholder="대학명/학과/전형" style="background:#fff; border:1px solid #bdc3c7; color:#3498db; font-size:12px; outline:none; padding:5px 10px; border-radius:6px; font-weight:bold; width:150px;">
+                    
+                    <input type="text" id="susi-search-input" value="${window.__susiFilterSearch}" placeholder="대학명/학과/전형" onkeyup="if(event.key==='Enter') window.__executeSusiSearch()" style="background:#fff; border:1px solid #bdc3c7; color:#3498db; font-size:12px; outline:none; padding:5px 10px; border-radius:6px; font-weight:bold; width:150px;">
+                    
                     <button onclick="window.__executeSusiSearch()" style="background:#3498db; color:#fff; border:none; padding:5px 12px; border-radius:6px; cursor:pointer; font-size:12px; font-weight:bold;">검색</button>
                 </div>
                 <div style="display:flex; gap:4px; background:#ecf0f1; padding:3px; border-radius:6px;">
@@ -3181,7 +3183,6 @@ window.__renderSusiMainLayout = function(grades) {
         </div>
     `;
     
-    // 테이블 내역 로드
     window.__renderSusiTable(grades);
 };
 
@@ -3200,6 +3201,9 @@ window.__changeSusiTab = function(tabName) {
     window.__renderSusiMainLayout(grades); 
 };
 
+// =========================================================
+// 🎯 스마트 검색 기능 (현재 활성화된 파트 내 검색 고정 및 포커스 유지)
+// =========================================================
 window.__executeSusiSearch = function() {
     const input = document.getElementById('susi-search-input');
     if (input) {
@@ -3210,13 +3214,10 @@ window.__executeSusiSearch = function() {
             tam1: Number(score.tam1_exp_grade) || 9, tam2: Number(score.tam2_exp_grade) || 9, hist: Number(score.extra_grade) || 9
         };
 
-        // 💡 [버그 수정 1] 검색 시 창이 꺼지는 현상 방지! (레이아웃 갱신 함수로 올바르게 호출)
-        if (window.__currentSusiTab !== '통합 검색' && window.__susiFilterSearch !== "") {
-            window.__currentSusiTab = '통합 검색';
-            window.__renderSusiMainLayout(grades); 
-        } else {
-            window.__renderSusiTable(grades);
-        }
+        // 💡 [핵심 패치] '통합 검색' 탭으로 강제 강등 및 주소 변경 코드를 전면 파쇄했습니다.
+        // 메인 레이아웃 대신 하부 테이블(__renderSusiTable)만 정밀 조준하여 갱신하므로, 
+        // 현재 탭(예: 의예, 약학)이 유지되며 글자를 치고 엔터를 눌러도 입력창 포커스가 전혀 깨지지 않습니다.
+        window.__renderSusiTable(grades);
     }
 };
 
