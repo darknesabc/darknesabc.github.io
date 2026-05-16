@@ -1247,9 +1247,15 @@ window.__renderGradeSummaryUI = function() {
                     <h4 style="margin:0; color:#2c3e50;">📊 성적 요약</h4>
                     <select onchange="window.__changeSummaryExam(this.value)" style="padding:6px 12px; border-radius:6px; border:1px solid #dee2e6; background:#f8f9fa; font-weight:bold; cursor:pointer;">${optionsHtml}</select>
                 </div>
-                <button onclick="window.__openUnivSimulation()" style="background:#1e272e; color:#fff; border:none; padding:8px 20px; border-radius:8px; font-weight:bold; font-size:14px; cursor:pointer; box-shadow:0 4px 6px rgba(0,0,0,0.1); transition:0.2s;">
-                    🎯 정시 지원 시뮬레이션 보드 열기
-                </button>
+                <div style="display:flex; gap:10px;">
+    <button onclick="window.__openSusiSimulation()" style="background:#8e44ad; color:#fff; border:none; padding:8px 20px; border-radius:8px; font-weight:bold; font-size:14px; cursor:pointer; box-shadow:0 4px 6px rgba(0,0,0,0.1); transition:0.2s;">
+        🎓 수시 지원 시뮬레이션 보드 열기
+    </button>
+    
+    <button onclick="window.__openUnivSimulation()" style="background:#1e272e; color:#fff; border:none; padding:8px 20px; border-radius:8px; font-weight:bold; font-size:14px; cursor:pointer; box-shadow:0 4px 6px rgba(0,0,0,0.1); transition:0.2s;">
+        🎯 정시 지원 시뮬레이션 보드 열기
+    </button>
+</div>
             </div>
             
             <div id="grade-summary-table-area"></div>
