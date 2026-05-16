@@ -3087,9 +3087,9 @@ window.__susiFilterStream = "전체";
 window.__susiFilterType = "전체";       
 
 window.__susiGradeFilter = "all";
-window.__susiGpaValue = 2.5;
-window.__susiCustomMin = 1.0;
-window.__susiCustomMax = 3.0;
+window.__susiGpaValue = "";
+window.__susiCustomMin = "";
+window.__susiCustomMax = "";
 
 window.__susiViewAllMode = false;
 window.__susiViewAllStream = '';
