@@ -3267,7 +3267,7 @@ window.__renderSusiMainLayout = function(grades) {
 };
 
 // =========================================================
-// 🎯 3. 액션 핸들러 및 상태 동기화 (충돌 버그 완벽 해결)
+// 🎯 3. 액션 핸들러 및 상태 동기화 (충돌 버그 완벽 해결 버전)
 // =========================================================
 window.__toggleSusiCustomGrade = function(val) {
     window.__susiGradeFilter = val;
@@ -3281,11 +3281,12 @@ window.__changeSusiTab = function(tabName) {
     window.__susiFilterStream = "전체";
     window.__susiFilterType = "전체"; 
     
-    // 💡 탭을 변경하면 [전체보기] 모드도 자동으로 꺼지도록 초기화
+    // 💡 탭 이동 시 전체보기 모드 강제 초기화
     window.__susiViewAllMode = false;
     window.__susiViewAllStream = '';
 
-    const score = window.__currentStudentScores.find(s => s.exam_label === window.__currentSummaryExam) || {};
+    const scoresArr = window.__currentStudentScores || [];
+    const score = scoresArr.find(s => s.exam_label === window.__currentSummaryExam) || {};
     const grades = {
         kor: Number(score.kor_exp_grade) || 9, math: Number(score.math_exp_grade) || 9, eng: Number(score.eng_grade) || 9,
         tam1: Number(score.tam1_exp_grade) || 9, tam2: Number(score.tam2_exp_grade) || 9, hist: Number(score.extra_grade) || 9
@@ -3293,8 +3294,9 @@ window.__changeSusiTab = function(tabName) {
     window.__renderSusiMainLayout(grades); 
 };
 
-// 💡 [핵심 수정] 어떤 탭이든 관계없이 모든 필터 값을 실시간으로 전역 변수에 저장하도록 구조 변경
-window.__executeSusiSearch = function(skipRender = false) {
+// 💡 [핵심 수정] 필터 적용(조회) 로직의 충돌 방지 처리
+window.__executeSusiSearch = function(isFromToggle = false) {
+    // 1. 현재 화면(DOM)에 있는 필터 값들을 안전하게 읽어서 전역 변수에 저장
     const searchInput = document.getElementById('susi-search-input');
     const streamSelect = document.getElementById('susi-stream-filter');
     const typeSelect = document.getElementById('susi-type-filter');
@@ -3303,46 +3305,29 @@ window.__executeSusiSearch = function(skipRender = false) {
     if (streamSelect) window.__susiFilterStream = streamSelect.value;
     if (typeSelect) window.__susiFilterType = typeSelect.value;
 
-    const gpaInput = document.getElementById('susi-my-gpa');
-    const filterSelect = document.getElementById('susi-grade-filter');
-    const minInput = document.getElementById('susi-min-gpa');
-    const maxInput = document.getElementById('susi-max-gpa');
-    
-    if (gpaInput) window.__susiGpaValue = parseFloat(gpaInput.value) || 2.5;
-    if (filterSelect) window.__susiGradeFilter = filterSelect.value;
-    if (minInput) window.__susiCustomMin = parseFloat(minInput.value) || 1.0;
-    if (maxInput) window.__susiCustomMax = parseFloat(maxInput.value) || 3.0;
-
-    // 💡 사용자가 필터(콤보박스)나 검색어를 조작했다는 것은 '전체보기'를 끄고 직접 찾겠다는 의도!
-    if (!skipRender) {
-        window.__susiViewAllMode = false;
-        window.__susiViewAllStream = '';
-
-        const score = window.__currentStudentScores.find(s => s.exam_label === window.__currentSummaryExam) || {};
-        const grades = {
-            kor: Number(score.kor_exp_grade) || 9, math: Number(score.math_exp_grade) || 9, eng: Number(score.eng_grade) || 9,
-            tam1: Number(score.tam1_exp_grade) || 9, tam2: Number(score.tam2_exp_grade) || 9, hist: Number(score.extra_grade) || 9
-        };
+    if (window.__currentSusiTab === '통합 검색') {
+        const gpaInput = document.getElementById('susi-my-gpa');
+        const filterSelect = document.getElementById('susi-grade-filter');
+        const minInput = document.getElementById('susi-min-gpa');
+        const maxInput = document.getElementById('susi-max-gpa');
         
-        // 필터를 조작하면 버튼 색상 등을 원상복구하기 위해 전체 레이아웃을 다시 그림
-        window.__renderSusiMainLayout(grades); 
+        if (gpaInput) window.__susiGpaValue = parseFloat(gpaInput.value) || 2.5;
+        if (filterSelect) window.__susiGradeFilter = filterSelect.value;
+        if (minInput) window.__susiCustomMin = parseFloat(minInput.value) || 1.0;
+        if (maxInput) window.__susiCustomMax = parseFloat(maxInput.value) || 3.0;
     }
-};
 
-// 💡 [전체보기 버튼] 액션 핸들러
-window.__toggleSusiViewAll = function(stream) {
-    // 버튼을 누르는 순간 입력되어 있던 내신이나 검색어 정보가 날아가지 않도록 우선 저장 (skipRender=true)
-    window.__executeSusiSearch(true);
-
-    if (window.__susiViewAllMode && window.__susiViewAllStream === stream) {
-        window.__susiViewAllMode = false; // 이미 켜져있으면 끄기
-        window.__susiViewAllStream = '';
-    } else {
-        window.__susiViewAllMode = true;  // 켜기
-        window.__susiViewAllStream = stream;
+    // 2. 만약 [전체보기] 버튼이 자기를 호출한 거라면, 일반 조회(렌더링)는 건너뛰고 값만 저장!
+    if (isFromToggle === true) {
+        return; 
     }
+
+    // 3. 사용자가 직접 [조회]나 [콤보박스]를 눌러서 실행된 경우 -> 전체보기 모드를 강제 OFF
+    window.__susiViewAllMode = false;
+    window.__susiViewAllStream = '';
     
-    const score = window.__currentStudentScores.find(s => s.exam_label === window.__currentSummaryExam) || {};
+    const scoresArr = window.__currentStudentScores || [];
+    const score = scoresArr.find(s => s.exam_label === window.__currentSummaryExam) || {};
     const grades = {
         kor: Number(score.kor_exp_grade) || 9, math: Number(score.math_exp_grade) || 9, eng: Number(score.eng_grade) || 9,
         tam1: Number(score.tam1_exp_grade) || 9, tam2: Number(score.tam2_exp_grade) || 9, hist: Number(score.extra_grade) || 9
@@ -3351,72 +3336,59 @@ window.__toggleSusiViewAll = function(stream) {
     window.__renderSusiMainLayout(grades); 
 };
 
-// 최저 판독 엔진
-window.__checkCsatRequirement = function(reqStr, grades) {
-    try {
-        reqStr = String(reqStr || "").trim();
-        if (!reqStr || reqStr === '-' || reqStr.includes('없음')) return true;
+// 💡 [전체보기] 전용 버튼 핸들러
+window.__toggleSusiViewAll = function(stream) {
+    // 1. 현재 화면에 입력된 다른 필터 값들이 날아가지 않도록 조용히 백업만 시킴 (isFromToggle = true)
+    window.__executeSusiSearch(true); 
 
-        const tamBest = Math.min(grades.tam1, grades.tam2);
-        const tamAvg = (grades.tam1 + grades.tam2) / 2;
-
-        const matchSum = reqStr.match(/(\d+)\s*합\s*(\d+)/);
-        if (matchSum) {
-            const reqCnt = parseInt(matchSum[1], 10);
-            const reqSum = parseInt(matchSum[2], 10);
-            let myTam = tamBest;
-            if (reqStr.includes('탐(2)') || reqStr.includes('탐구(2)') || reqStr.includes('탐구 2과목') || reqStr.includes('평균')) myTam = tamAvg;
-            let myGrades = [grades.kor, grades.math, grades.eng, myTam].sort((a, b) => a - b);
-            let sum = 0;
-            for (let i = 0; i < reqCnt; i++) sum += myGrades[i];
-
-            const histMatch = reqStr.match(/한(?:국사)?\s*(\d+)/);
-            if (histMatch) {
-                const reqHist = parseInt(histMatch[1], 10);
-                if (grades.hist > reqHist) return false;
-            }
-            return sum <= reqSum;
-        }
-
-        const matchEach = reqStr.match(/(\d+)개\s*(?:영역)?\s*(?:각)?\s*(\d+)등급/);
-        if (matchEach) {
-            const reqCnt = parseInt(matchEach[1], 10);
-            const reqGrade = parseInt(matchEach[2], 10);
-            let myGrades = [grades.kor, grades.math, grades.eng, tamBest].sort((a, b) => a - b);
-            let passCnt = 0;
-            for (let i = 0; i < 4; i++) { if (myGrades[i] <= reqGrade) passCnt++; }
-            return passCnt >= reqCnt;
-        }
-        return null;
-    } catch (e) { return null; }
+    // 2. 전체보기 모드 ON/OFF 스위칭
+    if (window.__susiViewAllMode && window.__susiViewAllStream === stream) {
+        window.__susiViewAllMode = false; 
+        window.__susiViewAllStream = '';
+    } else {
+        window.__susiViewAllMode = true;  
+        window.__susiViewAllStream = stream;
+    }
+    
+    // 3. 레이아웃 재출력
+    const scoresArr = window.__currentStudentScores || [];
+    const score = scoresArr.find(s => s.exam_label === window.__currentSummaryExam) || {};
+    const grades = {
+        kor: Number(score.kor_exp_grade) || 9, math: Number(score.math_exp_grade) || 9, eng: Number(score.eng_grade) || 9,
+        tam1: Number(score.tam1_exp_grade) || 9, tam2: Number(score.tam2_exp_grade) || 9, hist: Number(score.extra_grade) || 9
+    };
+    
+    window.__renderSusiMainLayout(grades); 
 };
 
 // =========================================================
-// 🎯 4. 수시 테이블 렌더링 (정시 대학/학과 서열 정렬 알고리즘 전면 적용)
+// 🎯 4. 수시 테이블 렌더링
 // =========================================================
 window.__renderSusiTable = function(grades) {
     const container = document.getElementById('susi-table-container');
     if (!container || !window.__susiMasterData) return;
 
-    // [초기 공백 화면 로직] 모든 수시 탭에서 아무런 필터가 없을 때 초기 안내 화면 표시
-    const isNoSearch = window.__susiFilterSearch.trim() === "";
-    const isNoStream = window.__susiFilterStream === "전체";
-    const isNoType = window.__susiFilterType === "전체";
-    const isNoGrade = window.__susiGradeFilter === "all"; 
+    // [초기 공백 화면 로직] (전체보기 모드가 아닐 때만 작동)
+    if (!window.__susiViewAllMode) {
+        const isNoSearch = window.__susiFilterSearch.trim() === "";
+        const isNoStream = window.__susiFilterStream === "전체";
+        const isNoType = window.__susiFilterType === "전체";
+        const isNoGrade = window.__susiGradeFilter === "all"; 
 
-    if (isNoSearch && isNoStream && isNoType && isNoGrade) {
-        let helpTitle = "시뮬레이션할 조건을 설정해 주세요.";
-        let helpDesc = `상단의 <span style="color:#e67e22;">[내신 필터]</span>, <span style="color:#34495e;">[계열/전형]</span>을 선택하거나<br>우측 <span style="color:#3498db;">[검색창]</span>에 대학명/학과명을 입력하시면 결과가 표시됩니다.`;
-        if (window.__currentSusiTab !== '통합 검색') helpTitle = `[${window.__currentSusiTab}] 명단을 조회하려면 조건을 설정해 주세요.`;
+        if (isNoSearch && isNoStream && isNoType && isNoGrade) {
+            let helpTitle = "시뮬레이션할 조건을 설정해 주세요.";
+            let helpDesc = `상단의 <span style="color:#e67e22;">[내신 필터]</span>, <span style="color:#34495e;">[계열/전형]</span>을 선택하거나<br>우측 <span style="color:#3498db;">[검색창]</span>에 대학명/학과명을 입력하시면 결과가 표시됩니다.`;
+            if (window.__currentSusiTab !== '통합 검색') helpTitle = `[${window.__currentSusiTab}] 명단을 조회하려면 조건을 설정해 주세요.`;
 
-        container.innerHTML = `
-            <div style="text-align:center; padding:80px 20px; background:#fff; border:2px dashed #bdc3c7; border-radius:12px; margin:15px 0; box-shadow:0 4px 10px rgba(0,0,0,0.02);">
-                <div style="font-size:45px; margin-bottom:15px; opacity:0.8;">🔍</div>
-                <div style="font-size:18px; font-weight:900; color:#2c3e50; margin-bottom:10px;">${helpTitle}</div>
-                <div style="font-size:13px; color:#7f8c8d; line-height:1.6; font-weight:bold;">${helpDesc}</div>
-            </div>
-        `;
-        return; 
+            container.innerHTML = `
+                <div style="text-align:center; padding:80px 20px; background:#fff; border:2px dashed #bdc3c7; border-radius:12px; margin:15px 0; box-shadow:0 4px 10px rgba(0,0,0,0.02);">
+                    <div style="font-size:45px; margin-bottom:15px; opacity:0.8;">🔍</div>
+                    <div style="font-size:18px; font-weight:900; color:#2c3e50; margin-bottom:10px;">${helpTitle}</div>
+                    <div style="font-size:13px; color:#7f8c8d; line-height:1.6; font-weight:bold;">${helpDesc}</div>
+                </div>
+            `;
+            return; 
+        }
     }
 
     let filteredData = window.__susiMasterData;
@@ -3426,7 +3398,7 @@ window.__renderSusiTable = function(grades) {
         filteredData = filteredData.filter(x => String(x.category || "").trim() === window.__currentSusiTab);
     }
 
-    // 2) 계열 필터링
+    // 2) 계열 필터링 (전체보기 모드 ON이면 __susiViewAllStream 강제 적용, 아니면 일반 스트림 적용)
     if (window.__susiViewAllMode) {
         filteredData = filteredData.filter(x => String(x.stream || "").includes(window.__susiViewAllStream));
     } else if (window.__susiFilterStream !== '전체') {
@@ -3449,7 +3421,7 @@ window.__renderSusiTable = function(grades) {
         filteredData = filteredData.filter(x => `${x.univ_name} ${x.dept_name} ${x.admission_name} ${x.admission_type} ${x.category}`.toLowerCase().includes(keyword));
     }
 
-    // 4) 내신 필터
+    // 4) 내신 필터 (전체보기 모드일 때는 무시하고 전부 표시)
     if (!window.__susiViewAllMode && window.__susiGradeFilter !== 'all') {
         const myGpa = window.__susiGpaValue; const mode = window.__susiGradeFilter; const cMin = window.__susiCustomMin; const cMax = window.__susiCustomMax;
         filteredData = filteredData.filter(item => {
@@ -3476,9 +3448,7 @@ window.__renderSusiTable = function(grades) {
         return String(text).replace(regex, `<span style="background:#f1c40f; color:#000; padding:0 2px; border-radius:2px;">$1</span>`);
     };
 
-    // =========================================================================
-    // 💡 [정시 정렬 알고리즘 엔진 이식]
-    // =========================================================================
+    // 정시 대학 서열 기준 정렬 엔진
     const univRankOrder = [
         "서울대", "연세대", "고려대", "서강대", "성균관대", "한양대", 
         "이화여대", "중앙대", "경희대", "한국외대", "서울시립대", 
@@ -3515,7 +3485,6 @@ window.__renderSusiTable = function(grades) {
         return 50;
     };
 
-    // 정시 기준 마스터 소팅 메커니즘 적용
     filteredData.sort((a, b) => {
         const catA = getCategoryRank(a.univ_name, a.dept_name, a.region);
         const catB = getCategoryRank(b.univ_name, b.dept_name, b.region);
@@ -3525,7 +3494,6 @@ window.__renderSusiTable = function(grades) {
         const rankB = getUnivRank(b.univ_name);
         if (rankA !== rankB) return rankA - rankB; 
 
-        // 대학 서열이 완전히 같을 경우 본교 분교 보정 분기
         const baseA = a.univ_name.replace(/\(.*?\)/g, '').trim();
         const baseB = b.univ_name.replace(/\(.*?\)/g, '').trim();
         if (baseA === baseB) {
@@ -3535,15 +3503,13 @@ window.__renderSusiTable = function(grades) {
             if (isBranchA && !isBranchB) return 1;
         }
 
-        // 대학까지 같으면 학과 가나다 순 정렬
         return String(a.dept_name || "").localeCompare(String(b.dept_name || ""), 'ko');
     });
 
     // =========================================================================
-    // 💡 [렌더링 분기] 전체보기 모드 ON -> 5단 압축 요약 테이블
+    // 💡 [렌더링 분기] 1. 전체보기 모드 ON -> 고밀도 요약 그룹핑 테이블
     // =========================================================================
     if (window.__susiViewAllMode) {
-        // 이미 위에서 정렬된 상태이므로 순서를 보존하여 대학 그룹핑 진행
         const univGroups = {};
         const orderedUnivs = [];
         
@@ -3551,7 +3517,7 @@ window.__renderSusiTable = function(grades) {
             const uName = String(item.univ_name || "기타대학").trim();
             if (!univGroups[uName]) {
                 univGroups[uName] = [];
-                orderedUnivs.push(uName); // 정렬 순서 인덱스 보존
+                orderedUnivs.push(uName); 
             }
             univGroups[uName].push(item);
         });
@@ -3560,13 +3526,14 @@ window.__renderSusiTable = function(grades) {
 
         let html = `
             <div style="padding:10px 15px; background:#f4f6f7; border-bottom:2px solid #bdc3c7; display:flex; justify-content:space-between; align-items:center; position:sticky; top:0; z-index:10;">
-                <div style="font-size:14px; font-weight:900; color:#2c3e50;">📌 ${titleText} <span style="font-size:12px; font-weight:normal; color:#7f8c8d; margin-left:8px;">(정시 서열 정렬 규칙 적용)</span></div>
+                <div style="font-size:14px; font-weight:900; color:#2c3e50;">📌 ${titleText} <span style="font-size:12px; font-weight:normal; color:#7f8c8d; margin-left:8px;">(조건 동일 학과 그룹핑 모드)</span></div>
                 <button onclick="window.__toggleSusiViewAll('${window.__susiViewAllStream}')" style="background:none; border:none; cursor:pointer; color:#e74c3c; font-size:16px; font-weight:bold;">닫기 ✖</button>
             </div>
             <style>
                 .susi-board-real { width:100%; border-collapse:collapse; text-align:left; font-size:12px; color:#2c3e50; min-width:900px; background:#fff; }
                 .susi-board-real th { background:rgba(0,0,0,0.03); padding:10px; font-weight:bold; color:#34495e; text-align:center; border-bottom:1px solid #dee2e6; border-right:1px solid #ecf0f1; position:sticky; top:43px; z-index:9; }
                 .susi-board-real td { padding:10px 12px; border-bottom:1px solid #ecf0f1; border-right:1px solid #ecf0f1; vertical-align:middle; background:#fdfdfd; }
+                .dept-card { background:#fff; border:1px solid #e2e8f0; border-radius:6px; padding:6px; text-align:center; box-shadow:0 1px 2px rgba(0,0,0,0.02); display:inline-block; width:130px; }
             </style>
             <table class="susi-board-real">
                 <thead><tr>
@@ -3599,7 +3566,7 @@ window.__renderSusiTable = function(grades) {
                         depts: []
                     };
                 }
-                subGroups[groupKey].depts.push(item.dept_name);
+                subGroups[groupKey].depts.push(item);
             });
 
             const subGroupKeys = Object.keys(subGroups);
@@ -3620,8 +3587,17 @@ window.__renderSusiTable = function(grades) {
                 `;
                 
                 const displayDepts = groupData.depts.slice(0, MAX_DEPTS);
-                displayDepts.forEach(dept => {
-                    deptsHtml += `<span style="background:#fff; border:1px solid #bdc3c7; padding:3px 8px; border-radius:4px; font-size:12px; color:#34495e; font-weight:bold; box-shadow:0 1px 2px rgba(0,0,0,0.02);">${highlight(dept)}</span>`;
+                displayDepts.forEach(item => {
+                    let cutText = groupData.isNonsul 
+                        ? `<div style="font-size:10px; color:#34495e; margin-top:2px;">25경쟁: <b>${item.comp_rate_25 || '-'}</b></div>`
+                        : `<div style="font-size:10px; color:#e67e22; font-weight:bold; margin-top:2px;">25컷: <span style="color:#d35400;">${item.grade_2025 || item.cut_2025 || '-'}</span></div>`;
+
+                    deptsHtml += `
+                        <div class="dept-card">
+                            <div style="font-size:12px; font-weight:bold; color:#2c3e50; word-break:keep-all; line-height:1.2; height:28px; display:flex; align-items:center; justify-content:center;">${highlight(item.dept_name)}</div>
+                            ${cutText}
+                        </div>
+                    `;
                 });
 
                 if (groupData.depts.length > MAX_DEPTS) {
@@ -3655,7 +3631,7 @@ window.__renderSusiTable = function(grades) {
     }
 
     // =========================================================================
-    // 💡 [렌더링 분기] 기본 모드 -> 프리미엄 상세 카드 뷰
+    // 💡 [렌더링 분기] 2. 기본 모드 -> 프리미엄 상세 카드 뷰
     // =========================================================================
     let cardsHtml = '';
     filteredData.forEach(item => {
