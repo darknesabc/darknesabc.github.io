@@ -3346,20 +3346,19 @@ window.__checkCsatRequirement = function(reqStr, grades) {
 };
 
 // =========================================================
-// 🎯 4. 수시 테이블 렌더링 (프리미엄 상세 카드 리스트 뷰 & 초기 공백화면 적용)
+// 🎯 4. 수시 테이블 렌더링 (프리미엄 상세 카드 리스트 뷰 + '전형 상세 정보' 박스 추가)
 // =========================================================
 window.__renderSusiTable = function(grades) {
     const container = document.getElementById('susi-table-container');
     if (!container || !window.__susiMasterData) return;
 
-    // 💡 [핵심 추가 로직] 통합 검색 탭에서 아무런 필터나 검색어가 없을 때 "초기 안내 화면" 띄우기
+    // 💡 [초기 공백 화면 로직] 통합 검색 탭에서 아무런 필터가 없을 때
     if (window.__currentSusiTab === '통합 검색') {
         const isNoSearch = window.__susiFilterSearch.trim() === "";
         const isNoStream = window.__susiFilterStream === "전체";
         const isNoType = window.__susiFilterType === "전체";
-        const isNoGrade = window.__susiGradeFilter === "all"; // 내신 필터도 미적용 상태인지 확인
+        const isNoGrade = window.__susiGradeFilter === "all"; 
 
-        // 모든 조건이 기본값(선택 안 함)일 경우
         if (isNoSearch && isNoStream && isNoType && isNoGrade) {
             container.innerHTML = `
                 <div style="text-align:center; padding:80px 20px; background:#fff; border:2px dashed #bdc3c7; border-radius:12px; margin:15px 0; box-shadow:0 4px 10px rgba(0,0,0,0.02);">
@@ -3371,16 +3370,14 @@ window.__renderSusiTable = function(grades) {
                     </div>
                 </div>
             `;
-            return; // 여기서 함수를 종료하여 전체 리스트 렌더링을 막음 (공백 처리)
+            return; 
         }
     }
 
-    // 1) 전체 데이터에서 기본 필터 적용 (계열, 전형, 검색어)
+    // 1) 전체 데이터 필터 적용
     let filteredData = window.__susiMasterData;
 
-    if (window.__susiFilterStream !== '전체') {
-        filteredData = filteredData.filter(x => String(x.stream || "").includes(window.__susiFilterStream));
-    }
+    if (window.__susiFilterStream !== '전체') filteredData = filteredData.filter(x => String(x.stream || "").includes(window.__susiFilterStream));
 
     if (window.__susiFilterType !== '전체') {
         filteredData = filteredData.filter(x => {
@@ -3435,7 +3432,6 @@ window.__renderSusiTable = function(grades) {
         return;
     }
 
-    // 하이라이트 함수 (검색어 노란색 형광펜)
     const highlight = (text) => {
         if (!text) return "";
         if (!window.__susiFilterSearch) return text;
@@ -3443,7 +3439,6 @@ window.__renderSusiTable = function(grades) {
         return String(text).replace(regex, `<span style="background:#f1c40f; color:#000; padding:0 2px; border-radius:2px;">$1</span>`);
     };
 
-    // 정렬 (대학명 -> 학과명 가나다순)
     filteredData.sort((a, b) => {
         const uA = String(a.univ_name || ""); const uB = String(b.univ_name || "");
         if (uA !== uB) return uA.localeCompare(uB, 'ko');
@@ -3453,7 +3448,6 @@ window.__renderSusiTable = function(grades) {
     let cardsHtml = '';
     
     filteredData.forEach(item => {
-        // 1. 수능 최저 판독기 뱃지 디자인
         const reqStr = item.csat_req || '없음';
         const isMet = window.__checkCsatRequirement(reqStr, grades);
         
@@ -3469,27 +3463,37 @@ window.__renderSusiTable = function(grades) {
             </div>
         `;
 
-        // 2. 하단 상세 박스 테마 (논술 vs 교과/종합)
         const isNonsul = item.category === '논술';
-        const footerBg = isNonsul ? '#f4ecf7' : '#ebf5fb';
-        const footerBorder = isNonsul ? '#d7bde2' : '#d6eaf8';
-        const footerTitleColor = isNonsul ? '#8e44ad' : '#2980b9';
-        const footerTitle = isNonsul ? '[논술 상세 정보]' : '[일반 수시 상세]';
         
-        let footerDetails = '';
+        // 💡 [핵심 추가] 전형 상세 정보 박스 생성
+        let detailBoxHtml = '';
         if (isNonsul) {
-            footerDetails = `
-                출제범위: <span style="color:#2c3e50; font-weight:bold;">${item.exam_scope || '-'}</span><br>
-                시험정보: <span style="color:#2c3e50;">${item.exam_info || '-'}</span>
+            detailBoxHtml = `
+                <div style="background:#fdfdfd; border:1px solid #e2e8f0; border-radius:8px; padding:12px; margin-top:12px;">
+                    <div style="font-size:12px; color:#8e44ad; font-weight:bold; margin-bottom:6px;">📌 전형 상세 정보 (논술)</div>
+                    <div style="font-size:12px; color:#34495e; line-height:1.6; word-break:keep-all;">
+                        <span style="color:#7f8c8d; font-weight:bold; display:inline-block; width:60px;">출제범위:</span> ${item.exam_scope || '-'}<br>
+                        <span style="color:#7f8c8d; font-weight:bold; display:inline-block; width:60px;">논술유형:</span> ${item.nonsul_type || '-'}<br>
+                        <span style="color:#7f8c8d; font-weight:bold; display:inline-block; width:60px;">시험정보:</span> ${item.exam_info || '-'}<br>
+                        <span style="color:#7f8c8d; font-weight:bold; display:inline-block; width:60px;">내신반영:</span> ${item.gpa_subjects || '-'}
+                    </div>
+                </div>
             `;
         } else {
-            footerDetails = `
-                반영비율: <span style="color:#2c3e50; font-weight:bold;">${item.gpa_ratio || '-'}</span><br>
-                반영과목: <span style="color:#2c3e50;">${item.gpa_subjects || '-'}</span> <span style="color:#bdc3c7; margin:0 4px;">|</span> 진로선택: <span style="color:#2c3e50;">${item.career_subjects || '-'}</span>
+            detailBoxHtml = `
+                <div style="background:#fdfdfd; border:1px solid #e2e8f0; border-radius:8px; padding:12px; margin-top:12px;">
+                    <div style="font-size:12px; color:#2980b9; font-weight:bold; margin-bottom:6px;">📌 전형 상세 정보</div>
+                    <div style="font-size:12px; color:#34495e; line-height:1.6; word-break:keep-all;">
+                        <span style="color:#7f8c8d; font-weight:bold;">반영비율:</span> ${item.gpa_ratio || '-'}<br>
+                        <span style="color:#7f8c8d; font-weight:bold;">반영과목:</span> ${item.gpa_subjects || '-'} <span style="color:#bdc3c7; margin:0 4px;">|</span> <span style="color:#7f8c8d; font-weight:bold;">진로선택:</span> ${item.career_subjects || '-'}<br>
+                        <span style="color:#7f8c8d; font-weight:bold;">필요서류:</span> ${item.req_docs || '-'} <span style="color:#bdc3c7; margin:0 4px;">|</span> <span style="color:#7f8c8d; font-weight:bold;">복수지원:</span> ${item.multiple_apply || '-'}<br>
+                        ${item.changes_yoy && item.changes_yoy !== '-' ? `<span style="color:#e67e22; font-weight:bold;">전년대비:</span> ${item.changes_yoy}<br>` : ''}
+                        ${item.note && item.note !== '-' ? `<span style="color:#c0392b; font-weight:bold;">유의사항:</span> ${item.note}` : ''}
+                    </div>
+                </div>
             `;
         }
 
-        // 3. 3개년 입결/경쟁률 라벨 분기 처리
         const cutLabel = isNonsul ? '입결(논술)' : '입결(컷)';
         const cut25 = item.cut_2025 || item.grade_2025 || '-';
         const cut24 = item.cut_2024 || item.grade_2024 || '-';
@@ -3515,15 +3519,18 @@ window.__renderSusiTable = function(grades) {
                 <div>${csatBadgeHtml}</div>
             </div>
 
-            <div style="padding:15px 20px; background:#fbfbfc; display:grid; grid-template-columns: 1fr 1fr; gap:12px; border-bottom:1px solid #ecf0f1;">
-                <div style="background:#fff; border:1px solid #e2e8f0; padding:12px; border-radius:8px; box-shadow:0 1px 2px rgba(0,0,0,0.02);">
-                    <div style="font-size:11px; color:#95a5a6; margin-bottom:6px; font-weight:bold;">📝 전형방법</div>
-                    <div style="font-size:13px; color:#2c3e50; font-weight:bold; line-height:1.4; word-break:keep-all;">${item.selection_method || '-'}</div>
+            <div style="padding:15px 20px; background:#fbfbfc; border-bottom:1px solid #ecf0f1;">
+                <div style="display:grid; grid-template-columns: 1fr 1fr; gap:12px;">
+                    <div style="background:#fff; border:1px solid #e2e8f0; padding:12px; border-radius:8px; box-shadow:0 1px 2px rgba(0,0,0,0.02);">
+                        <div style="font-size:11px; color:#95a5a6; margin-bottom:6px; font-weight:bold;">📝 전형방법</div>
+                        <div style="font-size:13px; color:#2c3e50; font-weight:bold; line-height:1.4; word-break:keep-all;">${item.selection_method || '-'}</div>
+                    </div>
+                    <div style="background:#fff; border:1px solid #e2e8f0; padding:12px; border-radius:8px; box-shadow:0 1px 2px rgba(0,0,0,0.02);">
+                        <div style="font-size:11px; color:#95a5a6; margin-bottom:6px; font-weight:bold;">🎯 수능 최저학력기준</div>
+                        <div style="font-size:13px; color:#2c3e50; font-weight:bold; line-height:1.4; word-break:keep-all;">${reqStr}</div>
+                    </div>
                 </div>
-                <div style="background:#fff; border:1px solid #e2e8f0; padding:12px; border-radius:8px; box-shadow:0 1px 2px rgba(0,0,0,0.02);">
-                    <div style="font-size:11px; color:#95a5a6; margin-bottom:6px; font-weight:bold;">🎯 수능 최저학력기준</div>
-                    <div style="font-size:13px; color:#2c3e50; font-weight:bold; line-height:1.4; word-break:keep-all;">${reqStr}</div>
-                </div>
+                ${detailBoxHtml}
             </div>
 
             <div style="padding:15px 20px; background:#fdfdfd; display:grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap:12px;">
@@ -3541,13 +3548,11 @@ window.__renderSusiTable = function(grades) {
                 </div>
             </div>
 
-            <div style="padding:15px 20px; background:${footerBg}; border-top:1px solid ${footerBorder}; display:flex; justify-content:space-between; align-items:flex-end; flex-wrap:wrap; gap:10px;">
-                <div style="font-size:12px; color:#7f8c8d; line-height:1.6;">
-                    <b style="color:${footerTitleColor}; font-size:13px;">${footerTitle}</b><br>
-                    ${footerDetails}
-                </div>
-                ${item.exam_date && item.exam_date !== '-' ? `<div style="background:#e74c3c; color:#fff; padding:6px 12px; border-radius:20px; font-size:13px; font-weight:bold; box-shadow:0 2px 4px rgba(231,76,60,0.3);">📅 고사일: ${item.exam_date}</div>` : ''}
+            ${item.exam_date && item.exam_date !== '-' ? `
+            <div style="padding:12px 20px; background:${isNonsul ? '#f4ecf7' : '#ebf5fb'}; border-top:1px solid ${isNonsul ? '#d7bde2' : '#d6eaf8'}; display:flex; justify-content:flex-end;">
+                <div style="background:#e74c3c; color:#fff; padding:6px 12px; border-radius:20px; font-size:13px; font-weight:bold; box-shadow:0 2px 4px rgba(231,76,60,0.3);">📅 고사일: ${item.exam_date}</div>
             </div>
+            ` : ''}
         </div>
         `;
     });
