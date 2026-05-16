@@ -3088,9 +3088,9 @@ window.__susiFilterType = "전체";       // 💡 [추가] 전형 필터 (교과
 
 // 💡 통합 검색(내신 필터)용 전역 변수
 window.__susiGradeFilter = "all";
-window.__susiGpaValue = 2.5;
-window.__susiCustomMin = 1.0;
-window.__susiCustomMax = 3.0;
+window.__susiGpaValue = "";
+window.__susiCustomMin = "";
+window.__susiCustomMax = "";
 
 // =========================================================
 // 🎯 1. 수시 지원 시뮬레이션 보드 메인
