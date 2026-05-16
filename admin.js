@@ -3194,8 +3194,8 @@ window.__renderSusiMainLayout = function(grades) {
     // 💡 [신규 추가] 전체보기 버튼들 (ON/OFF 상태에 따라 색상 반전)
     const viewAllBtnsHtml = `
         <div style="display:flex; align-items:center; gap:6px; margin-left:auto; border-left:2px solid #bdc3c7; padding-left:12px;">
-            <button onclick="window.__toggleSusiViewAll('인문')" style="background:${window.__susiViewAllMode && window.__susiViewAllStream === '인문' ? '#8e44ad' : '#f4f6f7'}; color:${window.__susiViewAllMode && window.__susiViewAllStream === '인문' ? '#fff' : '#8e44ad'}; border:1px solid #8e44ad; padding:5px 10px; border-radius:4px; font-size:12px; font-weight:bold; cursor:pointer; transition:0.2s; box-shadow:0 1px 2px rgba(0,0,0,0.05);">📖 인문 전체보기</button>
-            <button onclick="window.__toggleSusiViewAll('자연')" style="background:${window.__susiViewAllMode && window.__susiViewAllStream === '자연' ? '#27ae60' : '#f4f6f7'}; color:${window.__susiViewAllMode && window.__susiViewAllStream === '자연' ? '#fff' : '#27ae60'}; border:1px solid #27ae60; padding:5px 10px; border-radius:4px; font-size:12px; font-weight:bold; cursor:pointer; transition:0.2s; box-shadow:0 1px 2px rgba(0,0,0,0.05);">🔬 자연 전체보기</button>
+            <button type="button" onclick="window.__toggleSusiViewAll('인문')" style="background:${window.__susiViewAllMode && window.__susiViewAllStream === '인문' ? '#8e44ad' : '#f4f6f7'}; color:${window.__susiViewAllMode && window.__susiViewAllStream === '인문' ? '#fff' : '#8e44ad'}; border:1px solid #8e44ad; padding:5px 10px; border-radius:4px; font-size:12px; font-weight:bold; cursor:pointer; transition:0.2s; box-shadow:0 1px 2px rgba(0,0,0,0.05);">📖 인문 전체보기</button>
+            <button type="button" onclick="window.__toggleSusiViewAll('자연')" style="background:${window.__susiViewAllMode && window.__susiViewAllStream === '자연' ? '#27ae60' : '#f4f6f7'}; color:${window.__susiViewAllMode && window.__susiViewAllStream === '자연' ? '#fff' : '#27ae60'}; border:1px solid #27ae60; padding:5px 10px; border-radius:4px; font-size:12px; font-weight:bold; cursor:pointer; transition:0.2s; box-shadow:0 1px 2px rgba(0,0,0,0.05);">🔬 자연 전체보기</button>
         </div>
     `;
 
@@ -3267,7 +3267,7 @@ window.__renderSusiMainLayout = function(grades) {
 };
 
 // =========================================================
-// 🎯 3. 액션 핸들러 및 상태 동기화
+// 🎯 3. 액션 핸들러 및 상태 동기화 (충돌 버그 완벽 해결)
 // =========================================================
 window.__toggleSusiCustomGrade = function(val) {
     window.__susiGradeFilter = val;
@@ -3279,7 +3279,12 @@ window.__changeSusiTab = function(tabName) {
     window.__currentSusiTab = tabName;
     window.__susiFilterSearch = ""; 
     window.__susiFilterStream = "전체";
-    window.__susiFilterType = "전체"; // 탭 변경 시 필터 초기화
+    window.__susiFilterType = "전체"; 
+    
+    // 💡 탭을 변경하면 [전체보기] 모드도 자동으로 꺼지도록 초기화
+    window.__susiViewAllMode = false;
+    window.__susiViewAllStream = '';
+
     const score = window.__currentStudentScores.find(s => s.exam_label === window.__currentSummaryExam) || {};
     const grades = {
         kor: Number(score.kor_exp_grade) || 9, math: Number(score.math_exp_grade) || 9, eng: Number(score.eng_grade) || 9,
@@ -3288,8 +3293,8 @@ window.__changeSusiTab = function(tabName) {
     window.__renderSusiMainLayout(grades); 
 };
 
-window.__executeSusiSearch = function() {
-    // UI에 있는 모든 입력값들을 실시간으로 전역 변수에 저장
+// 💡 [핵심 수정] 어떤 탭이든 관계없이 모든 필터 값을 실시간으로 전역 변수에 저장하도록 구조 변경
+window.__executeSusiSearch = function(skipRender = false) {
     const searchInput = document.getElementById('susi-search-input');
     const streamSelect = document.getElementById('susi-stream-filter');
     const typeSelect = document.getElementById('susi-type-filter');
@@ -3298,24 +3303,52 @@ window.__executeSusiSearch = function() {
     if (streamSelect) window.__susiFilterStream = streamSelect.value;
     if (typeSelect) window.__susiFilterType = typeSelect.value;
 
-    if (window.__currentSusiTab === '통합 검색') {
-        const gpaInput = document.getElementById('susi-my-gpa');
-        const filterSelect = document.getElementById('susi-grade-filter');
-        const minInput = document.getElementById('susi-min-gpa');
-        const maxInput = document.getElementById('susi-max-gpa');
-        
-        if (gpaInput) window.__susiGpaValue = parseFloat(gpaInput.value) || "";
-        if (filterSelect) window.__susiGradeFilter = filterSelect.value;
-        if (minInput) window.__susiCustomMin = parseFloat(minInput.value) || "";
-        if (maxInput) window.__susiCustomMax = parseFloat(maxInput.value) || "";
-    }
+    const gpaInput = document.getElementById('susi-my-gpa');
+    const filterSelect = document.getElementById('susi-grade-filter');
+    const minInput = document.getElementById('susi-min-gpa');
+    const maxInput = document.getElementById('susi-max-gpa');
+    
+    if (gpaInput) window.__susiGpaValue = parseFloat(gpaInput.value) || 2.5;
+    if (filterSelect) window.__susiGradeFilter = filterSelect.value;
+    if (minInput) window.__susiCustomMin = parseFloat(minInput.value) || 1.0;
+    if (maxInput) window.__susiCustomMax = parseFloat(maxInput.value) || 3.0;
 
+    // 💡 사용자가 필터(콤보박스)나 검색어를 조작했다는 것은 '전체보기'를 끄고 직접 찾겠다는 의도!
+    if (!skipRender) {
+        window.__susiViewAllMode = false;
+        window.__susiViewAllStream = '';
+
+        const score = window.__currentStudentScores.find(s => s.exam_label === window.__currentSummaryExam) || {};
+        const grades = {
+            kor: Number(score.kor_exp_grade) || 9, math: Number(score.math_exp_grade) || 9, eng: Number(score.eng_grade) || 9,
+            tam1: Number(score.tam1_exp_grade) || 9, tam2: Number(score.tam2_exp_grade) || 9, hist: Number(score.extra_grade) || 9
+        };
+        
+        // 필터를 조작하면 버튼 색상 등을 원상복구하기 위해 전체 레이아웃을 다시 그림
+        window.__renderSusiMainLayout(grades); 
+    }
+};
+
+// 💡 [전체보기 버튼] 액션 핸들러
+window.__toggleSusiViewAll = function(stream) {
+    // 버튼을 누르는 순간 입력되어 있던 내신이나 검색어 정보가 날아가지 않도록 우선 저장 (skipRender=true)
+    window.__executeSusiSearch(true);
+
+    if (window.__susiViewAllMode && window.__susiViewAllStream === stream) {
+        window.__susiViewAllMode = false; // 이미 켜져있으면 끄기
+        window.__susiViewAllStream = '';
+    } else {
+        window.__susiViewAllMode = true;  // 켜기
+        window.__susiViewAllStream = stream;
+    }
+    
     const score = window.__currentStudentScores.find(s => s.exam_label === window.__currentSummaryExam) || {};
     const grades = {
         kor: Number(score.kor_exp_grade) || 9, math: Number(score.math_exp_grade) || 9, eng: Number(score.eng_grade) || 9,
         tam1: Number(score.tam1_exp_grade) || 9, tam2: Number(score.tam2_exp_grade) || 9, hist: Number(score.extra_grade) || 9
     };
-    window.__renderSusiTable(grades); 
+    
+    window.__renderSusiMainLayout(grades); 
 };
 
 // 최저 판독 엔진
