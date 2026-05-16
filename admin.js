@@ -3071,8 +3071,6 @@ if (memo === '취소') { memo = '-'; }
     } catch (err) { contentArea.innerHTML = `<div style="text-align:center;"><h3 style="color:#e74c3c;">오류 발생</h3><p>${err.message}</p></div>`; }
 };
 
-init();
-
 // =========================================================
 // 💡 글로벌 상태 변수 (수시 전용)
 // =========================================================
@@ -3492,3 +3490,5 @@ window.__renderSusiTable = function(grades) {
     html += `</tbody></table>`;
     container.innerHTML = html;
 };
+
+init();
