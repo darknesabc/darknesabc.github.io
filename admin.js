@@ -3185,6 +3185,9 @@ window.__renderSusiMainLayout = function(grades) {
     window.__renderSusiTable(grades);
 };
 
+// =========================================================
+// 🎯 2. 컨트롤 액션 (검색, 필터, 탭 전환) - 🌟 버그 완벽 수정본
+// =========================================================
 window.__changeSusiTab = function(tabName) {
     window.__currentSusiTab = tabName;
     window.__susiFilterSearch = ""; 
@@ -3194,7 +3197,40 @@ window.__changeSusiTab = function(tabName) {
         kor: Number(score.kor_exp_grade) || 9, math: Number(score.math_exp_grade) || 9, eng: Number(score.eng_grade) || 9,
         tam1: Number(score.tam1_exp_grade) || 9, tam2: Number(score.tam2_exp_grade) || 9, hist: Number(score.extra_grade) || 9
     };
-    window.__renderSusiMainLayout(grades); // 창을 닫지 않고 구조 내부 레이아웃만 갱신 (핵심 버그 수정)
+    window.__renderSusiMainLayout(grades); 
+};
+
+window.__executeSusiSearch = function() {
+    const input = document.getElementById('susi-search-input');
+    if (input) {
+        window.__susiFilterSearch = input.value.trim();
+        const score = window.__currentStudentScores.find(s => s.exam_label === window.__currentSummaryExam) || {};
+        const grades = {
+            kor: Number(score.kor_exp_grade) || 9, math: Number(score.math_exp_grade) || 9, eng: Number(score.eng_grade) || 9,
+            tam1: Number(score.tam1_exp_grade) || 9, tam2: Number(score.tam2_exp_grade) || 9, hist: Number(score.extra_grade) || 9
+        };
+
+        // 💡 [버그 수정 1] 검색 시 창이 꺼지는 현상 방지! (레이아웃 갱신 함수로 올바르게 호출)
+        if (window.__currentSusiTab !== '통합 검색' && window.__susiFilterSearch !== "") {
+            window.__currentSusiTab = '통합 검색';
+            window.__renderSusiMainLayout(grades); 
+        } else {
+            window.__renderSusiTable(grades);
+        }
+    }
+};
+
+window.__filterSusiStream = function(streamName) {
+    window.__susiFilterStream = streamName;
+    const score = window.__currentStudentScores.find(s => s.exam_label === window.__currentSummaryExam) || {};
+    const grades = {
+        kor: Number(score.kor_exp_grade) || 9, math: Number(score.math_exp_grade) || 9, eng: Number(score.eng_grade) || 9,
+        tam1: Number(score.tam1_exp_grade) || 9, tam2: Number(score.tam2_exp_grade) || 9, hist: Number(score.extra_grade) || 9
+    };
+    
+    // 💡 [버그 수정 2] 복잡한 HTML 탐색(querySelectorAll) 삭제! 
+    // 전체 레이아웃을 다시 그리게 하여 버튼 색상과 데이터 필터링을 한 번에 완벽하게 동기화합니다.
+    window.__renderSusiMainLayout(grades);
 };
 
 // =========================================================
