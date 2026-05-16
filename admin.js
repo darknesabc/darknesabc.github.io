@@ -3465,7 +3465,7 @@ window.__renderSusiTable = function(grades) {
 
         const isNonsul = item.category === '논술';
         
-        // 💡 [핵심 추가] 전형 상세 정보 박스 생성
+        // 💡 [핵심 추가] 전형 상세 정보 박스 생성 (인원 증감 추가)
         let detailBoxHtml = '';
         if (isNonsul) {
             detailBoxHtml = `
@@ -3487,7 +3487,8 @@ window.__renderSusiTable = function(grades) {
                         <span style="color:#7f8c8d; font-weight:bold;">반영비율:</span> ${item.gpa_ratio || '-'}<br>
                         <span style="color:#7f8c8d; font-weight:bold;">반영과목:</span> ${item.gpa_subjects || '-'} <span style="color:#bdc3c7; margin:0 4px;">|</span> <span style="color:#7f8c8d; font-weight:bold;">진로선택:</span> ${item.career_subjects || '-'}<br>
                         <span style="color:#7f8c8d; font-weight:bold;">필요서류:</span> ${item.req_docs || '-'} <span style="color:#bdc3c7; margin:0 4px;">|</span> <span style="color:#7f8c8d; font-weight:bold;">복수지원:</span> ${item.multiple_apply || '-'}<br>
-                        ${item.changes_yoy && item.changes_yoy !== '-' ? `<span style="color:#e67e22; font-weight:bold;">전년대비:</span> ${item.changes_yoy}<br>` : ''}
+                        ${item.quota_change && item.quota_change !== '-' ? `<span style="color:#3498db; font-weight:bold;">인원증감:</span> ${item.quota_change}<br>` : ''}
+                        ${item.changes_yoy && item.changes_yoy !== '-' ? `<span style="color:#e67e22; font-weight:bold;">전형변경:</span> ${item.changes_yoy}<br>` : ''}
                         ${item.note && item.note !== '-' ? `<span style="color:#c0392b; font-weight:bold;">유의사항:</span> ${item.note}` : ''}
                     </div>
                 </div>
