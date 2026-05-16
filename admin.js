@@ -3345,9 +3345,7 @@ window.__checkCsatRequirement = function(reqStr, grades) {
     } catch (e) { return null; }
 };
 
-window.__renderSusiTable = function(grades) {
-
-    // =========================================================
+// =========================================================
 // 🎯 4. 수시 테이블 렌더링 (모든 탭 초기 안내 화면 및 프리미엄 카드 뷰 적용)
 // =========================================================
 window.__renderSusiTable = function(grades) {
@@ -3571,5 +3569,5 @@ window.__renderSusiTable = function(grades) {
 
     container.innerHTML = `<div style="padding:10px; max-width:1200px; margin:0 auto; background:#f4f6f7; border-radius:8px;">${cardsHtml}</div>`;
 };
-    
+
 init();
