@@ -3135,7 +3135,7 @@ window.__openSusiSimulation = async function() {
 };
 
 // =========================================================
-// 🎯 2. 메인 레이아웃 (모든 탭 1줄 일렬 배치 전역 적용)
+// 🎯 2. 메인 레이아웃 (탭별 전형 필터 옵션 동적 분기 처리)
 // =========================================================
 window.__renderSusiMainLayout = function(grades) {
     const area = document.getElementById('susi-simulation-area');
@@ -3151,7 +3151,35 @@ window.__renderSusiMainLayout = function(grades) {
         return `<button onclick="window.__changeSusiTab('${cat}')" style="background:${isActive?'#8e44ad':'#fff'}; color:${isActive?'#fff':'#7f8c8d'}; border:${isActive?'1px solid #8e44ad':'1px solid #dee2e6'}; padding:5px 14px; border-radius:20px; font-size:12px; font-weight:bold; cursor:pointer; transition:0.2s;">${cat}</button>`;
     }).join('');
 
-    // 💡 모든 탭에서 [내 내신 -> 내신 필터 -> 계열 -> 전형 -> 검색]이 한 줄로 나오도록 단일화
+    // 💡 [핵심 로직] 현재 선택된 탭에 따라 '전형 필터' HTML을 동적으로 생성합니다.
+    let typeFilterHtml = '';
+    
+    // 1. '논술' 탭일 때는 전형 필터 자체를 아예 그리지 않음 (숨김)
+    if (window.__currentSusiTab !== '논술') {
+        
+        // 2. 통합 검색이 아닌 개별 탭(의예~교대)일 경우 논술 옵션 제외
+        let typeOptions = `
+            <option value="전체" ${window.__susiFilterType==='전체'?'selected':''}>전체</option>
+            <option value="교과" ${window.__susiFilterType==='교과'?'selected':''}>교과</option>
+            <option value="종합" ${window.__susiFilterType==='종합'?'selected':''}>종합</option>
+        `;
+        
+        // 3. '통합 검색' 탭일 때만 논술 옵션 추가
+        if (window.__currentSusiTab === '통합 검색') {
+            typeOptions += `<option value="논술" ${window.__susiFilterType==='논술'?'selected':''}>논술</option>`;
+        }
+
+        typeFilterHtml = `
+            <div style="display:flex; align-items:center; gap:6px;">
+                <span style="color:#34495e; font-size:12px; font-weight:bold;">전형:</span>
+                <select id="susi-type-filter" onchange="window.__executeSusiSearch()" style="padding:5px 8px; border-radius:4px; border:1px solid #bdc3c7; font-size:12px; color:#2c3e50; outline:none; cursor:pointer;">
+                    ${typeOptions}
+                </select>
+            </div>
+        `;
+    }
+
+    // 💡 모든 탭에서 [내 내신 -> 내신 필터 -> 계열 -> (전형) -> 검색]이 한 줄로 나오도록 단일화
     const controlHtml = `
         <div style="display:flex; align-items:center; flex-wrap:wrap; gap:12px; width:100%; background:#f4f6f7; padding:10px 15px; border-radius:8px; border:1px solid #ecf0f1;">
             
@@ -3189,15 +3217,7 @@ window.__renderSusiMainLayout = function(grades) {
                 </select>
             </div>
 
-            <div style="display:flex; align-items:center; gap:6px;">
-                <span style="color:#34495e; font-size:12px; font-weight:bold;">전형:</span>
-                <select id="susi-type-filter" onchange="window.__executeSusiSearch()" style="padding:5px 8px; border-radius:4px; border:1px solid #bdc3c7; font-size:12px; color:#2c3e50; outline:none; cursor:pointer;">
-                    <option value="전체" ${window.__susiFilterType==='전체'?'selected':''}>전체</option>
-                    <option value="교과" ${window.__susiFilterType==='교과'?'selected':''}>교과</option>
-                    <option value="종합" ${window.__susiFilterType==='종합'?'selected':''}>종합</option>
-                    <option value="논술" ${window.__susiFilterType==='논술'?'selected':''}>논술</option>
-                </select>
-            </div>
+            ${typeFilterHtml}
 
             <div style="display:flex; align-items:center; gap:6px; margin-left:auto;">
                 <span style="color:#34495e; font-size:12px; font-weight:bold;">🔍 검색:</span>
