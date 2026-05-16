@@ -3359,7 +3359,7 @@ window.__checkCsatRequirement = function(reqStr, grades) {
 };
 
 // =========================================================
-// 🎯 4. 수시 테이블 렌더링 (카드 뷰 vs 6단 압축 전체보기 뷰 분기)
+// 🎯 4. 수시 테이블 렌더링 (카드 뷰 vs 6단 압축 그룹핑 전체보기 뷰)
 // =========================================================
 window.__renderSusiTable = function(grades) {
     const container = document.getElementById('susi-table-container');
@@ -3452,9 +3452,11 @@ window.__renderSusiTable = function(grades) {
     });
 
     // =========================================================================
-    // 💡 [렌더링 분기] 전체보기 모드 ON -> 6단 압축 테이블 출력 (이미지 1번 형태)
+    // 💡 [렌더링 분기] 전체보기 모드 ON -> 이미지 2번 방식의 고밀도 그룹핑 뷰
     // =========================================================================
     if (window.__susiViewAllMode) {
+        
+        // 1차 그룹핑: 대학 단위
         const univGroups = {};
         filteredData.forEach(item => {
             const uName = String(item.univ_name || "기타대학").trim();
@@ -3472,47 +3474,93 @@ window.__renderSusiTable = function(grades) {
             <style>
                 .susi-board-real { width:100%; border-collapse:collapse; text-align:left; font-size:12px; color:#2c3e50; min-width:1000px; background:#fff; }
                 .susi-board-real th { background:rgba(0,0,0,0.03); padding:10px; font-weight:bold; color:#34495e; text-align:center; border-bottom:1px solid #dee2e6; border-right:1px solid #ecf0f1; position:sticky; top:43px; z-index:9; }
-                .susi-board-real td { padding:8px 10px; border-bottom:1px solid #ecf0f1; border-right:1px solid #ecf0f1; vertical-align:middle; background:#fdfdfd; }
+                .susi-board-real td { padding:8px 10px; border-bottom:1px solid #ecf0f1; border-right:1px solid #ecf0f1; vertical-align:top; background:#fdfdfd; }
+                .dept-card { background:#fff; border:1px solid #e2e8f0; border-radius:6px; padding:6px; text-align:center; box-shadow:0 1px 2px rgba(0,0,0,0.02); display:inline-block; width:130px; }
             </style>
             <table class="susi-board-real">
-                <thead><tr><th style="width:12%;">대학명</th><th style="width:28%;">전형 및 모집단위</th><th style="width:20%;">수능최저기준</th><th style="width:8%;">최저판독</th><th style="width:12%;">입결/경쟁률</th><th style="width:20%;">전형방법 및 일정</th></tr></thead>
+                <thead><tr><th style="width:12%;">대학명</th><th style="width:18%;">전형 / 평가방법</th><th style="width:18%;">수능최저기준</th><th style="width:52%;">모집단위 및 입결 (클릭불가)</th></tr></thead>
                 <tbody>
         `;
 
         Object.keys(univGroups).forEach(univ => {
-            const items = univGroups[univ];
-            items.forEach((item, index) => {
-                html += `<tr>`;
-                if (index === 0) html += `<td rowspan="${items.length}" style="text-align:center; font-weight:900; font-size:13px; color:#2c3e50; border-right:2px solid #ecf0f1; background:#fbfbfc;">${highlight(univ)}</td>`;
-
-                const reqStr = item.csat_req || '없음';
-                const isMet = window.__checkCsatRequirement(reqStr, grades);
-                let statusBadge = `<span style="color:#7f8c8d; font-size:16px;">🟡</span>`;
-                if (isMet === true) statusBadge = `<span style="color:#2ecc71; font-size:18px;">🟢</span>`;
-                if (isMet === false) statusBadge = `<span style="color:#e74c3c; font-size:18px;">🔴</span>`;
-
+            const itemsInUniv = univGroups[univ];
+            
+            // 💡 2차 그룹핑: 같은 대학 내에서 "전형명 + 평가방법 + 최저 + 일정"이 모두 같은 것끼리 묶음
+            const subGroups = {};
+            itemsInUniv.forEach(item => {
                 const isNonsul = item.category === '논술';
-                let cutText = isNonsul 
-                    ? `<div style="font-size:11px; color:#34495e; line-height:1.4;"><span style="color:#7f8c8d;">25경쟁:</span> <b>${item.comp_rate_25 || '-'}</b><br><span style="color:#7f8c8d;">24경쟁:</span> ${item.comp_rate_24 || '-'}</div>`
-                    : `<div style="font-size:11px; color:#34495e; line-height:1.4;"><span style="color:#e67e22; font-weight:bold;">25컷:</span> <b>${item.grade_2025 || '-'}</b><br><span style="color:#7f8c8d;">24컷:</span> ${item.grade_2024 || '-'}</div>`;
+                const admKey = highlight(item.admission_name || item.admission_type) || "일반";
+                const methodKey = item.selection_method || "-";
+                const reqKey = item.csat_req || "없음";
+                const dateKey = item.exam_date || "-";
+                // 고유 키 생성
+                const groupKey = `${admKey}_${methodKey}_${reqKey}_${dateKey}`;
+                
+                if (!subGroups[groupKey]) subGroups[groupKey] = {
+                    admName: admKey,
+                    method: methodKey,
+                    req: reqKey,
+                    date: dateKey,
+                    isNonsul: isNonsul,
+                    depts: []
+                };
+                subGroups[groupKey].depts.push(item);
+            });
 
+            const subGroupKeys = Object.keys(subGroups);
+            const totalRows = subGroupKeys.length;
+
+            subGroupKeys.forEach((key, index) => {
+                const groupData = subGroups[key];
+                
+                html += `<tr>`;
+                
+                // 1열: 대학명 (첫 번째 행에만 rowspan으로 출력)
+                if (index === 0) {
+                    html += `<td rowspan="${totalRows}" style="text-align:center; font-weight:900; font-size:14px; color:#2c3e50; border-right:2px solid #ecf0f1; background:#fbfbfc; vertical-align:middle;">${highlight(univ)}</td>`;
+                }
+
+                // 2열: 전형 및 평가방법 + 고사일정
                 html += `
                     <td>
-                        <div style="display:flex; align-items:center; flex-wrap:wrap; gap:4px; margin-bottom:2px;">
-                            <span style="color:${isNonsul ? '#3498db' : '#e67e22'}; font-weight:bold; font-size:11px;">[${highlight(item.admission_name || item.admission_type)}]</span>
-                            <span style="color:#2c3e50; font-weight:bold; font-size:12px;">${highlight(item.dept_name)}</span>
-                        </div>
+                        <div style="color:${groupData.isNonsul ? '#3498db' : '#e67e22'}; font-weight:bold; font-size:12px; margin-bottom:4px;">[${groupData.admName}]</div>
+                        <div style="color:#34495e; font-size:11px; line-height:1.4; word-break:keep-all; margin-bottom:6px;">${groupData.method}</div>
+                        ${groupData.date && groupData.date !== '-' ? `<div style="font-size:10px; color:#fff; background:#e74c3c; padding:2px 6px; border-radius:12px; display:inline-block; font-weight:bold;">📅 ${groupData.date}</div>` : ''}
                     </td>
-                    <td style="color:#34495e; font-size:11px; line-height:1.4;">${reqStr}</td>
-                    <td style="text-align:center;">${statusBadge}</td>
-                    <td>${cutText}</td>
+                `;
+
+                // 3열: 수능 최저 기준 + 뱃지
+                const isMet = window.__checkCsatRequirement(groupData.req, grades);
+                let statusBadge = `<span style="color:#7f8c8d; font-size:14px; margin-left:4px;">🟡</span>`;
+                if (isMet === true) statusBadge = `<span style="color:#2ecc71; font-size:14px; margin-left:4px;">🟢</span>`;
+                if (isMet === false) statusBadge = `<span style="color:#e74c3c; font-size:14px; margin-left:4px;">🔴</span>`;
+                
+                html += `
                     <td>
-                        <div style="font-size:11px; color:#2c3e50; font-weight:bold; line-height:1.4;">${item.selection_method || '-'}</div>
-                        ${item.exam_date && item.exam_date !== '-' ? `<div style="font-size:10px; color:#fff; background:#e74c3c; padding:2px 6px; border-radius:12px; display:inline-block; margin-top:4px; font-weight:bold;">📅 ${item.exam_date}</div>` : ''}
+                        <div style="color:#34495e; font-size:11px; line-height:1.5;">${groupData.req} ${statusBadge}</div>
                     </td>
-                </tr>`;
+                `;
+
+                // 4열: 모집단위 박스들 (이미지 2번처럼 가로로 쫙 펼침)
+                let deptsHtml = '<div style="display:flex; flex-wrap:wrap; gap:6px;">';
+                groupData.depts.forEach(item => {
+                    let cutText = groupData.isNonsul 
+                        ? `<div style="font-size:10px; color:#34495e; margin-top:2px;">25경쟁: <b>${item.comp_rate_25 || '-'}</b></div>`
+                        : `<div style="font-size:10px; color:#e67e22; font-weight:bold; margin-top:2px;">25컷: <span style="color:#d35400;">${item.grade_2025 || item.cut_2025 || '-'}</span></div>`;
+
+                    deptsHtml += `
+                        <div class="dept-card">
+                            <div style="font-size:12px; font-weight:bold; color:#2c3e50; word-break:keep-all; line-height:1.2; height:28px; display:flex; align-items:center; justify-content:center;">${highlight(item.dept_name)}</div>
+                            ${cutText}
+                        </div>
+                    `;
+                });
+                deptsHtml += '</div>';
+
+                html += `<td>${deptsHtml}</td></tr>`;
             });
         });
+
         html += `</tbody></table>`;
         container.innerHTML = html;
         return;
