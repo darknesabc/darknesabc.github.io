@@ -3372,12 +3372,13 @@ window.__renderSusiMainLayout = function(grades) {
 };
 
 // =========================================================
-// 🎯 5. 테이블 및 카드 렌더링 엔진
+// 🎯 4. 수시 테이블 렌더링 (충돌 해결 + 고밀도 그룹핑 뷰 완벽 적용)
 // =========================================================
 window.__renderSusiTable = function(grades) {
     const container = document.getElementById('susi-table-container');
     if (!container || !window.__susiMasterData) return;
 
+    // [초기 공백 화면 로직] (전체보기 모드가 아닐 때만 작동)
     if (!window.__susiViewAllMode) {
         const isNoSearch = window.__susiFilterSearch.trim() === "";
         const isNoStream = window.__susiFilterStream === "전체";
@@ -3402,16 +3403,19 @@ window.__renderSusiTable = function(grades) {
 
     let filteredData = window.__susiMasterData;
 
+    // 1) 탭 카테고리 필터링
     if (window.__currentSusiTab !== '통합 검색') {
         filteredData = filteredData.filter(x => String(x.category || "").trim() === window.__currentSusiTab);
     }
 
+    // 2) 계열 필터링 (전체보기 모드 ON이면 __susiViewAllStream 강제 적용, 아니면 일반 스트림 적용)
     if (window.__susiViewAllMode) {
         filteredData = filteredData.filter(x => String(x.stream || "").includes(window.__susiViewAllStream));
     } else if (window.__susiFilterStream !== '전체') {
         filteredData = filteredData.filter(x => String(x.stream || "").includes(window.__susiFilterStream));
     }
 
+    // 3) 전형 & 검색어 필터링
     if (window.__susiFilterType !== '전체') {
         filteredData = filteredData.filter(x => {
             const admType = String(x.admission_type || ""); const admName = String(x.admission_name || ""); const cat = String(x.category || "");
@@ -3427,6 +3431,7 @@ window.__renderSusiTable = function(grades) {
         filteredData = filteredData.filter(x => `${x.univ_name} ${x.dept_name} ${x.admission_name} ${x.admission_type} ${x.category}`.toLowerCase().includes(keyword));
     }
 
+    // 4) 내신 필터 (전체보기 모드일 때는 무시하고 전부 표시)
     if (!window.__susiViewAllMode && window.__susiGradeFilter !== 'all') {
         const myGpa = window.__susiGpaValue; const mode = window.__susiGradeFilter; const cMin = window.__susiCustomMin; const cMax = window.__susiCustomMax;
         filteredData = filteredData.filter(item => {
@@ -3453,6 +3458,7 @@ window.__renderSusiTable = function(grades) {
         return String(text).replace(regex, `<span style="background:#f1c40f; color:#000; padding:0 2px; border-radius:2px;">$1</span>`);
     };
 
+    // 정시 대학 서열 기준 정렬 엔진
     const univRankOrder = [
         "서울대", "연세대", "고려대", "서강대", "성균관대", "한양대", 
         "이화여대", "중앙대", "경희대", "한국외대", "서울시립대", 
@@ -3510,6 +3516,9 @@ window.__renderSusiTable = function(grades) {
         return String(a.dept_name || "").localeCompare(String(b.dept_name || ""), 'ko');
     });
 
+    // =========================================================================
+    // 💡 [렌더링 분기 1] 전체보기 모드 ON -> 고밀도 요약 그룹핑 테이블 (복구됨!)
+    // =========================================================================
     if (window.__susiViewAllMode) {
         const univGroups = {};
         const orderedUnivs = [];
@@ -3556,6 +3565,7 @@ window.__renderSusiTable = function(grades) {
                 const admKey = highlight(item.admission_name || item.admission_type) || "일반";
                 const reqKey = item.csat_req || "없음";
                 const dateKey = item.exam_date || "-";
+                // 고유 식별 키
                 const groupKey = `${admKey}_${reqKey}_${dateKey}`;
                 
                 if (!subGroups[groupKey]) {
@@ -3577,11 +3587,13 @@ window.__renderSusiTable = function(grades) {
                 const groupData = subGroups[key];
                 html += `<tr>`;
                 
+                // 1열: 대학명 (첫 줄에만 rowspan 병합)
                 if (index === 0) {
                     html += `<td rowspan="${totalRows}" style="text-align:center; font-weight:900; font-size:14px; color:#2c3e50; border-right:2px solid #ecf0f1; background:#fbfbfc; vertical-align:middle;">${highlight(univ)}</td>`;
                 }
 
-                const MAX_DEPTS = 3;
+                // 2열: 전형 및 모집단위 (학과 이름 배지로 나열, 넘치면 ...외 N개)
+                const MAX_DEPTS = 3; 
                 let deptsHtml = `
                     <div style="color:${groupData.isNonsul ? '#3498db' : '#e67e22'}; font-weight:bold; font-size:12px; margin-bottom:6px;">[${groupData.admName}]</div>
                     <div style="display:flex; flex-wrap:wrap; gap:4px; align-items:center;">
@@ -3631,6 +3643,9 @@ window.__renderSusiTable = function(grades) {
         return;
     }
 
+    // =========================================================================
+    // 💡 [렌더링 분기] 2. 기본 모드 -> 프리미엄 상세 카드 뷰
+    // =========================================================================
     let cardsHtml = '';
     filteredData.forEach(item => {
         const reqStr = item.csat_req || '없음';
