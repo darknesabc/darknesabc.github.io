@@ -3175,8 +3175,8 @@ window.__renderSusiMainLayout = function(grades) {
                 </div>
                 <div style="display:flex; gap:4px; background:#ecf0f1; padding:3px; border-radius:6px;">
                     <button onclick="window.__filterSusiStream('전체')" style="background:${window.__susiFilterStream==='전체'?'#34495e':'transparent'}; color:${window.__susiFilterStream==='전체'?'#fff':'#7f8c8d'}; border:none; padding:4px 12px; border-radius:4px; font-weight:bold; font-size:11px; cursor:pointer;">전체계열</button>
-                    <button onclick="window.__filterSusiStream('인문')" style="background:${window.__susiFilterStream==='인문'?'#8e44ad':'transparent'}; color:${window.__susiFilterStream==='인문'?'#fff':'#7f8c8d'}; border:none; padding:4px 12px; border-radius:4px; font-weight:bold; font-size:11px; cursor:pointer;">인문만</button>
-                    <button onclick="window.__filterSusiStream('자연')" style="background:${window.__susiFilterStream==='자연'?'#27ae60':'transparent'}; color:${window.__susiFilterStream==='자연'?'#fff':'#7f8c8d'}; border:none; padding:4px 12px; border-radius:4px; font-weight:bold; font-size:11px; cursor:pointer;">자연만</button>
+                    <button onclick="window.__filterSusiStream('인문')" style="background:${window.__susiFilterStream==='인문'?'#8e44ad':'transparent'}; color:${window.__susiFilterStream==='인문'?'#fff':'#7f8c8d'}; border:none; padding:4px 12px; border-radius:4px; font-weight:bold; font-size:11px; cursor:pointer;">인문계열</button>
+                    <button onclick="window.__filterSusiStream('자연')" style="background:${window.__susiFilterStream==='자연'?'#27ae60':'transparent'}; color:${window.__susiFilterStream==='자연'?'#fff':'#7f8c8d'}; border:none; padding:4px 12px; border-radius:4px; font-weight:bold; font-size:11px; cursor:pointer;">자연계열</button>
                 </div>
             </div>
             <div id="susi-table-container" style="overflow-x:auto; background:#fff; max-height:500px; overflow-y:auto;"></div>
