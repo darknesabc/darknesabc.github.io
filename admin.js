@@ -3372,7 +3372,7 @@ window.__renderSusiMainLayout = function(grades) {
 };
 
 // =========================================================
-// 🎯 4. 수시 테이블 렌더링 (분교 강제 하향 정렬 + 5단 압축 뷰)
+// 🎯 4. 수시 테이블 렌더링 (이름 번역기 + 5단 압축 뷰)
 // =========================================================
 window.__renderSusiTable = function(grades) {
     const container = document.getElementById('susi-table-container');
@@ -3459,61 +3459,103 @@ window.__renderSusiTable = function(grades) {
     };
 
     // =========================================================================
-    // 💡 [초강력 정렬 엔진] 우선순위 기반 명시적 서열화
+    // 💡 [초강력 번역 및 정렬 엔진] - "한국외국어대학교"를 "한국외대"로 자동 인식
     // =========================================================================
     const univRankOrder = [
         "서울대", "연세대", "고려대", "서강대", "성균관대", "한양대", 
         "이화여대", "중앙대", "경희대", "한국외대", "서울시립대", 
-        "건국대", "동국대", "홍익대", "숙명여대", "국민대", "숭실대", "단국대", 
-        "인하대", "아주대", "가천대", "항공대", "광운대", "명지대", "상명대", 
-        "가톨릭대", "서울과기대", "성신여대", "동덕여대", "덕성여대", "서울여대", 
+        "건국대", "동국대", "홍익대", "숙명여대", "국민대", "숭실대", "세종대", "단국대", 
+        "인하대", "아주대", "한양대(ERICA)", "항공대", "가천대", "광운대", "명지대", "상명대", 
+        "가톨릭대", "한국외대(글로벌)", "서울과기대", "성신여대", "동덕여대", "덕성여대", "서울여대", 
         "삼육대", "한성대", "서경대", "한국교원대", "경기대", "인천대"
     ];
 
-    // 대학명 핵심 키워드 추출
-    const getCoreName = (name) => name.replace(/대학교|대학|여자/g, "").split("(")[0].trim();
+    // 대학 이름 압축기 (데이터베이스의 긴 이름을 서열표 기준 이름으로 통일)
+    const normalizeUnivName = (name) => {
+        let n = String(name || "").trim();
+        n = n.replace(/대학교/g, "대").replace(/대학/g, "대");
+        if (n.includes("한국외국어대")) n = n.replace("한국외국어대", "한국외대");
+        if (n.includes("이화여자대")) n = n.replace("이화여자대", "이화여대");
+        if (n.includes("숙명여자대")) n = n.replace("숙명여자대", "숙명여대");
+        if (n.includes("성신여자대")) n = n.replace("성신여자대", "성신여대");
+        if (n.includes("동덕여자대")) n = n.replace("동덕여자대", "동덕여대");
+        if (n.includes("덕성여자대")) n = n.replace("덕성여자대", "덕성여대");
+        if (n.includes("서울여자대")) n = n.replace("서울여자대", "서울여대");
+        if (n === "과기대" || n.includes("과학기술대")) n = n.replace("과학기술대", "과기대");
+        return n;
+    };
+    
+    const getUnivRank = (rawName) => {
+        const uName = normalizeUnivName(rawName);
+        if (uName.includes("ERICA") || uName.includes("에리카")) return univRankOrder.indexOf("한양대(ERICA)");
+        if (uName.includes("외대") && uName.includes("글로벌")) return univRankOrder.indexOf("한국외대(글로벌)");
+        
+        // 💡 고려대(세종) 등 분교 패널티 부과 (단, 세종대 본교는 예외)
+        if (uName !== "세종대") {
+            const isBranch = /(미래|세종|천안|글로컬|WISE|와이즈|다빈치|바이오|메디컬|원주)/i.test(uName);
+            if (isBranch) return 999;
+        }
 
-    // 분교/지역 캠퍼스 감지 함수 (세종대는 본교이므로 예외 처리)
-    const isBranchCampus = (name) => {
-        if (name === "세종대" || name === "세종대학교") return false;
-        const branches = ["세종", "에리카", "ERICA", "미래", "글로컬", "천안", "와이즈", "WISE", "다빈치", "바이오", "글로벌", "메디컬", "원주", "국제"];
-        return branches.some(b => name.includes(b));
+        const idx = univRankOrder.findIndex(u => uName.startsWith(u));
+        return idx !== -1 ? idx : 999;
     };
 
-    filteredData.sort((a, b) => {
-        const uA = String(a.univ_name || "").trim();
-        const uB = String(b.univ_name || "").trim();
-        const dA = String(a.dept_name || "").trim();
-        const dB = String(b.dept_name || "").trim();
+    const getCategoryRank = (rawUniv, rawDept, rawRegion) => {
+        const u = normalizeUnivName(rawUniv);
+        const d = String(rawDept || "").trim();
+        const r = String(rawRegion || "").trim();
 
-        // 1. 최상위 강제 분류: 메디컬 (의·치·한·약·수)
-        const medRegex = /(의예|의학|의과|치의예|치의학|한의예|한의학|수의예|수의과|약학|약대)/;
-        const nonMedRegex = /(식물|의공|의생명|의료|의과학|스포츠|신약|제약|약과학|한약)/;
-        const isMedA = medRegex.test(dA) && !nonMedRegex.test(dA);
-        const isMedB = medRegex.test(dB) && !nonMedRegex.test(dB);
+        if (/(의예|의학|의과)/.test(d) && !/(식물|의공|의생명|의료|의과학|스포츠|수의|치의|한의)/.test(d)) return 10;
+        if (/(치의예|치의학)/.test(d)) return 11;
+        if (/(한의예|한의학)/.test(d)) return 12;
+        if (/(수의예|수의과)/.test(d)) return 13;
+        if (/(약학|약대)/.test(d) && !/(신약|제약|약과학|한약)/.test(d)) return 14;
         
-        if (isMedA && !isMedB) return -1;
-        if (!isMedA && isMedB) return 1;
+        if (u === "세종대") return 20; 
+        
+        const isBranch = /(미래|세종|천안|글로컬|WISE|와이즈|다빈치|에리카|ERICA|바이오|글로벌|메디컬|원주)/i.test(u);
+        if (isBranch) return 35;
+        
+        const isRanked = univRankOrder.some(rankU => u.startsWith(rankU));
+        if (isRanked) return 20;
 
-        // 2. 강제 하위 분류: 분교 및 캠퍼스 
-        // 💡 고려대학교(세종)은 여기서 걸려 무조건 일반 대학들보다 밑으로 내려감!
-        const branchA = isBranchCampus(uA);
-        const branchB = isBranchCampus(uB);
+        if (r.includes("서울")) return 21; 
+        if (r.includes("경기") || r.includes("인천")) return 30; 
+        if (/(부산대|경북대|전남대|충남대|전북대|충북대|강원대|경상국립대|제주대)/.test(u)) return 40;
+        
+        return 50;
+    };
 
-        if (branchA && !branchB) return 1; // 분교면 뒤로 보냄
-        if (!branchA && branchB) return -1; // 분교가 아니면 앞으로 보냄
+    // 에러 발생을 원천 차단한 안전한 정렬 엔진
+    filteredData.sort((a, b) => {
+        const rawUA = String(a.univ_name || "").trim();
+        const rawUB = String(b.univ_name || "").trim();
+        const rawDA = String(a.dept_name || "").trim();
+        const rawDB = String(b.dept_name || "").trim();
+        const rawRA = String(a.region || "").trim();
+        const rawRB = String(b.region || "").trim();
 
-        // 3. 대학 간판 서열화 (둘 다 본교이거나, 둘 다 분교일 때)
-        const rankA = univRankOrder.findIndex(rankU => rankU.includes(getCoreName(uA)));
-        const rankB = univRankOrder.findIndex(rankU => rankU.includes(getCoreName(uB)));
-        const safeRankA = rankA !== -1 ? rankA : 999;
-        const safeRankB = rankB !== -1 ? rankB : 999;
+        const catA = getCategoryRank(rawUA, rawDA, rawRA);
+        const catB = getCategoryRank(rawUB, rawDB, rawRB);
+        if (catA !== catB) return catA - catB; 
 
-        if (safeRankA !== safeRankB) return safeRankA - safeRankB;
+        const rankA = getUnivRank(rawUA);
+        const rankB = getUnivRank(rawUB);
+        if (rankA !== rankB) return rankA - rankB; 
 
-        // 4. 모든 조건이 같으면 가나다순
-        if (uA !== uB) return uA.localeCompare(uB, 'ko');
-        return dA.localeCompare(dB, 'ko');
+        const uA = normalizeUnivName(rawUA);
+        const uB = normalizeUnivName(rawUB);
+        const baseA = uA.split("(")[0].trim();
+        const baseB = uB.split("(")[0].trim();
+        
+        if (baseA === baseB) {
+            const isBranchA = /(에리카|ERICA|와이즈|WISE|바이오|글로벌|글로컬|미래|세종|천안|다빈치|메디컬|국제)/i.test(uA);
+            const isBranchB = /(에리카|ERICA|와이즈|WISE|바이오|글로벌|글로컬|미래|세종|천안|다빈치|메디컬|국제)/i.test(uB);
+            if (!isBranchA && isBranchB) return -1;
+            if (isBranchA && !isBranchB) return 1;
+        }
+
+        return rawDA.localeCompare(rawDB, 'ko');
     });
 
     // =========================================================================
