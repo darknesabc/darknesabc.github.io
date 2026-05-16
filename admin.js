@@ -3372,13 +3372,13 @@ window.__renderSusiMainLayout = function(grades) {
 };
 
 // =========================================================
-// 🎯 4. 수시 테이블 렌더링 (코어 매칭 기반 정시 서열 정렬 완벽 복구본)
+// 🎯 4. 수시 테이블 렌더링 (분교 강제 하향 정렬 + 5단 압축 뷰)
 // =========================================================
 window.__renderSusiTable = function(grades) {
     const container = document.getElementById('susi-table-container');
     if (!container || !window.__susiMasterData) return;
 
-    // [초기 공백 화면 로직] (전체보기 모드가 아닐 때만 작동)
+    // [초기 공백 화면 로직]
     if (!window.__susiViewAllMode) {
         const isNoSearch = window.__susiFilterSearch.trim() === "";
         const isNoStream = window.__susiFilterStream === "전체";
@@ -3459,91 +3459,60 @@ window.__renderSusiTable = function(grades) {
     };
 
     // =========================================================================
-    // 💡 [지능형 형태소 서열 엔진 구조화]
+    // 💡 [초강력 정렬 엔진] 우선순위 기반 명시적 서열화
     // =========================================================================
     const univRankOrder = [
         "서울대", "연세대", "고려대", "서강대", "성균관대", "한양대", 
         "이화여대", "중앙대", "경희대", "한국외대", "서울시립대", 
-        "건국대", "동국대", "홍익대", "숙명여대", "국민대", "숭실대", "세종대", "단국대", 
-        "인하대", "아주대", "한양대(ERICA)", "항공대", "가천대", "광운대", "명지대", "상명대", 
-        "가톨릭대", "한국외대(글로벌)", "서울과기대", "성신여대", "동덕여대", "덕성여대", "서울여대", 
+        "건국대", "동국대", "홍익대", "숙명여대", "국민대", "숭실대", "단국대", 
+        "인하대", "아주대", "가천대", "항공대", "광운대", "명지대", "상명대", 
+        "가톨릭대", "서울과기대", "성신여대", "동덕여대", "덕성여대", "서울여대", 
         "삼육대", "한성대", "서경대", "한국교원대", "경기대", "인천대"
     ];
-    
-    // 대학교명 표준 형태소 추출 함수 (예: "이화여자대학교" -> "이화", "고려대학교(세종)" -> "고려")
-    const getCoreName = (name) => {
-        return name.replace(/대학교|대학|여자/g, "").split("(")[0].trim();
+
+    // 대학명 핵심 키워드 추출
+    const getCoreName = (name) => name.replace(/대학교|대학|여자/g, "").split("(")[0].trim();
+
+    // 분교/지역 캠퍼스 감지 함수 (세종대는 본교이므로 예외 처리)
+    const isBranchCampus = (name) => {
+        if (name === "세종대" || name === "세종대학교") return false;
+        const branches = ["세종", "에리카", "ERICA", "미래", "글로컬", "천안", "와이즈", "WISE", "다빈치", "바이오", "글로벌", "메디컬", "원주", "국제"];
+        return branches.some(b => name.includes(b));
     };
 
-    const getUnivRank = (rawName) => {
-        const uName = String(rawName || "").trim();
-        if (uName.includes("ERICA") || uName.includes("에리카")) return univRankOrder.indexOf("한양대(ERICA)");
-        if (uName.includes("글로벌") && uName.includes("외대")) return univRankOrder.indexOf("한국외대(글로벌)");
-        
-        // 분교 캠퍼스명은 일반 서열 정렬 매칭에서 우선 강제 배제처리
-        const isBranch = /(미래|세종|천안|글로컬|WISE|와이즈|다빈치|바이오|메디컬|원주)/i.test(uName);
-        if (isBranch) return 999;
-
-        const core = getCoreName(uName);
-        const idx = univRankOrder.findIndex(u => u.includes(core) || core.includes(u.replace("대", "")));
-        return idx !== -1 ? idx : 999;
-    };
-
-    const getCategoryRank = (rawUniv, rawDept, rawRegion) => {
-        const u = String(rawUniv || "").trim();
-        const d = String(rawDept || "").trim();
-        const r = String(rawRegion || "").trim();
-
-        if (/(의예|의학|의과)/.test(d) && !/(식물|의공|의생명|의료|의과학|스포츠|수의|치의|한의)/.test(d)) return 10;
-        if (/(치의예|치의학)/.test(d)) return 11;
-        if (/(한의예|한의학)/.test(d)) return 12;
-        if (/(수의예|수의과)/.test(d)) return 13;
-        if (/(약학|약대)/.test(d) && !/(신약|제약|약과학|한약)/.test(d)) return 14;
-        
-        // 순수 서울 세종대학교 필터 보호
-        if (u === "세종대" || u === "세종대학교") return 20; 
-        
-        // 분교 및 지방 캠퍼스는 예외 없이 35번 하위 순위 그룹으로 강제 바인딩
-        const isBranch = /(미래|세종|천안|글로컬|WISE|와이즈|다빈치|에리카|ERICA|바이오|글로벌|메디컬|원주)/i.test(u);
-        if (isBranch) return 35;
-        
-        const core = getCoreName(u);
-        const isRanked = univRankOrder.some(rankU => rankU.includes(core));
-        if (isRanked) return 20;
-
-        if (r.includes("서울")) return 21; 
-        if (r.includes("경기") || r.includes("인천")) return 30; 
-        if (/(부산대|경북대|전남대|충남대|전북대|충북대|강원대|경상국립대|제주대)/.test(u)) return 40;
-        
-        return 50;
-    };
-
-    // 정밀 서열화 정렬 실행
     filteredData.sort((a, b) => {
         const uA = String(a.univ_name || "").trim();
         const uB = String(b.univ_name || "").trim();
         const dA = String(a.dept_name || "").trim();
         const dB = String(b.dept_name || "").trim();
-        const rA = String(a.region || "").trim();
-        const rB = String(b.region || "").trim();
 
-        const catA = getCategoryRank(uA, dA, rA);
-        const catB = getCategoryRank(uB, dB, rB);
-        if (catA !== catB) return catA - catB; 
+        // 1. 최상위 강제 분류: 메디컬 (의·치·한·약·수)
+        const medRegex = /(의예|의학|의과|치의예|치의학|한의예|한의학|수의예|수의과|약학|약대)/;
+        const nonMedRegex = /(식물|의공|의생명|의료|의과학|스포츠|신약|제약|약과학|한약)/;
+        const isMedA = medRegex.test(dA) && !nonMedRegex.test(dA);
+        const isMedB = medRegex.test(dB) && !nonMedRegex.test(dB);
+        
+        if (isMedA && !isMedB) return -1;
+        if (!isMedA && isMedB) return 1;
 
-        const rankA = getUnivRank(uA);
-        const rankB = getUnivRank(uB);
-        if (rankA !== rankB) return rankA - rankB; 
+        // 2. 강제 하위 분류: 분교 및 캠퍼스 
+        // 💡 고려대학교(세종)은 여기서 걸려 무조건 일반 대학들보다 밑으로 내려감!
+        const branchA = isBranchCampus(uA);
+        const branchB = isBranchCampus(uB);
 
-        const baseA = uA.replace(/\(.*?\)/g, '').trim();
-        const baseB = uB.replace(/\(.*?\)/g, '').trim();
-        if (baseA === baseB) {
-            const isBranchA = /(에리카|ERICA|와이즈|WISE|바이오|글로벌|글로컬|미래|세종|천안|다빈치|메디컬|국제)/i.test(uA);
-            const isBranchB = /(에리카|ERICA|와이즈|WISE|바이오|글로벌|글로컬|미래|세종|천안|다빈치|메디컬|국제)/i.test(uB);
-            if (!isBranchA && isBranchB) return -1;
-            if (isBranchA && !isBranchB) return 1;
-        }
+        if (branchA && !branchB) return 1; // 분교면 뒤로 보냄
+        if (!branchA && branchB) return -1; // 분교가 아니면 앞으로 보냄
 
+        // 3. 대학 간판 서열화 (둘 다 본교이거나, 둘 다 분교일 때)
+        const rankA = univRankOrder.findIndex(rankU => rankU.includes(getCoreName(uA)));
+        const rankB = univRankOrder.findIndex(rankU => rankU.includes(getCoreName(uB)));
+        const safeRankA = rankA !== -1 ? rankA : 999;
+        const safeRankB = rankB !== -1 ? rankB : 999;
+
+        if (safeRankA !== safeRankB) return safeRankA - safeRankB;
+
+        // 4. 모든 조건이 같으면 가나다순
+        if (uA !== uB) return uA.localeCompare(uB, 'ko');
         return dA.localeCompare(dB, 'ko');
     });
 
@@ -3574,7 +3543,6 @@ window.__renderSusiTable = function(grades) {
                 .susi-board-real { width:100%; border-collapse:collapse; text-align:left; font-size:12px; color:#2c3e50; min-width:900px; background:#fff; }
                 .susi-board-real th { background:rgba(0,0,0,0.03); padding:10px; font-weight:bold; color:#34495e; text-align:center; border-bottom:1px solid #dee2e6; border-right:1px solid #ecf0f1; position:sticky; top:43px; z-index:9; }
                 .susi-board-real td { padding:10px 12px; border-bottom:1px solid #ecf0f1; border-right:1px solid #ecf0f1; vertical-align:middle; background:#fdfdfd; }
-                .dept-card { background:#fff; border:1px solid #e2e8f0; border-radius:6px; padding:4px 8px; font-size:12px; color:#34495e; font-weight:bold; box-shadow:0 1px 2px rgba(0,0,0,0.02); display:inline-block; }
             </style>
             <table class="susi-board-real">
                 <thead><tr>
@@ -3596,6 +3564,7 @@ window.__renderSusiTable = function(grades) {
                 const admKey = highlight(item.admission_name || item.admission_type) || "일반";
                 const reqKey = item.csat_req || "없음";
                 const dateKey = item.exam_date || "-";
+                
                 const groupKey = `${admKey}_${reqKey}_${dateKey}`;
                 
                 if (!subGroups[groupKey]) {
@@ -3629,7 +3598,11 @@ window.__renderSusiTable = function(grades) {
                 
                 const displayDepts = groupData.depts.slice(0, MAX_DEPTS);
                 displayDepts.forEach(item => {
-                    deptsHtml += `<span class="dept-card">${highlight(item.dept_name)}</span>`;
+                    deptsHtml += `
+                        <span style="background:#fff; border:1px solid #bdc3c7; padding:4px 8px; border-radius:4px; font-size:12px; color:#34495e; font-weight:bold; box-shadow:0 1px 2px rgba(0,0,0,0.02); display:inline-block;">
+                            ${highlight(item.dept_name)}
+                        </span>
+                    `;
                 });
 
                 if (groupData.depts.length > MAX_DEPTS) {
@@ -3730,9 +3703,11 @@ window.__renderSusiTable = function(grades) {
             <div style="padding:15px 20px; background:#fbfbfc; border-bottom:1px solid #ecf0f1;">
                 <div style="display:grid; grid-template-columns: 1fr 1fr; gap:12px;">
                     <div style="background:#fff; border:1px solid #e2e8f0; padding:12px; border-radius:8px; box-shadow:0 1px 2px rgba(0,0,0,0.02);">
+                        <div style="font-size:11px; color:#95a5a6; margin-bottom:6px; font-weight:bold;">📝 전형방법</div>
                         <div style="font-size:13px; color:#2c3e50; font-weight:bold; line-height:1.4; word-break:keep-all;">${item.selection_method || '-'}</div>
                     </div>
                     <div style="background:#fff; border:1px solid #e2e8f0; padding:12px; border-radius:8px; box-shadow:0 1px 2px rgba(0,0,0,0.02);">
+                        <div style="font-size:11px; color:#95a5a6; margin-bottom:6px; font-weight:bold;">🎯 수능 최저학력기준</div>
                         <div style="font-size:13px; color:#2c3e50; font-weight:bold; line-height:1.4; word-break:keep-all;">${reqStr}</div>
                     </div>
                 </div>
@@ -3741,12 +3716,15 @@ window.__renderSusiTable = function(grades) {
 
             <div style="padding:15px 20px; background:#fdfdfd; display:grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap:12px;">
                 <div style="background:#fff; border:1px solid #e2e8f0; padding:10px 12px; border-radius:8px;">
+                    <div style="font-size:11px; color:#95a5a6; margin-bottom:6px; font-weight:bold;">📊 3개년 ${cutLabel} <span style="font-weight:normal;">(25→24→23)</span></div>
                     <div style="font-size:14px; color:#e67e22; font-weight:900;">${cut25} <span style="color:#bdc3c7; font-size:12px;">→</span> ${cut24} <span style="color:#bdc3c7; font-size:12px;">→</span> ${cut23}</div>
                 </div>
                 <div style="background:#fff; border:1px solid #e2e8f0; padding:10px 12px; border-radius:8px;">
+                    <div style="font-size:11px; color:#95a5a6; margin-bottom:6px; font-weight:bold;">🔥 3개년 경쟁률</div>
                     <div style="font-size:14px; color:#3498db; font-weight:900;">${item.comp_rate_25||'-'} <span style="color:#bdc3c7; font-size:12px;">→</span> ${item.comp_rate_24||'-'} <span style="color:#bdc3c7; font-size:12px;">→</span> ${item.comp_rate_23||'-'}</div>
                 </div>
                 <div style="background:#fff; border:1px solid #e2e8f0; padding:10px 12px; border-radius:8px;">
+                    <div style="font-size:11px; color:#95a5a6; margin-bottom:6px; font-weight:bold;">🔄 3개년 충원율</div>
                     <div style="font-size:14px; color:#27ae60; font-weight:900;">${item.turnover_2025||'-'} <span style="color:#bdc3c7; font-size:12px;">→</span> ${item.turnover_2024||'-'} <span style="color:#bdc3c7; font-size:12px;">→</span> ${item.turnover_2023||'-'}</div>
                 </div>
             </div>
