@@ -3359,33 +3359,31 @@ window.__checkCsatRequirement = function(reqStr, grades) {
 };
 
 // =========================================================
-// 🎯 4. 수시 테이블 렌더링 (카드 뷰 vs 5단 압축 그룹핑 전체보기 뷰)
+// 🎯 4. 수시 테이블 렌더링 (정시 대학/학과 서열 정렬 알고리즘 전면 적용)
 // =========================================================
 window.__renderSusiTable = function(grades) {
     const container = document.getElementById('susi-table-container');
     if (!container || !window.__susiMasterData) return;
 
-    // 💡 [전체보기 모드]가 아닐 때만 "초기 빈 화면" 로직 작동
-    if (!window.__susiViewAllMode) {
-        const isNoSearch = window.__susiFilterSearch.trim() === "";
-        const isNoStream = window.__susiFilterStream === "전체";
-        const isNoType = window.__susiFilterType === "전체";
-        const isNoGrade = window.__susiGradeFilter === "all"; 
+    // [초기 공백 화면 로직] 모든 수시 탭에서 아무런 필터가 없을 때 초기 안내 화면 표시
+    const isNoSearch = window.__susiFilterSearch.trim() === "";
+    const isNoStream = window.__susiFilterStream === "전체";
+    const isNoType = window.__susiFilterType === "전체";
+    const isNoGrade = window.__susiGradeFilter === "all"; 
 
-        if (isNoSearch && isNoStream && isNoType && isNoGrade) {
-            let helpTitle = "시뮬레이션할 조건을 설정해 주세요.";
-            let helpDesc = `상단의 <span style="color:#e67e22;">[내신 필터]</span>, <span style="color:#34495e;">[계열/전형]</span>을 선택하거나<br>우측 <span style="color:#3498db;">[검색창]</span>에 대학명/학과명을 입력하시면 결과가 표시됩니다.`;
-            if (window.__currentSusiTab !== '통합 검색') helpTitle = `[${window.__currentSusiTab}] 명단을 조회하려면 조건을 설정해 주세요.`;
+    if (isNoSearch && isNoStream && isNoType && isNoGrade) {
+        let helpTitle = "시뮬레이션할 조건을 설정해 주세요.";
+        let helpDesc = `상단의 <span style="color:#e67e22;">[내신 필터]</span>, <span style="color:#34495e;">[계열/전형]</span>을 선택하거나<br>우측 <span style="color:#3498db;">[검색창]</span>에 대학명/학과명을 입력하시면 결과가 표시됩니다.`;
+        if (window.__currentSusiTab !== '통합 검색') helpTitle = `[${window.__currentSusiTab}] 명단을 조회하려면 조건을 설정해 주세요.`;
 
-            container.innerHTML = `
-                <div style="text-align:center; padding:80px 20px; background:#fff; border:2px dashed #bdc3c7; border-radius:12px; margin:15px 0; box-shadow:0 4px 10px rgba(0,0,0,0.02);">
-                    <div style="font-size:45px; margin-bottom:15px; opacity:0.8;">🔍</div>
-                    <div style="font-size:18px; font-weight:900; color:#2c3e50; margin-bottom:10px;">${helpTitle}</div>
-                    <div style="font-size:13px; color:#7f8c8d; line-height:1.6; font-weight:bold;">${helpDesc}</div>
-                </div>
-            `;
-            return; 
-        }
+        container.innerHTML = `
+            <div style="text-align:center; padding:80px 20px; background:#fff; border:2px dashed #bdc3c7; border-radius:12px; margin:15px 0; box-shadow:0 4px 10px rgba(0,0,0,0.02);">
+                <div style="font-size:45px; margin-bottom:15px; opacity:0.8;">🔍</div>
+                <div style="font-size:18px; font-weight:900; color:#2c3e50; margin-bottom:10px;">${helpTitle}</div>
+                <div style="font-size:13px; color:#7f8c8d; line-height:1.6; font-weight:bold;">${helpDesc}</div>
+            </div>
+        `;
+        return; 
     }
 
     let filteredData = window.__susiMasterData;
@@ -3395,7 +3393,7 @@ window.__renderSusiTable = function(grades) {
         filteredData = filteredData.filter(x => String(x.category || "").trim() === window.__currentSusiTab);
     }
 
-    // 2) 계열 필터링 (전체보기 모드 ON이면 __susiViewAllStream 강제 적용)
+    // 2) 계열 필터링
     if (window.__susiViewAllMode) {
         filteredData = filteredData.filter(x => String(x.stream || "").includes(window.__susiViewAllStream));
     } else if (window.__susiFilterStream !== '전체') {
@@ -3418,7 +3416,7 @@ window.__renderSusiTable = function(grades) {
         filteredData = filteredData.filter(x => `${x.univ_name} ${x.dept_name} ${x.admission_name} ${x.admission_type} ${x.category}`.toLowerCase().includes(keyword));
     }
 
-    // 4) 내신 필터 (전체보기 모드일 때는 무시하고 전부 표시)
+    // 4) 내신 필터
     if (!window.__susiViewAllMode && window.__susiGradeFilter !== 'all') {
         const myGpa = window.__susiGpaValue; const mode = window.__susiGradeFilter; const cMin = window.__susiCustomMin; const cMax = window.__susiCustomMax;
         filteredData = filteredData.filter(item => {
@@ -3445,22 +3443,83 @@ window.__renderSusiTable = function(grades) {
         return String(text).replace(regex, `<span style="background:#f1c40f; color:#000; padding:0 2px; border-radius:2px;">$1</span>`);
     };
 
+    // =========================================================================
+    // 💡 [정시 정렬 알고리즘 엔진 이식]
+    // =========================================================================
+    const univRankOrder = [
+        "서울대", "연세대", "고려대", "서강대", "성균관대", "한양대", 
+        "이화여대", "중앙대", "경희대", "한국외대", "서울시립대", 
+        "건국대", "동국대", "홍익대", "숙명여대", "국민대", "숭실대", "세종대", "단국대", 
+        "인하대", "아주대", "한양대(ERICA)", "항공대", "가천대", "광운대", "명지대", "상명대", 
+        "가톨릭대", "한국외대(글로벌)", "서울과기대", "성신여대", "동덕여대", "덕성여대", "서울여대", 
+        "삼육대", "한성대", "서경대", "한국교원대", "경기대", "인천대"
+    ];
+    
+    const getUnivRank = (uName) => {
+        let safeIdx = -1;
+        if (uName.includes("ERICA") || uName.includes("에리카")) safeIdx = univRankOrder.indexOf("한양대(ERICA)");
+        else if (uName.includes("외대") && uName.includes("글로벌")) safeIdx = univRankOrder.indexOf("한국외대(글로벌)");
+        else if (uName.includes("항공")) safeIdx = univRankOrder.indexOf("항공대");
+        else safeIdx = univRankOrder.findIndex(u => uName.startsWith(u) || uName === u);
+        return safeIdx !== -1 ? safeIdx : 999;
+    };
+
+    const getCategoryRank = (univ, dept, regionStr) => {
+        if (/(의예|의학|의과)/.test(dept) && !/(식물|의공|의생명|의료|의과학|스포츠|수의|치의|한의)/.test(dept)) return 10;
+        if (/(치의예|치의학)/.test(dept)) return 11;
+        if (/(한의예|한의학)/.test(dept)) return 12;
+        if (/(수의예|수의과)/.test(dept)) return 13;
+        if (/(약학|약대)/.test(dept) && !/(신약|제약|약과학|한약)/.test(dept)) return 14;
+        if (/(미래|세종|천안|글로컬|WISE|와이즈|다빈치|에리카|ERICA|바이오|글로벌|메디컬)/i.test(univ)) return 35;
+        
+        const isRanked = univRankOrder.some(u => univ.startsWith(u) || univ === u);
+        if (isRanked) return 20;
+
+        const region = String(regionStr || "");
+        if (region.includes("서울")) return 21; 
+        if (region.includes("경기") || region.includes("인천")) return 30; 
+        if (/(부산대|경북대|전남대|충남대|전북대|충북대|강원대|경상국립대|제주대)/.test(univ)) return 40;
+        return 50;
+    };
+
+    // 정시 기준 마스터 소팅 메커니즘 적용
     filteredData.sort((a, b) => {
-        const uA = String(a.univ_name || ""); const uB = String(b.univ_name || "");
-        if (uA !== uB) return uA.localeCompare(uB, 'ko');
+        const catA = getCategoryRank(a.univ_name, a.dept_name, a.region);
+        const catB = getCategoryRank(b.univ_name, b.dept_name, b.region);
+        if (catA !== catB) return catA - catB; 
+
+        const rankA = getUnivRank(a.univ_name);
+        const rankB = getUnivRank(b.univ_name);
+        if (rankA !== rankB) return rankA - rankB; 
+
+        // 대학 서열이 완전히 같을 경우 본교 분교 보정 분기
+        const baseA = a.univ_name.replace(/\(.*?\)/g, '').trim();
+        const baseB = b.univ_name.replace(/\(.*?\)/g, '').trim();
+        if (baseA === baseB) {
+            const isBranchA = /(에리카|ERICA|와이즈|WISE|바이오|글로벌|글로컬|미래|세종|천안|다빈치|메디컬|국제)/i.test(a.univ_name);
+            const isBranchB = /(에리카|ERICA|와이즈|WISE|바이오|글로벌|글로컬|미래|세종|천안|다빈치|메디컬|국제)/i.test(b.univ_name);
+            if (!isBranchA && isBranchB) return -1;
+            if (isBranchA && !isBranchB) return 1;
+        }
+
+        // 대학까지 같으면 학과 가나다 순 정렬
         return String(a.dept_name || "").localeCompare(String(b.dept_name || ""), 'ko');
     });
 
     // =========================================================================
-    // 💡 [렌더링 분기] 전체보기 모드 ON -> 5단 압축 요약 테이블 (모집단위 그룹핑)
+    // 💡 [렌더링 분기] 전체보기 모드 ON -> 5단 압축 요약 테이블
     // =========================================================================
     if (window.__susiViewAllMode) {
-        
-        // 1차 그룹핑: 대학 단위
+        // 이미 위에서 정렬된 상태이므로 순서를 보존하여 대학 그룹핑 진행
         const univGroups = {};
+        const orderedUnivs = [];
+        
         filteredData.forEach(item => {
             const uName = String(item.univ_name || "기타대학").trim();
-            if (!univGroups[uName]) univGroups[uName] = [];
+            if (!univGroups[uName]) {
+                univGroups[uName] = [];
+                orderedUnivs.push(uName); // 정렬 순서 인덱스 보존
+            }
             univGroups[uName].push(item);
         });
 
@@ -3468,7 +3527,7 @@ window.__renderSusiTable = function(grades) {
 
         let html = `
             <div style="padding:10px 15px; background:#f4f6f7; border-bottom:2px solid #bdc3c7; display:flex; justify-content:space-between; align-items:center; position:sticky; top:0; z-index:10;">
-                <div style="font-size:14px; font-weight:900; color:#2c3e50;">📌 ${titleText} <span style="font-size:12px; font-weight:normal; color:#7f8c8d; margin-left:8px;">(조건 동일 학과 그룹핑 모드)</span></div>
+                <div style="font-size:14px; font-weight:900; color:#2c3e50;">📌 ${titleText} <span style="font-size:12px; font-weight:normal; color:#7f8c8d; margin-left:8px;">(정시 서열 정렬 규칙 적용)</span></div>
                 <button onclick="window.__toggleSusiViewAll('${window.__susiViewAllStream}')" style="background:none; border:none; cursor:pointer; color:#e74c3c; font-size:16px; font-weight:bold;">닫기 ✖</button>
             </div>
             <style>
@@ -3487,17 +3546,15 @@ window.__renderSusiTable = function(grades) {
                 <tbody>
         `;
 
-        Object.keys(univGroups).forEach(univ => {
+        orderedUnivs.forEach(univ => {
             const itemsInUniv = univGroups[univ];
-            
-            // 💡 2차 그룹핑: 같은 대학 내에서 "전형명 + 최저 + 일정"이 같은 학과들을 하나로 묶음
             const subGroups = {};
+            
             itemsInUniv.forEach(item => {
                 const isNonsul = item.category === '논술';
                 const admKey = highlight(item.admission_name || item.admission_type) || "일반";
                 const reqKey = item.csat_req || "없음";
                 const dateKey = item.exam_date || "-";
-                // 고유 식별 키
                 const groupKey = `${admKey}_${reqKey}_${dateKey}`;
                 
                 if (!subGroups[groupKey]) {
@@ -3517,16 +3574,13 @@ window.__renderSusiTable = function(grades) {
 
             subGroupKeys.forEach((key, index) => {
                 const groupData = subGroups[key];
-                
                 html += `<tr>`;
                 
-                // 1열: 대학명 (첫 줄에만 rowspan 병합)
                 if (index === 0) {
                     html += `<td rowspan="${totalRows}" style="text-align:center; font-weight:900; font-size:14px; color:#2c3e50; border-right:2px solid #ecf0f1; background:#fbfbfc; vertical-align:middle;">${highlight(univ)}</td>`;
                 }
 
-                // 2열: 전형 및 모집단위 (학과 이름 배지로 나열, 넘치면 ...외 N개)
-                const MAX_DEPTS = 3; // 보여줄 최대 학과 개수
+                const MAX_DEPTS = 3;
                 let deptsHtml = `
                     <div style="color:${groupData.isNonsul ? '#3498db' : '#e67e22'}; font-weight:bold; font-size:12px; margin-bottom:6px;">[${groupData.admName}]</div>
                     <div style="display:flex; flex-wrap:wrap; gap:4px; align-items:center;">
@@ -3542,12 +3596,11 @@ window.__renderSusiTable = function(grades) {
                 }
                 deptsHtml += `</div>`;
                 
-                html += `<td>${deptsHtml}</td>`;
+                html += `
+                    <td>${deptsHtml}</td>
+                    <td style="color:#34495e; font-size:11px; line-height:1.5;">${groupData.req}</td>
+                `;
 
-                // 3열: 수능최저기준
-                html += `<td style="color:#34495e; font-size:11px; line-height:1.5;">${groupData.req}</td>`;
-
-                // 4열: 충족여부 뱃지
                 const isMet = window.__checkCsatRequirement(groupData.req, grades);
                 let statusBadge = `<span style="color:#7f8c8d; font-size:16px;">🟡</span>`;
                 if (isMet === true) statusBadge = `<span style="color:#2ecc71; font-size:18px;">🟢</span>`;
@@ -3555,14 +3608,11 @@ window.__renderSusiTable = function(grades) {
                 
                 html += `<td style="text-align:center;">${statusBadge}</td>`;
 
-                // 5열: 고사일정
                 let dateHtml = groupData.date && groupData.date !== '-' 
                     ? `<div style="font-size:11px; color:#fff; background:#e74c3c; padding:4px 8px; border-radius:12px; display:inline-block; font-weight:bold; box-shadow:0 2px 4px rgba(231,76,60,0.2);">📅 ${groupData.date}</div>` 
                     : '<span style="color:#bdc3c7; font-size:11px;">-</span>';
                 
-                html += `<td style="text-align:center;">${dateHtml}</td>`;
-
-                html += `</tr>`;
+                html += `<td style="text-align:center;">${dateHtml}</td></tr>`;
             });
         });
 
