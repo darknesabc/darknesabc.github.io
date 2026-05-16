@@ -3372,7 +3372,7 @@ window.__renderSusiMainLayout = function(grades) {
 };
 
 // =========================================================
-// 🎯 4. 수시 테이블 렌더링 (이름 번역기 + 5단 압축 뷰)
+// 🎯 4. 수시 테이블 렌더링 (분교 강제 하향 절대 방어 코드 적용)
 // =========================================================
 window.__renderSusiTable = function(grades) {
     const container = document.getElementById('susi-table-container');
@@ -3403,19 +3403,16 @@ window.__renderSusiTable = function(grades) {
 
     let filteredData = window.__susiMasterData;
 
-    // 1) 탭 카테고리 필터링
     if (window.__currentSusiTab !== '통합 검색') {
         filteredData = filteredData.filter(x => String(x.category || "").trim() === window.__currentSusiTab);
     }
 
-    // 2) 계열 필터링
     if (window.__susiViewAllMode) {
         filteredData = filteredData.filter(x => String(x.stream || "").includes(window.__susiViewAllStream));
     } else if (window.__susiFilterStream !== '전체') {
         filteredData = filteredData.filter(x => String(x.stream || "").includes(window.__susiFilterStream));
     }
 
-    // 3) 전형 & 검색어 필터링
     if (window.__susiFilterType !== '전체') {
         filteredData = filteredData.filter(x => {
             const admType = String(x.admission_type || ""); const admName = String(x.admission_name || ""); const cat = String(x.category || "");
@@ -3431,7 +3428,6 @@ window.__renderSusiTable = function(grades) {
         filteredData = filteredData.filter(x => `${x.univ_name} ${x.dept_name} ${x.admission_name} ${x.admission_type} ${x.category}`.toLowerCase().includes(keyword));
     }
 
-    // 4) 내신 필터
     if (!window.__susiViewAllMode && window.__susiGradeFilter !== 'all') {
         const myGpa = window.__susiGpaValue; const mode = window.__susiGradeFilter; const cMin = window.__susiCustomMin; const cMax = window.__susiCustomMax;
         filteredData = filteredData.filter(item => {
@@ -3459,7 +3455,7 @@ window.__renderSusiTable = function(grades) {
     };
 
     // =========================================================================
-    // 💡 [초강력 번역 및 정렬 엔진] - "한국외국어대학교"를 "한국외대"로 자동 인식
+    // 💡 [초강력 번역 및 정렬 엔진] - 분교 캠퍼스 무조건 하위권 박제
     // =========================================================================
     const univRankOrder = [
         "서울대", "연세대", "고려대", "서강대", "성균관대", "한양대", 
@@ -3470,7 +3466,6 @@ window.__renderSusiTable = function(grades) {
         "삼육대", "한성대", "서경대", "한국교원대", "경기대", "인천대"
     ];
 
-    // 대학 이름 압축기 (데이터베이스의 긴 이름을 서열표 기준 이름으로 통일)
     const normalizeUnivName = (name) => {
         let n = String(name || "").trim();
         n = n.replace(/대학교/g, "대").replace(/대학/g, "대");
@@ -3485,17 +3480,25 @@ window.__renderSusiTable = function(grades) {
         return n;
     };
     
+    // 💡 [분교 판별기] 세종대학교 본교만 예외 처리하고 나머진 전부 잡아냄
+    const isBranchCampus = (name) => {
+        if (name === "세종대" || name === "세종대학교") return false;
+        // 괄호 안에 들어가 있든, 그냥 이름에 붙어있든 키워드만 있으면 분교로 판정
+        const branches = ["세종", "에리카", "ERICA", "미래", "글로컬", "천안", "와이즈", "WISE", "다빈치", "바이오", "글로벌", "메디컬", "원주", "국제"];
+        return branches.some(b => name.includes(b));
+    };
+
     const getUnivRank = (rawName) => {
         const uName = normalizeUnivName(rawName);
+        
+        // 특별 예외: 에리카와 외대글로벌은 univRankOrder 서열표에 직접 명시된 순위를 따름
         if (uName.includes("ERICA") || uName.includes("에리카")) return univRankOrder.indexOf("한양대(ERICA)");
         if (uName.includes("외대") && uName.includes("글로벌")) return univRankOrder.indexOf("한국외대(글로벌)");
         
-        // 💡 고려대(세종) 등 분교 패널티 부과 (단, 세종대 본교는 예외)
-        if (uName !== "세종대") {
-            const isBranch = /(미래|세종|천안|글로컬|WISE|와이즈|다빈치|바이오|메디컬|원주)/i.test(uName);
-            if (isBranch) return 999;
-        }
+        // 🚨 절대 규칙: 그 외의 모든 분교(예: 고려대(세종), 연세대(미래) 등)는 무조건 랭킹에서 아웃!
+        if (isBranchCampus(uName)) return 999;
 
+        // 본교일 때만 서열표에서 순위를 찾아줌
         const idx = univRankOrder.findIndex(u => uName.startsWith(u));
         return idx !== -1 ? idx : 999;
     };
@@ -3505,20 +3508,24 @@ window.__renderSusiTable = function(grades) {
         const d = String(rawDept || "").trim();
         const r = String(rawRegion || "").trim();
 
+        // 0순위: 메디컬 (캠퍼스 불문 최상위)
         if (/(의예|의학|의과)/.test(d) && !/(식물|의공|의생명|의료|의과학|스포츠|수의|치의|한의)/.test(d)) return 10;
         if (/(치의예|치의학)/.test(d)) return 11;
         if (/(한의예|한의학)/.test(d)) return 12;
         if (/(수의예|수의과)/.test(d)) return 13;
         if (/(약학|약대)/.test(d) && !/(신약|제약|약과학|한약)/.test(d)) return 14;
         
+        // 세종대학교 본교 보호
         if (u === "세종대") return 20; 
         
-        const isBranch = /(미래|세종|천안|글로컬|WISE|와이즈|다빈치|에리카|ERICA|바이오|글로벌|메디컬|원주)/i.test(u);
-        if (isBranch) return 35;
+        // 🚨 1순위 강제 패널티: 분교는 무조건 하위 카테고리(35)로 밀어버림!
+        if (isBranchCampus(u)) return 35;
         
+        // 2순위: 서열표 등록 대학
         const isRanked = univRankOrder.some(rankU => u.startsWith(rankU));
         if (isRanked) return 20;
 
+        // 3순위: 기타 인서울/경기/지거국 등
         if (r.includes("서울")) return 21; 
         if (r.includes("경기") || r.includes("인천")) return 30; 
         if (/(부산대|경북대|전남대|충남대|전북대|충북대|강원대|경상국립대|제주대)/.test(u)) return 40;
@@ -3526,7 +3533,7 @@ window.__renderSusiTable = function(grades) {
         return 50;
     };
 
-    // 에러 발생을 원천 차단한 안전한 정렬 엔진
+    // 정밀 정렬 실행 엔진
     filteredData.sort((a, b) => {
         const rawUA = String(a.univ_name || "").trim();
         const rawUB = String(b.univ_name || "").trim();
@@ -3535,26 +3542,17 @@ window.__renderSusiTable = function(grades) {
         const rawRA = String(a.region || "").trim();
         const rawRB = String(b.region || "").trim();
 
+        // 1차: 그룹(메디컬 > 주요대 > 지방/분교) 판별
         const catA = getCategoryRank(rawUA, rawDA, rawRA);
         const catB = getCategoryRank(rawUB, rawDB, rawRB);
         if (catA !== catB) return catA - catB; 
 
+        // 2차: 서열표 순위 판별
         const rankA = getUnivRank(rawUA);
         const rankB = getUnivRank(rawUB);
         if (rankA !== rankB) return rankA - rankB; 
 
-        const uA = normalizeUnivName(rawUA);
-        const uB = normalizeUnivName(rawUB);
-        const baseA = uA.split("(")[0].trim();
-        const baseB = uB.split("(")[0].trim();
-        
-        if (baseA === baseB) {
-            const isBranchA = /(에리카|ERICA|와이즈|WISE|바이오|글로벌|글로컬|미래|세종|천안|다빈치|메디컬|국제)/i.test(uA);
-            const isBranchB = /(에리카|ERICA|와이즈|WISE|바이오|글로벌|글로컬|미래|세종|천안|다빈치|메디컬|국제)/i.test(uB);
-            if (!isBranchA && isBranchB) return -1;
-            if (isBranchA && !isBranchB) return 1;
-        }
-
+        // 3차: 만약 대학까지 똑같다면 학과명으로 가나다순
         return rawDA.localeCompare(rawDB, 'ko');
     });
 
@@ -3585,6 +3583,7 @@ window.__renderSusiTable = function(grades) {
                 .susi-board-real { width:100%; border-collapse:collapse; text-align:left; font-size:12px; color:#2c3e50; min-width:900px; background:#fff; }
                 .susi-board-real th { background:rgba(0,0,0,0.03); padding:10px; font-weight:bold; color:#34495e; text-align:center; border-bottom:1px solid #dee2e6; border-right:1px solid #ecf0f1; position:sticky; top:43px; z-index:9; }
                 .susi-board-real td { padding:10px 12px; border-bottom:1px solid #ecf0f1; border-right:1px solid #ecf0f1; vertical-align:middle; background:#fdfdfd; }
+                .dept-card { background:#fff; border:1px solid #e2e8f0; border-radius:6px; padding:4px 8px; font-size:12px; color:#34495e; font-weight:bold; box-shadow:0 1px 2px rgba(0,0,0,0.02); display:inline-block; }
             </style>
             <table class="susi-board-real">
                 <thead><tr>
