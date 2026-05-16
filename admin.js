@@ -3346,248 +3346,78 @@ window.__checkCsatRequirement = function(reqStr, grades) {
 };
 
 // =========================================================
-// 🎯 4. 수시 테이블 렌더링 (통합 검색 매트릭스 + 세로 리스트 UI)
+// 🎯 4. 수시 테이블 렌더링 (모든 필터 & 정시 매트릭스 뷰 적용)
 // =========================================================
 window.__renderSusiTable = function(grades) {
     const container = document.getElementById('susi-table-container');
     if (!container || !window.__susiMasterData) return;
 
-    try {
-        let filteredData = window.__susiMasterData;
+    // 1) 전체 데이터에서 기본 필터 적용 (계열, 전형, 검색어)
+    let filteredData = window.__susiMasterData;
 
-        // 1) 공통 필터 적용 (계열, 전형, 검색어)
-        if (window.__susiFilterStream !== '전체') {
-            filteredData = filteredData.filter(x => String(x.stream || "").includes(window.__susiFilterStream));
-        }
+    // 계열 필터 적용
+    if (window.__susiFilterStream !== '전체') {
+        filteredData = filteredData.filter(x => String(x.stream || "").includes(window.__susiFilterStream));
+    }
 
-        if (window.__susiFilterType !== '전체') {
-            filteredData = filteredData.filter(x => {
-                const admType = String(x.admission_type || "");
-                const admName = String(x.admission_name || "");
-                const cat = String(x.category || "");
-                if (window.__susiFilterType === '교과') return admType.includes('교과') || admName.includes('교과');
-                if (window.__susiFilterType === '종합') return admType.includes('종합') || admName.includes('종합');
-                if (window.__susiFilterType === '논술') return admType.includes('논술') || cat.includes('논술');
+    // 💡 전형 필터 적용 (교과, 종합, 논술)
+    if (window.__susiFilterType !== '전체') {
+        filteredData = filteredData.filter(x => {
+            const admType = String(x.admission_type || "");
+            const admName = String(x.admission_name || "");
+            const cat = String(x.category || "");
+            
+            if (window.__susiFilterType === '교과') return admType.includes('교과') || admName.includes('교과');
+            if (window.__susiFilterType === '종합') return admType.includes('종합') || admName.includes('종합');
+            if (window.__susiFilterType === '논술') return admType.includes('논술') || cat.includes('논술');
+            return true;
+        });
+    }
+
+    // 검색어 적용
+    if (window.__susiFilterSearch !== "") {
+        const keyword = window.__susiFilterSearch.toLowerCase();
+        filteredData = filteredData.filter(x => {
+            const hay = `${x.univ_name} ${x.dept_name} ${x.admission_name} ${x.admission_type} ${x.category}`.toLowerCase();
+            return hay.includes(keyword);
+        });
+    }
+
+    // 2) 탭 전용 데이터 필터링
+    if (window.__currentSusiTab !== '통합 검색') {
+        filteredData = filteredData.filter(x => String(x.category || "").trim() === window.__currentSusiTab);
+    } else {
+        // 통합 검색일 경우 내신 필터 적용
+        if (window.__susiGradeFilter !== 'all') {
+            const myGpa = window.__susiGpaValue;
+            const mode = window.__susiGradeFilter;
+            const cMin = window.__susiCustomMin;
+            const cMax = window.__susiCustomMax;
+
+            filteredData = filteredData.filter(item => {
+                const parseGrade = (str) => {
+                    if (!str || str === '-') return null;
+                    const match = str.match(/[\d\.]+/); 
+                    return match ? parseFloat(match[0]) : null;
+                };
+                
+                const g = parseGrade(item.grade_2025) || parseGrade(item.cut_2025) || parseGrade(item.grade_2024);
+                if (!g) return false; 
+
+                if (mode === '0.3') return g >= myGpa - 0.3 && g <= myGpa + 0.3;
+                if (mode === '0.5') return g >= myGpa - 0.5 && g <= myGpa + 0.5;
+                if (mode === 'up') return g < myGpa; 
+                if (mode === 'down') return g >= myGpa; 
+                if (mode === 'custom') return g >= cMin && g <= cMax;
                 return true;
             });
         }
-
-        if (window.__susiFilterSearch !== "") {
-            const keyword = window.__susiFilterSearch.toLowerCase();
-            filteredData = filteredData.filter(x => {
-                const hay = `${x.univ_name} ${x.dept_name} ${x.admission_name} ${x.admission_type} ${x.category}`.toLowerCase();
-                return hay.includes(keyword);
-            });
-        }
-
-        // 2) 탭 전용 데이터 필터링 분기
-        if (window.__currentSusiTab !== '통합 검색') {
-            filteredData = filteredData.filter(x => String(x.category || "").trim() === window.__currentSusiTab);
-        } else {
-            if (window.__susiGradeFilter !== 'all') {
-                const myGpa = window.__susiGpaValue;
-                const mode = window.__susiGradeFilter;
-                const cMin = window.__susiCustomMin;
-                const cMax = window.__susiCustomMax;
-
-                filteredData = filteredData.filter(item => {
-                    const parseGrade = (str) => {
-                        if (!str || str === '-') return null;
-                        const match = str.match(/[\d\.]+/); 
-                        return match ? parseFloat(match[0]) : null;
-                    };
-                    
-                    const g = parseGrade(item.grade_2025) || parseGrade(item.cut_2025) || parseGrade(item.grade_2024);
-                    if (!g) return false; 
-
-                    if (mode === '0.3') return g >= myGpa - 0.3 && g <= myGpa + 0.3;
-                    if (mode === '0.5') return g >= myGpa - 0.5 && g <= myGpa + 0.5;
-                    if (mode === 'up') return g < myGpa; 
-                    if (mode === 'down') return g >= myGpa; 
-                    if (mode === 'custom') return g >= cMin && g <= cMax;
-                    return true;
-                });
-            }
-        }
-
-        if (filteredData.length === 0) {
-            container.innerHTML = `<div style="text-align:center; padding:40px; color:#95a5a6; font-weight:bold;">해당 조건에 맞는 데이터가 없습니다.</div>`;
-            return;
-        }
-
-        const highlight = (text) => {
-            if (!text) return "";
-            if (!window.__susiFilterSearch) return text;
-            const regex = new RegExp(`(${window.__susiFilterSearch})`, 'gi');
-            return String(text).replace(regex, `<span style="background:#f1c40f; color:#000; padding:0 2px; border-radius:2px;">$1</span>`);
-        };
-
-        // 💡 [핵심 UI] 학과 리스트를 세로로 한 줄씩 꽉 차게 그리는 함수 (이미지 1번 스타일)
-        const renderDeptList = (deptItems) => {
-            let listHtml = `<div style="display:flex; flex-direction:column; gap:6px;">`;
-            
-            deptItems.forEach(item => {
-                const reqStr = item.csat_req || '없음';
-                const isMet = window.__checkCsatRequirement(reqStr, grades);
-                
-                // 최저 통과 여부 미니 신호등
-                let oxBadge = `<span style="color:#7f8c8d; font-size:10px; border:1px solid #bdc3c7; padding:1px 4px; border-radius:3px; background:#fff;">보류</span>`;
-                if (isMet === true) oxBadge = `<span style="color:#2ecc71; font-size:10px; border:1px solid #2ecc71; padding:1px 4px; border-radius:3px; background:#eafaf1; font-weight:bold;">통과</span>`;
-                if (isMet === false) oxBadge = `<span style="color:#e74c3c; font-size:10px; border:1px solid #e74c3c; padding:1px 4px; border-radius:3px; background:#fdedec; font-weight:bold;">미달</span>`;
-
-                // 우측 입결 데이터 영역
-                let scoreHtml = item.category === '논술'
-                    ? `<span style="color:#2980b9; font-size:13px; font-weight:900;">${item.comp_rate_25 || '-'}</span> <span style="font-size:10px; color:#95a5a6;">(24년:${item.comp_rate_24 || '-'})</span>`
-                    : `<span style="color:#e67e22; font-size:13px; font-weight:900;">${item.cut_2025 || item.grade_2025 || '-'}</span> <span style="font-size:10px; color:#95a5a6;">(24년:${item.cut_2024 || item.grade_2024 || '-'})</span>`;
-
-                const typeLabel = item.admission_name || item.admission_type || '-';
-
-                listHtml += `
-                    <div style="background:#fff; border:1px solid #e2e8f0; border-radius:6px; padding:8px 10px; display:flex; flex-direction:column; gap:5px; transition:0.2s;">
-                        <div style="display:flex; justify-content:space-between; align-items:center;">
-                            <div style="display:flex; align-items:center; gap:5px;">
-                                <span style="font-size:11px; color:#7f8c8d; font-weight:bold;">[${highlight(typeLabel)}]</span>
-                                <span style="font-size:13px; font-weight:bold; color:#2c3e50;">${highlight(item.dept_name)}</span>
-                            </div>
-                            <div style="text-align:right; white-space:nowrap;">
-                                ${scoreHtml}
-                            </div>
-                        </div>
-                        <div style="display:flex; gap:4px; align-items:center; flex-wrap:wrap; font-size:11px;">
-                            ${oxBadge}
-                            <span style="background:#f4f6f7; border:1px solid #dee2e6; color:#34495e; padding:1px 5px; border-radius:3px; font-weight:bold;">최저: ${reqStr}</span>
-                            <span style="background:#f4f6f7; border:1px solid #dee2e6; color:#7f8c8d; padding:1px 5px; border-radius:3px;">${item.selection_method || '-'}</span>
-                        </div>
-                    </div>
-                `;
-            });
-            listHtml += `</div>`;
-            return listHtml;
-        };
-
-        // =========================================================================
-        // 💡 [통합 검색 탭] 정시 매트릭스 스타일 테이블 (가로 확장 + 내부 세로 리스트)
-        // =========================================================================
-        if (window.__currentSusiTab === '통합 검색') {
-            const SUSI_GROUPS = ['의치한약수', '상위15개대', '논술전형', '과기원/교대'];
-            const groupMatches = { '의치한약수': {}, '상위15개대': {}, '논술전형': {}, '과기원/교대': {} };
-            const univSet = new Set();
-
-            filteredData.forEach(item => {
-                let gKey = '';
-                const cat = String(item.category || "").trim();
-                if (['의예', '치의예', '한의예', '수의예', '약학'].includes(cat)) gKey = '의치한약수';
-                else if (cat === '상위15개대') gKey = '상위15개대';
-                else if (cat === '논술') gKey = '논술전형';
-                else if (['과기원', '교대'].includes(cat)) gKey = '과기원/교대';
-
-                if (!gKey) return;
-                const uName = String(item.univ_name || "기타대학").trim();
-                if (!groupMatches[gKey][uName]) groupMatches[gKey][uName] = [];
-                groupMatches[gKey][uName].push(item);
-                univSet.add(uName);
-            });
-
-            // 대학 서열순 정렬
-            const univRankOrder = ["서울대", "연세대", "고려대", "서강대", "성균관대", "한양대", "이화여대", "중앙대", "경희대", "한국외대", "서울시립대", "건국대", "동국대", "홍익대", "숙명여대", "국민대", "숭실대", "세종대", "단국대", "인하대", "아주대", "한양대(ERICA)", "항공대", "가천대", "광운대", "명지대", "상명대", "가톨릭대", "한국외대(글로벌)", "서울과기대", "성신여대", "동덕여대", "덕성여대", "서울여대", "삼육대", "한성대", "서경대", "한국교원대", "경기대", "인천대"];
-            const getUnivRank = (uName) => {
-                let safeIdx = -1;
-                if (uName.includes("ERICA") || uName.includes("에리카")) safeIdx = univRankOrder.indexOf("한양대(ERICA)");
-                else if (uName.includes("외대") && uName.includes("글로벌")) safeIdx = univRankOrder.indexOf("한국외대(글로벌)");
-                else safeIdx = univRankOrder.findIndex(u => uName.startsWith(u) || uName === u);
-                return safeIdx !== -1 ? safeIdx : 999;
-            };
-
-            const sortedUnivs = Array.from(univSet).sort((a, b) => {
-                const rankA = getUnivRank(a); const rankB = getUnivRank(b);
-                if (rankA !== rankB) return rankA - rankB;
-                return a.localeCompare(b, 'ko');
-            });
-
-            let rowsHtml = '';
-            SUSI_GROUPS.forEach((group, idx) => {
-                const isFirst = (idx === 0);
-                const groupUnivs = sortedUnivs.filter(u => groupMatches[group][u] && groupMatches[group][u].length > 0);
-
-                if (groupUnivs.length > 0) {
-                    let colsHtml = '';
-                    groupUnivs.forEach(u => {
-                        // 💡 정시 테이블처럼 대학교 Column 생성 (가로 너비 고정)
-                        colsHtml += `
-                            <td style="padding:0; border:none; vertical-align:top; min-width:300px; max-width:320px;">
-                                <table style="width:100%; border-collapse:collapse; height:100%; border-right:1px solid #dee2e6;">
-                                    <thead>
-                                        <tr>
-                                            <th style="background:rgba(0,0,0,0.03); color:#34495e; font-size:14px; padding:12px; border-bottom:1px solid #dee2e6; position:sticky; top:0; z-index:2; font-weight:900; text-align:center;">
-                                                ${highlight(u)}
-                                            </th>
-                                        </tr>
-                                    </thead>
-                                    <tbody>
-                                        <tr>
-                                            <td style="vertical-align:top; padding:8px; background:#fdfdfd;">
-                                                ${renderDeptList(groupMatches[group][u])}
-                                            </td>
-                                        </tr>
-                                    </tbody>
-                                </table>
-                            </td>
-                        `;
-                    });
-
-                    rowsHtml += `<tr style="border-bottom:1px solid #dee2e6;">`;
-                    if (isFirst) {
-                        rowsHtml += `<td rowspan="4" style="width:50px; background:#f4f6f7; color:#2c3e50; text-align:center; font-weight:900; font-size:13px; border-right:2px solid #dee2e6; border-bottom:1px solid #dee2e6; padding:15px 5px; line-height:1.4;">수시<br>통합<br>분석</td>`;
-                    }
-                    rowsHtml += `<td style="width:60px; text-align:center; font-weight:bold; font-size:12px; background:#fbfbfc; color:#34495e; border-right:1px solid #dee2e6; border-bottom:1px solid #dee2e6; padding:10px 4px; word-break:break-all; line-height:1.3;">${group}</td>`;
-                    rowsHtml += `<td style="padding:0; vertical-align:top; background:#fff;"><div style="display:flex; overflow-x:auto; max-width:100%; scrollbar-width: thin;">${colsHtml}</div></td>`;
-                    rowsHtml += `</tr>`;
-                }
-            });
-
-            container.innerHTML = `
-                <table style="width:100%; border-collapse:collapse; text-align:left; font-size:13px; color:#2c3e50; background:#fff;">
-                    <tbody>${rowsHtml || `<tr><td style="padding:40px; text-align:center; color:#95a5a6; font-weight:bold;">검색 조건에 맞는 데이터가 없습니다.</td></tr>`}</tbody>
-                </table>
-            `;
-        } 
-        // =========================================================================
-        // 💡 [기타 탭] 일반 수시 조회용 테이블 포맷
-        // =========================================================================
-        else {
-            filteredData.sort((a, b) => String(a.univ_name || "").localeCompare(String(b.univ_name || ""), 'ko'));
-            const univGroups = {};
-            filteredData.forEach(item => {
-                const uName = String(item.univ_name || "기타대학").trim();
-                if (!univGroups[uName]) univGroups[uName] = [];
-                univGroups[uName].push(item);
-            });
-
-            let html = `
-                <style>
-                    .susi-normal-table { width:100%; border-collapse:collapse; text-align:left; font-size:13px; color:#2c3e50; min-width:900px; background:#fff; }
-                    .susi-normal-table th { background:rgba(0,0,0,0.03); padding:12px; font-weight:bold; color:#34495e; text-align:center; border-bottom:1px solid #dee2e6; border-right:1px solid #ecf0f1; position:sticky; top:0; z-index:2; }
-                    .susi-normal-table td { padding:8px 12px; border-bottom:1px solid #ecf0f1; border-right:1px solid #ecf0f1; vertical-align:top; background:#fdfdfd; }
-                </style>
-                <table class="susi-normal-table">
-                    <thead><tr><th style="width:15%;">대학명</th><th style="width:85%;">모집단위 및 전형 요약</th></tr></thead>
-                    <tbody>
-            `;
-
-            Object.keys(univGroups).forEach(univ => {
-                html += `<tr>`;
-                html += `<td style="text-align:center; font-weight:900; font-size:14px; color:#2c3e50; border-right:2px solid #ecf0f1; background:#fbfbfc; vertical-align:middle;">${highlight(univ)}</td>`;
-                html += `<td style="padding:10px;">${renderDeptList(univGroups[univ])}</td>`;
-                html += `</tr>`;
-            });
-            html += `</tbody></table>`;
-            container.innerHTML = html;
-        }
-
-    } catch (err) {
-        container.innerHTML = `<div style="text-align:center; padding:20px; color:#e74c3c;">데이터 처리 중 오류 발생: ${err.message}</div>`;
     }
-};
+
+    if (filteredData.length === 0) {
+        container.innerHTML = `<div style="text-align:center; padding:40px; color:#95a5a6; font-weight:bold;">해당 조건(필터 및 검색)에 맞는 학과가 없습니다.</div>`;
+        return;
+    }
 
     const highlight = (text) => {
         if (!text) return "";
@@ -3773,5 +3603,4 @@ window.__renderSusiTable = function(grades) {
         container.innerHTML = html;
     }
 };
-
 init();
