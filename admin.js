@@ -3088,9 +3088,9 @@ window.__susiFilterType = "전체";
 
 // 💡 통합 검색(내신 필터)용 전역 변수
 window.__susiGradeFilter = "all";
-window.__susiGpaValue = 2.5;
-window.__susiCustomMin = 1.0;
-window.__susiCustomMax = 3.0;
+window.__susiGpaValue = "";
+window.__susiCustomMin = "";
+window.__susiCustomMax = "";
 
 // 💡 [신규] 전체보기 전용 상태 변수
 window.__susiViewAllMode = false;
