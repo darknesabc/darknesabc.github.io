@@ -1232,7 +1232,7 @@ window.__loadGradeTrend = async function(student) {
 };
 
 // =========================================================
-// 💡 1. 성적 요약 UI (시뮬레이션 열기 버튼 추가)
+// 💡 1. 성적 요약 UI (수시/정시 버튼 개편 및 출력 영역 분리)
 // =========================================================
 window.__renderGradeSummaryUI = function() {
     const container = document.getElementById('grade-summary-container');
@@ -1242,24 +1242,24 @@ window.__renderGradeSummaryUI = function() {
     
     container.innerHTML = `
         <div style="background:#fff; padding:25px; border-radius:12px; border:1px solid #dee2e6; box-shadow:0 4px 6px rgba(0,0,0,0.02); margin-top:20px;">
-            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:15px;">
+            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:15px; flex-wrap:wrap; gap:10px;">
                 <div style="display:flex; align-items:center; gap:15px;">
                     <h4 style="margin:0; color:#2c3e50;">📊 성적 요약</h4>
                     <select onchange="window.__changeSummaryExam(this.value)" style="padding:6px 12px; border-radius:6px; border:1px solid #dee2e6; background:#f8f9fa; font-weight:bold; cursor:pointer;">${optionsHtml}</select>
                 </div>
-                <div style="display:flex; gap:10px;">
-    <button onclick="window.__openSusiSimulation()" style="background:#8e44ad; color:#fff; border:none; padding:8px 20px; border-radius:8px; font-weight:bold; font-size:14px; cursor:pointer; box-shadow:0 4px 6px rgba(0,0,0,0.1); transition:0.2s;">
-        🎓 수시 지원 시뮬레이션 보드 열기
-    </button>
-    
-    <button onclick="window.__openUnivSimulation()" style="background:#1e272e; color:#fff; border:none; padding:8px 20px; border-radius:8px; font-weight:bold; font-size:14px; cursor:pointer; box-shadow:0 4px 6px rgba(0,0,0,0.1); transition:0.2s;">
-        🎯 정시 지원 시뮬레이션 보드 열기
-    </button>
-</div>
+                <div style="display:flex; gap:8px;">
+                    <button onclick="window.__openSusiSimulation()" style="background:#8e44ad; color:#fff; border:none; padding:8px 20px; border-radius:8px; font-weight:bold; font-size:14px; cursor:pointer; box-shadow:0 4px 6px rgba(0,0,0,0.1); transition:0.2s;">
+                        🎓 수시 지원 시뮬레이션 보드 열기
+                    </button>
+                    <button onclick="window.__openUnivSimulation()" style="background:#1e272e; color:#fff; border:none; padding:8px 20px; border-radius:8px; font-weight:bold; font-size:14px; cursor:pointer; box-shadow:0 4px 6px rgba(0,0,0,0.1); transition:0.2s;">
+                        🎯 정시 지원 시뮬레이션 보드 열기
+                    </button>
+                </div>
             </div>
             
             <div id="grade-summary-table-area"></div>
             
+            <div id="susi-simulation-area" style="display:none; margin-top:20px;"></div>
             <div id="univ-simulation-area" style="display:none; margin-top:20px;"></div>
             
             <div style="margin-top:30px; padding-top:25px; border-top:1px dashed #dee2e6;">
@@ -3080,195 +3080,129 @@ if (memo === '취소') { memo = '-'; }
 // =========================================================
 // 💡 글로벌 상태 변수 (수시 전용)
 // =========================================================
-window.__currentSusiTab = '논술';      // 현재 선택된 탭 (기본값: 논술)
-window.__susiMasterData = [];          // Supabase에서 가져올 전체 마스터 데이터
-window.__susiFilterSearch = "";        // 텍스트 검색 필터
-window.__susiFilterStream = "전체";     // 계열 필터 (인문/자연)
+window.__currentSusiTab = '논술';      
+window.__susiMasterData = [];          
+window.__susiFilterSearch = "";        
+window.__susiFilterStream = "전체";     
 
 // =========================================================
-// 🎯 1. 수시 지원 시뮬레이션 보드 열기 (정시 디자인과 완벽 통일)
+// 🎯 2. 수시 보드 토글 및 마스터 데이터 로드 제어
 // =========================================================
 window.__openSusiSimulation = async function() {
-    let area = document.getElementById('susi-simulation-area');
-    
-    if (!area) {
-        area = document.createElement('div');
-        area.id = 'susi-simulation-area';
-        const summaryContainer = document.getElementById('grade-summary-container');
-        if (summaryContainer) {
-            summaryContainer.parentNode.insertBefore(area, summaryContainer.nextSibling);
-        } else {
-            console.error("susi-simulation-area를 삽입할 위치를 찾을 수 없습니다.");
-            return;
-        }
-    }
+    const area = document.getElementById('susi-simulation-area');
+    if (!area) return;
 
+    // 💡 정시 보드가 열려있다면 충돌 방지를 위해 먼저 닫아줍니다.
+    const univArea = document.getElementById('univ-simulation-area');
+    if (univArea) univArea.style.display = 'none';
+
+    // 토글 처리
     if (area.style.display === 'block') { 
         area.style.display = 'none'; 
         return; 
     }
     
     area.style.display = 'block';
-
-    // 💡 초기 로딩 UI (정시 스타일 반영)
     area.innerHTML = `
-        <div style="background:#fff; border-radius:12px; overflow:hidden; border:1px solid #dee2e6; box-shadow:0 6px 12px rgba(0,0,0,0.04); margin-top:20px;">
-            <div style="background:#fff; border-bottom:2px solid #dee2e6; padding:18px 25px; text-align:center; color:#3498db; font-weight:bold; font-size:16px;">
-                ⏳ 수시 마스터 DB를 안전하게 불러오는 중입니다...
-            </div>
+        <div style="background:#fff; border-radius:12px; overflow:hidden; border:1px solid #dee2e6; box-shadow:0 6px 12px rgba(0,0,0,0.04); padding:25px; text-align:center; color:#8e44ad; font-weight:bold; font-size:14px;">
+            ⏳ Supabase 서버에서 대용량 수시 합격선 마스터 DB를 안전하게 동기화 중입니다...
         </div>
     `;
 
-    // 💡 1-1. 현재 성적 추출
-    const score = window.__currentStudentScores.find(s => s.exam_label === window.__currentSummaryExam) || {};
-    const grades = {
-        kor: Number(score.kor_exp_grade) || 9,
-        math: Number(score.math_exp_grade) || 9,
-        eng: Number(score.eng_grade) || 9,
-        tam1: Number(score.tam1_exp_grade) || 9,
-        tam2: Number(score.tam2_exp_grade) || 9,
-        hist: Number(score.extra_grade) || 9
-    };
-    const mathChoice = score.math_choice ? `(${score.math_choice.replace('미적분','미적')})` : '';
-    const scoreSummaryStr = `실제 응시: <span style="color:#e74c3c; margin-left:4px;">국${grades.kor} 수${mathChoice}${grades.math} 영${grades.eng} 한${grades.hist} 탐(${grades.tam1},${grades.tam2})</span>`;
-
-    // 💡 1-2. Supabase 데이터 로드
-    if (!window.__susiMasterData || window.__susiMasterData.length === 0) {
-        let allData = [];
-        let fetchMore = true;
-        let startIdx = 0;
-        
-        try {
-            while (fetchMore) {
-                const { data, error } = await _supabase
-                    .from('susi_master_all')
-                    .select('*')
-                    .range(startIdx, startIdx + 999);
-
-                if (error) throw error;
-                if (data && data.length > 0) {
-                    allData = allData.concat(data);
-                    startIdx += 1000;
-                    if (data.length < 1000) fetchMore = false;
-                } else { fetchMore = false; }
-            }
-            window.__susiMasterData = allData;
-        } catch (err) {
-            area.innerHTML = `<div style="text-align:center; padding:40px; color:#e74c3c; background:#fdf3f2; border:1px solid #fadbd8; border-radius:12px; margin-top:20px;">DB 로드 에러: ${err.message}</div>`;
-            return;
-        }
-    }
-
-    // 💡 1-3. 카테고리 탭 렌더러
-    const categories = ['통합 검색', '논술', '의예', '치의예', '한의예', '수의예', '약학', '상위15개대', '과기원', '교대'];
-    const renderTabs = () => {
-        return categories.map(cat => {
-            const isActive = cat === window.__currentSusiTab;
-            const bg = isActive ? '#8e44ad' : '#fff';
-            const color = isActive ? '#fff' : '#7f8c8d';
-            const border = isActive ? '1px solid #8e44ad' : '1px solid #dee2e6';
-            const shadow = isActive ? 'box-shadow:0 2px 4px rgba(142,68,173,0.2);' : '';
-            return `<button onclick="window.__changeSusiTab('${cat}')" style="background:${bg}; color:${color}; border:${border}; padding:6px 15px; border-radius:20px; font-size:13px; font-weight:bold; cursor:pointer; transition:0.2s; ${shadow}">${cat}</button>`;
-        }).join('');
-    };
-
-    // 💡 1-4. 정시와 똑같은 화이트 톤 UI 조립
-    area.innerHTML = `
-        <div style="background:#fff; border-radius:12px; overflow:hidden; border:1px solid #dee2e6; box-shadow:0 6px 12px rgba(0,0,0,0.04); margin-top:20px;">
-            
-            <div style="background:#fff; border-bottom:2px solid #dee2e6; display:flex; justify-content:space-between; padding:18px 25px; align-items:center; flex-wrap:wrap; gap:10px;">
-                <div style="color:#2c3e50; font-weight:900; font-size:17px; display:flex; align-items:center; gap:8px;">
-                    🎓 수시(종합/교과/논술) 지원 시뮬레이션
-                </div>
-                <div style="display:flex; gap:10px; align-items:center; flex-wrap:wrap;">
-                    <div style="background:#e8f4f8; border:1px solid #3498db; color:#2980b9; padding:6px 15px; font-weight:bold; font-size:13px; border-radius:6px;">
-                        ${scoreSummaryStr}
-                    </div>
-                    <button onclick="window.__openSusiSimulation()" style="background:#e74c3c; color:#fff; border:none; padding:6px 12px; border-radius:6px; font-size:12px; font-weight:bold; cursor:pointer; box-shadow:0 2px 4px rgba(0,0,0,0.1);">닫기 ✖</button>
-                </div>
-            </div>
-
-            <div style="padding:15px 25px; background:#fbfbfc; border-bottom:1px solid #dee2e6; display:flex; gap:8px; flex-wrap:wrap;">
-                ${renderTabs()}
-            </div>
-
-            <div style="padding:15px 25px; background:#fdfdfd; border-bottom:1px solid #dee2e6; display:flex; gap:15px; align-items:center; flex-wrap:wrap;">
-                <div style="color:#2c3e50; font-weight:bold; font-size:14px; margin-right:5px;">🛠️ 분석 컨트롤</div>
-                
-                <div style="display:flex; align-items:center; gap:6px;">
-                    <span style="color:#7f8c8d; font-size:13px; font-weight:bold;">🎯 검색:</span>
-                    <input type="text" id="susi-search-input" value="${window.__susiFilterSearch}" placeholder="대학명/학과/전형" onkeyup="if(event.key==='Enter') window.__executeSusiSearch()" style="background:#fff; border:1px solid #bdc3c7; color:#3498db; font-size:13px; outline:none; padding:6px 10px; border-radius:6px; font-weight:bold; width:150px;">
-                    <button onclick="window.__executeSusiSearch()" style="background:#3498db; color:#fff; border:none; padding:6px 12px; border-radius:6px; cursor:pointer; font-size:12px; font-weight:bold;">검색</button>
-                </div>
-
-                <div style="display:flex; gap:4px; margin-left:10px; background:#ecf0f1; padding:4px; border-radius:8px;">
-                    <button onclick="window.__filterSusiStream('전체')" style="background:${window.__susiFilterStream==='전체'?'#34495e':'transparent'}; color:${window.__susiFilterStream==='전체'?'#fff':'#7f8c8d'}; border:none; padding:4px 12px; border-radius:4px; font-weight:bold; font-size:12px; cursor:pointer; transition:0.2s;">전체계열</button>
-                    <button onclick="window.__filterSusiStream('인문')" style="background:${window.__susiFilterStream==='인문'?'#8e44ad':'transparent'}; color:${window.__susiFilterStream==='인문'?'#fff':'#7f8c8d'}; border:none; padding:4px 12px; border-radius:4px; font-weight:bold; font-size:12px; cursor:pointer; transition:0.2s;">인문만</button>
-                    <button onclick="window.__filterSusiStream('자연')" style="background:${window.__susiFilterStream==='자연'?'#27ae60':'transparent'}; color:${window.__susiFilterStream==='자연'?'#fff':'#7f8c8d'}; border:none; padding:4px 12px; border-radius:4px; font-weight:bold; font-size:12px; cursor:pointer; transition:0.2s;">자연만</button>
-                </div>
-            </div>
-
-            <div id="susi-table-container" style="overflow-x:auto; background:#fff; max-height:600px; overflow-y:auto;">
-            </div>
-        </div>
-    `;
-
-    // 💡 테이블 렌더링 호출
-    window.__renderSusiTable(grades);
-};
-
-// =========================================================
-// 🎯 2. 컨트롤 액션
-// =========================================================
-window.__changeSusiTab = function(tabName) {
-    window.__currentSusiTab = tabName;
-    window.__susiFilterSearch = ""; 
-    window.__susiFilterStream = "전체"; 
-    window.__openSusiSimulation();
-};
-
-window.__executeSusiSearch = function() {
-    const input = document.getElementById('susi-search-input');
-    if (input) {
-        window.__susiFilterSearch = input.value.trim();
-        if (window.__currentSusiTab !== '통합 검색' && window.__susiFilterSearch !== "") {
-            window.__currentSusiTab = '통합 검색';
-            window.__openSusiSimulation();
-        } else {
-            const score = window.__currentStudentScores.find(s => s.exam_label === window.__currentSummaryExam) || {};
-            const grades = {
-                kor: Number(score.kor_exp_grade) || 9, math: Number(score.math_exp_grade) || 9, eng: Number(score.eng_grade) || 9,
-                tam1: Number(score.tam1_exp_grade) || 9, tam2: Number(score.tam2_exp_grade) || 9, hist: Number(score.extra_grade) || 9
-            };
-            window.__renderSusiTable(grades);
-        }
-    }
-};
-
-window.__filterSusiStream = function(streamName) {
-    window.__susiFilterStream = streamName;
+    // 학생 등급 계산
     const score = window.__currentStudentScores.find(s => s.exam_label === window.__currentSummaryExam) || {};
     const grades = {
         kor: Number(score.kor_exp_grade) || 9, math: Number(score.math_exp_grade) || 9, eng: Number(score.eng_grade) || 9,
         tam1: Number(score.tam1_exp_grade) || 9, tam2: Number(score.tam2_exp_grade) || 9, hist: Number(score.extra_grade) || 9
     };
-    
-    // UI 업데이트 (버튼 색상 변경)
-    const btns = document.querySelectorAll('#susi-simulation-area div:nth-child(3) > div:nth-child(3) button');
-    if(btns.length === 3) {
-        btns[0].style.background = streamName === '전체' ? '#34495e' : 'transparent'; btns[0].style.color = streamName === '전체' ? '#fff' : '#7f8c8d';
-        btns[1].style.background = streamName === '인문' ? '#8e44ad' : 'transparent'; btns[1].style.color = streamName === '인문' ? '#fff' : '#7f8c8d';
-        btns[2].style.background = streamName === '자연' ? '#27ae60' : 'transparent'; btns[2].style.color = streamName === '자연' ? '#fff' : '#7f8c8d';
+
+    // 데이터 호출 (최초 1회만 실행되어 무한로딩 방지)
+    if (!window.__susiMasterData || window.__susiMasterData.length === 0) {
+        let allData = []; let fetchMore = true; let startIdx = 0;
+        try {
+            while (fetchMore) {
+                const { data, error } = await _supabase.from('susi_master_all').select('*').range(startIdx, startIdx + 999);
+                if (error) throw error;
+                if (data && data.length > 0) {
+                    allData = allData.concat(data); startIdx += 1000;
+                    if (data.length < 1000) fetchMore = false;
+                } else { fetchMore = false; }
+            }
+            window.__susiMasterData = allData;
+        } catch (err) {
+            area.innerHTML = `<div style="text-align:center; padding:30px; color:#e74c3c; font-weight:bold;">⚠️ DB 호출 실패: ${err.message}</div>`;
+            return;
+        }
     }
-    window.__renderSusiTable(grades);
+
+    // 메인 레이아웃 빌드 (버블링 버그 원천 해결)
+    window.__renderSusiMainLayout(grades);
 };
 
 // =========================================================
-// 🎯 3. 수능 최저학력기준 판독 엔진 (에러 방어 강화)
+// 🎯 3. 수시 메인 레이아웃 구성 (정시와 색상 100% 매칭)
+// =========================================================
+window.__renderSusiMainLayout = function(grades) {
+    const area = document.getElementById('susi-simulation-area');
+    if (!area) return;
+
+    const score = window.__currentStudentScores.find(s => s.exam_label === window.__currentSummaryExam) || {};
+    const mathChoice = score.math_choice ? `(${score.math_choice.replace('미적분','미적')})` : '';
+    const scoreSummaryStr = `실제 응시: <span style="color:#e74c3c; margin-left:4px;">국${grades.kor} 수${mathChoice}${grades.math} 영${grades.eng} 한${grades.hist} 탐(${grades.tam1},${grades.tam2})</span>`;
+
+    const categories = ['통합 검색', '논술', '의예', '치의예', '한의예', '수의예', '약학', '상위15개대', '과기원', '교대'];
+    const tabsHtml = categories.map(cat => {
+        const isActive = cat === window.__currentSusiTab;
+        return `<button onclick="window.__changeSusiTab('${cat}')" style="background:${isActive?'#8e44ad':'#fff'}; color:${isActive?'#fff':'#7f8c8d'}; border:${isActive?'1px solid #8e44ad':'1px solid #dee2e6'}; padding:5px 14px; border-radius:20px; font-size:12px; font-weight:bold; cursor:pointer; transition:0.2s;">${cat}</button>`;
+    }).join('');
+
+    area.innerHTML = `
+        <div style="background:#fff; border-radius:12px; overflow:hidden; border:1px solid #dee2e6; box-shadow:0 6px 12px rgba(0,0,0,0.04); margin-bottom:25px;">
+            <div style="background:#fff; border-bottom:2px solid #dee2e6; display:flex; justify-content:space-between; padding:15px 20px; align-items:center;">
+                <div style="color:#2c3e50; font-weight:900; font-size:16px;">🎓 수시 지원 시뮬레이터 보드</div>
+                <div style="background:#e8f4f8; border:1px solid #3498db; color:#2980b9; padding:5px 12px; font-weight:bold; font-size:12px; border-radius:6px;">${scoreSummaryStr}</div>
+            </div>
+            <div style="padding:12px 20px; background:#fbfbfc; border-bottom:1px solid #dee2e6; display:flex; gap:6px; flex-wrap:wrap;">
+                ${tabsHtml}
+            </div>
+            <div style="padding:12px 20px; background:#fdfdfd; border-bottom:1px solid #dee2e6; display:flex; gap:15px; align-items:center; flex-wrap:wrap;">
+                <div style="display:flex; align-items:center; gap:6px;">
+                    <span style="color:#7f8c8d; font-size:12px; font-weight:bold;">🔍 검색:</span>
+                    <input type="text" id="susi-search-input" value="${window.__susiFilterSearch}" placeholder="대학명/학과/전형" style="background:#fff; border:1px solid #bdc3c7; color:#3498db; font-size:12px; outline:none; padding:5px 10px; border-radius:6px; font-weight:bold; width:150px;">
+                    <button onclick="window.__executeSusiSearch()" style="background:#3498db; color:#fff; border:none; padding:5px 12px; border-radius:6px; cursor:pointer; font-size:12px; font-weight:bold;">검색</button>
+                </div>
+                <div style="display:flex; gap:4px; background:#ecf0f1; padding:3px; border-radius:6px;">
+                    <button onclick="window.__filterSusiStream('전체')" style="background:${window.__susiFilterStream==='전체'?'#34495e':'transparent'}; color:${window.__susiFilterStream==='전체'?'#fff':'#7f8c8d'}; border:none; padding:4px 12px; border-radius:4px; font-weight:bold; font-size:11px; cursor:pointer;">전체계열</button>
+                    <button onclick="window.__filterSusiStream('인문')" style="background:${window.__susiFilterStream==='인문'?'#8e44ad':'transparent'}; color:${window.__susiFilterStream==='인문'?'#fff':'#7f8c8d'}; border:none; padding:4px 12px; border-radius:4px; font-weight:bold; font-size:11px; cursor:pointer;">인문만</button>
+                    <button onclick="window.__filterSusiStream('자연')" style="background:${window.__susiFilterStream==='자연'?'#27ae60':'transparent'}; color:${window.__susiFilterStream==='자연'?'#fff':'#7f8c8d'}; border:none; padding:4px 12px; border-radius:4px; font-weight:bold; font-size:11px; cursor:pointer;">자연만</button>
+                </div>
+            </div>
+            <div id="susi-table-container" style="overflow-x:auto; background:#fff; max-height:500px; overflow-y:auto;"></div>
+        </div>
+    `;
+    
+    // 테이블 내역 로드
+    window.__renderSusiTable(grades);
+};
+
+window.__changeSusiTab = function(tabName) {
+    window.__currentSusiTab = tabName;
+    window.__susiFilterSearch = ""; 
+    window.__susiFilterStream = "전체";
+    const score = window.__currentStudentScores.find(s => s.exam_label === window.__currentSummaryExam) || {};
+    const grades = {
+        kor: Number(score.kor_exp_grade) || 9, math: Number(score.math_exp_grade) || 9, eng: Number(score.eng_grade) || 9,
+        tam1: Number(score.tam1_exp_grade) || 9, tam2: Number(score.tam2_exp_grade) || 9, hist: Number(score.extra_grade) || 9
+    };
+    window.__renderSusiMainLayout(grades); // 창을 닫지 않고 구조 내부 레이아웃만 갱신 (핵심 버그 수정)
+};
+
+// =========================================================
+// 🎯 4. 수능 최저학력기준 판독 엔진
 // =========================================================
 window.__checkCsatRequirement = function(reqStr, grades) {
     try {
-        reqStr = String(reqStr || "").trim(); // 💡 어떤 데이터든 강제로 문자로 변환하여 에러 원천 차단
+        reqStr = String(reqStr || "").trim();
         if (!reqStr || reqStr === '-' || reqStr.includes('없음')) return true;
 
         const tamBest = Math.min(grades.tam1, grades.tam2);
@@ -3307,16 +3241,14 @@ window.__checkCsatRequirement = function(reqStr, grades) {
             }
             return passCnt >= reqCnt;
         }
-
         return null;
     } catch (e) {
-        console.error("최저 파싱 에러:", e);
-        return null; // 에러 나면 보류(🟡) 처리
+        return null;
     }
 };
 
 // =========================================================
-// 🎯 4. 수시 테이블 렌더링 (정시 스타일 라이트 모드)
+// 🎯 5. 수시 테이블 최종 데이터 결합 및 출력 (디자인 통일 완료)
 // =========================================================
 window.__renderSusiTable = function(grades) {
     const container = document.getElementById('susi-table-container');
@@ -3328,11 +3260,9 @@ window.__renderSusiTable = function(grades) {
         if (window.__currentSusiTab !== '통합 검색') {
             filteredData = filteredData.filter(x => String(x.category) === window.__currentSusiTab);
         }
-
         if (window.__susiFilterStream !== '전체') {
             filteredData = filteredData.filter(x => String(x.stream || "").includes(window.__susiFilterStream));
         }
-
         if (window.__susiFilterSearch !== "") {
             const keyword = window.__susiFilterSearch.toLowerCase();
             filteredData = filteredData.filter(x => {
@@ -3342,20 +3272,18 @@ window.__renderSusiTable = function(grades) {
         }
 
         if (filteredData.length === 0) {
-            container.innerHTML = `<div style="text-align:center; padding:50px; color:#95a5a6; font-weight:bold;">조건에 맞는 데이터가 없습니다.</div>`;
+            container.innerHTML = `<div style="text-align:center; padding:40px; color:#95a5a6; font-weight:bold;">조건에 부합하는 데이터가 마스터 DB에 없습니다.</div>`;
             return;
         }
 
-        // 정렬
         filteredData.sort((a, b) => {
             const uA = String(a.univ_name || ""); const uB = String(b.univ_name || "");
-            if (uA !== uB) return uA.localeCompare(uB);
+            if (uA !== uB) return uA.localeCompare(uB, 'ko');
             const sA = String(a.stream || ""); const sB = String(b.stream || "");
-            if (sA !== sB) return sB.localeCompare(sA); 
-            return String(a.dept_name || "").localeCompare(String(b.dept_name || ""));
+            if (sA !== sB) return sB.localeCompare(sA, 'ko'); 
+            return String(a.dept_name || "").localeCompare(String(b.dept_name || ""), 'ko');
         });
 
-        // 그룹화
         const univGroups = {};
         filteredData.forEach(item => {
             const uName = String(item.univ_name || "기타대학");
@@ -3370,28 +3298,26 @@ window.__renderSusiTable = function(grades) {
             return String(text).replace(regex, `<span style="background:#f1c40f; color:#000; padding:0 2px; border-radius:2px;">$1</span>`);
         };
 
-        // 💡 라이트 모드(정시 화면 매칭) CSS 적용
         let html = `
             <style>
-                .susi-board { width:100%; border-collapse:collapse; text-align:left; font-size:13px; color:#2c3e50; min-width:1100px; background:#fff; }
-                .susi-board th { background:rgba(0,0,0,0.03); padding:12px; font-weight:bold; color:#34495e; text-align:center; border-bottom:1px solid #dee2e6; border-right:1px solid #ecf0f1; position:sticky; top:0; z-index:2; }
-                .susi-board td { padding:12px; border-bottom:1px solid #ecf0f1; border-right:1px solid #ecf0f1; vertical-align:middle; background:#fdfdfd; }
-                .susi-board tbody tr:hover td { background:#f4f6f7; }
-                .susi-board tbody tr:hover td.univ-cell { background:#fbfbfc; } 
-
-                .badge-stream { font-size:11px; font-weight:bold; padding:3px 6px; border-radius:4px; margin-right:5px; display:inline-block; }
-                .st-inmun { background:#f5eef8; color:#8e44ad; border:1px solid #d7bde2; }
-                .st-jayeon { background:#e9f7ef; color:#27ae60; border:1px solid #abebc6; }
-                .st-gongtong { background:#f4f6f7; color:#34495e; border:1px solid #d5d8dc; }
+                .susi-board-real { width:100%; border-collapse:collapse; text-align:left; font-size:13px; color:#2c3e50; min-width:1050px; background:#fff; }
+                .susi-board-real th { background:rgba(0,0,0,0.03); padding:12px; font-weight:bold; color:#34495e; text-align:center; border-bottom:1px solid #dee2e6; border-right:1px solid #ecf0f1; position:sticky; top:0; z-index:2; }
+                .susi-board-real td { padding:10px 12px; border-bottom:1px solid #ecf0f1; border-right:1px solid #ecf0f1; vertical-align:middle; background:#fdfdfd; }
+                .susi-board-real tbody tr:hover td { background:#f4f6f7; }
+                .susi-board-real tbody tr:hover td.univ-cell-real { background:#fbfbfc; } 
+                .badge-susi-stream { font-size:11px; font-weight:bold; padding:2px 6px; border-radius:4px; margin-right:5px; display:inline-block; }
+                .st-inmun-real { background:#f5eef8; color:#8e44ad; border:1px solid #d7bde2; }
+                .st-jayeon_real { background:#e9f7ef; color:#27ae60; border:1px solid #abebc6; }
+                .st-gongtong-real { background:#f4f6f7; color:#34495e; border:1px solid #d5d8dc; }
             </style>
-            <table class="susi-board">
+            <table class="susi-board-real">
                 <thead>
                     <tr>
-                        <th style="width:12%;">대학명</th>
-                        <th style="width:38%;">전형 및 모집단위</th>
-                        <th style="width:25%;">수능최저기준</th>
+                        <th style="width:13%;">대학명</th>
+                        <th style="width:39%;">전형 및 모집단위</th>
+                        <th style="width:23%;">수능최저기준</th>
                         <th style="width:8%;">최저판독</th>
-                        <th style="width:17%;">입결/경쟁률 (최근)</th>
+                        <th style="width:17%;">입결/경쟁률 데이터</th>
                     </tr>
                 </thead>
                 <tbody>
@@ -3401,73 +3327,51 @@ window.__renderSusiTable = function(grades) {
             const items = univGroups[univ];
             items.forEach((item, index) => {
                 html += `<tr>`;
-                
                 if (index === 0) {
-                    html += `<td rowspan="${items.length}" class="univ-cell" style="text-align:center; font-weight:900; font-size:15px; color:#2c3e50; border-right:2px solid #ecf0f1;">${highlight(univ)}</td>`;
+                    html += `<td rowspan="${items.length}" class="univ-cell-real" style="text-align:center; font-weight:900; font-size:14px; color:#2c3e50; border-right:2px solid #ecf0f1;">${highlight(univ)}</td>`;
                 }
 
-                let stClass = 'st-gongtong';
-                if (String(item.stream).includes('인문')) stClass = 'st-inmun';
-                if (String(item.stream).includes('자연')) stClass = 'st-jayeon';
-
+                let stClass = 'st-gongtong-real';
+                if (String(item.stream).includes('인문')) stClass = 'st-inmun-real';
+                if (String(item.stream).includes('자연')) stClass = 'st-jayeon_real';
                 let typeBadgeColor = item.category === '논술' ? '#3498db' : '#e67e22';
 
-                // 최저 판독기
                 const reqStr = item.csat_req || '없음';
                 const isMet = window.__checkCsatRequirement(reqStr, grades);
                 
-                let statusBadge = `<span style="color:#7f8c8d; border:1px dashed #bdc3c7; padding:3px 6px; border-radius:12px; font-size:11px; background:#fff;">🟡확인필요</span>`;
-                if (isMet === true) statusBadge = `<span style="color:#2ecc71; border:2px solid #2ecc71; border-radius:50%; width:24px; height:24px; display:inline-flex; align-items:center; justify-content:center; font-weight:900; background:#eafaf1;">O</span>`;
-                if (isMet === false) statusBadge = `<span style="color:#e74c3c; border:2px solid #e74c3c; border-radius:50%; width:24px; height:24px; display:inline-flex; align-items:center; justify-content:center; font-weight:900; background:#fdedec;">X</span>`;
+                let statusBadge = `<span style="color:#7f8c8d; border:1px dashed #bdc3c7; padding:2px 6px; border-radius:12px; font-size:11px; background:#fff;">🟡직접확인</span>`;
+                if (isMet === true) statusBadge = `<span style="color:#2ecc71; border:2px solid #2ecc71; border-radius:50%; width:22px; height:22px; display:inline-flex; align-items:center; justify-content:center; font-weight:900; background:#eafaf1;">O</span>`;
+                if (isMet === false) statusBadge = `<span style="color:#e74c3c; border:2px solid #e74c3c; border-radius:50%; width:22px; height:22px; display:inline-flex; align-items:center; justify-content:center; font-weight:900; background:#fdedec;">X</span>`;
 
-                // 입결 정보
                 let cutText = '';
                 if (item.category === '논술') {
-                    cutText = `
-                        <div style="font-size:12px; color:#34495e; line-height:1.5;">
-                            <span style="color:#7f8c8d; font-size:11px;">25경쟁:</span> <b style="color:#2980b9;">${item.comp_rate_25 || '-'}</b><br>
-                            <span style="color:#7f8c8d; font-size:11px;">24경쟁:</span> ${item.comp_rate_24 || '-'}
-                        </div>
-                    `;
+                    cutText = `<div style="font-size:12px; color:#34495e; line-height:1.4;"><span style="color:#7f8c8d; font-size:11px;">25경쟁:</span> <b>${item.comp_rate_25 || '-'}</b><br><span style="color:#7f8c8d; font-size:11px;">24경쟁:</span> ${item.comp_rate_24 || '-'}</div>`;
                 } else {
-                    cutText = `
-                        <div style="font-size:12px; color:#34495e; line-height:1.5;">
-                            <span style="color:#7f8c8d; font-size:11px;">25입결:</span> <b style="color:#e67e22;">${item.cut_2025 || item.grade_2025 || '-'}</b> <span style="font-size:10px; color:#95a5a6;">(충원:${item.turnover_2025||'-'})</span><br>
-                            <span style="color:#7f8c8d; font-size:11px;">24입결:</span> ${item.cut_2024 || item.grade_2024 || '-'}
-                        </div>
-                    `;
+                    cutText = `<div style="font-size:12px; color:#34495e; line-height:1.4;"><span style="color:#7f8c8d; font-size:11px;">25입결:</span> <b style="color:#e67e22;">${item.cut_2025 || item.grade_2025 || '-'}</b> <span style="font-size:10px; color:#95a5a6;">(충원:${item.turnover_2025||'-'})</span><br><span style="color:#7f8c8d; font-size:11px;">24입결:</span> ${item.cut_2024 || item.grade_2024 || '-'}</div>`;
                 }
 
                 html += `
                     <td>
-                        <div style="display:flex; align-items:center; flex-wrap:wrap; gap:6px; margin-bottom:6px;">
-                            <span class="badge-stream ${stClass}">${item.stream || '공통'}</span>
+                        <div style="display:flex; align-items:center; flex-wrap:wrap; gap:5px; margin-bottom:5px;">
+                            <span class="badge-susi-stream ${stClass}">${item.stream || '공통'}</span>
                             <span style="color:${typeBadgeColor}; font-weight:bold; font-size:12px;">[${highlight(item.admission_name || item.admission_type)}]</span>
-                            <span style="color:#2c3e50; font-weight:bold; font-size:14px;">${highlight(item.dept_name)}</span>
+                            <span style="color:#2c3e50; font-weight:bold; font-size:13px;">${highlight(item.dept_name)}</span>
                         </div>
-                        <div style="font-size:11px; color:#7f8c8d; background:#f4f6f7; padding:4px 8px; border-radius:4px; display:inline-block; border:1px solid #ecf0f1;">
-                            <span style="color:#95a5a6;">방법:</span> ${item.selection_method || '-'} <span style="margin:0 4px; color:#bdc3c7;">|</span> <span style="color:#95a5a6;">일정:</span> <b style="color:#34495e;">${item.exam_date || '-'}</b>
+                        <div style="font-size:11px; color:#7f8c8d; background:#f4f6f7; padding:3px 6px; border-radius:4px; display:inline-block; border:1px solid #ecf0f1;">
+                            <span style="color:#95a5a6;">방법:</span> ${item.selection_method || '-'} <span style="margin:0 4px; color:#bdc3c7;">|</span> <span style="color:#95a5a6;">일정:</span> <b>${item.exam_date || '-'}</b>
                         </div>
                     </td>
-                    <td style="color:#34495e; font-size:12px; line-height:1.4; word-break:keep-all;">
-                        ${item.csat_req || '없음'}
-                    </td>
-                    <td style="text-align:center;">
-                        ${statusBadge}
-                    </td>
-                    <td>
-                        ${cutText}
-                    </td>
+                    <td style="color:#34495e; font-size:12px; line-height:1.4; word-break:keep-all;">${item.csat_req || '없음'}</td>
+                    <td style="text-align:center;">${statusBadge}</td>
+                    <td>${cutText}</td>
                 </tr>`;
             });
         });
 
         html += `</tbody></table>`;
         container.innerHTML = html;
-
     } catch (err) {
-        console.error("렌더링 오류:", err);
-        container.innerHTML = `<div style="text-align:center; padding:30px; color:#e74c3c; font-weight:bold;">화면을 그리는 중 오류가 발생했습니다: ${err.message}</div>`;
+        container.innerHTML = `<div style="text-align:center; padding:20px; color:#e74c3c;">데이터 바인딩 오류: ${err.message}</div>`;
     }
 };
 
