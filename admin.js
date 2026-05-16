@@ -3372,7 +3372,7 @@ window.__renderSusiMainLayout = function(grades) {
 };
 
 // =========================================================
-// 🎯 4. 수시 테이블 렌더링 (정렬 에러 방어 및 5단 압축 뷰)
+// 🎯 4. 수시 테이블 렌더링 (코어 매칭 기반 정시 서열 정렬 완벽 복구본)
 // =========================================================
 window.__renderSusiTable = function(grades) {
     const container = document.getElementById('susi-table-container');
@@ -3403,16 +3403,19 @@ window.__renderSusiTable = function(grades) {
 
     let filteredData = window.__susiMasterData;
 
+    // 1) 탭 카테고리 필터링
     if (window.__currentSusiTab !== '통합 검색') {
         filteredData = filteredData.filter(x => String(x.category || "").trim() === window.__currentSusiTab);
     }
 
+    // 2) 계열 필터링
     if (window.__susiViewAllMode) {
         filteredData = filteredData.filter(x => String(x.stream || "").includes(window.__susiViewAllStream));
     } else if (window.__susiFilterStream !== '전체') {
         filteredData = filteredData.filter(x => String(x.stream || "").includes(window.__susiFilterStream));
     }
 
+    // 3) 전형 & 검색어 필터링
     if (window.__susiFilterType !== '전체') {
         filteredData = filteredData.filter(x => {
             const admType = String(x.admission_type || ""); const admName = String(x.admission_name || ""); const cat = String(x.category || "");
@@ -3428,6 +3431,7 @@ window.__renderSusiTable = function(grades) {
         filteredData = filteredData.filter(x => `${x.univ_name} ${x.dept_name} ${x.admission_name} ${x.admission_type} ${x.category}`.toLowerCase().includes(keyword));
     }
 
+    // 4) 내신 필터
     if (!window.__susiViewAllMode && window.__susiGradeFilter !== 'all') {
         const myGpa = window.__susiGpaValue; const mode = window.__susiGradeFilter; const cMin = window.__susiCustomMin; const cMax = window.__susiCustomMax;
         filteredData = filteredData.filter(item => {
@@ -3454,7 +3458,9 @@ window.__renderSusiTable = function(grades) {
         return String(text).replace(regex, `<span style="background:#f1c40f; color:#000; padding:0 2px; border-radius:2px;">$1</span>`);
     };
 
-    // 💡 [핵심 보완] 어떤 상황에서도 에러가 나지 않는 무적 정렬 엔진
+    // =========================================================================
+    // 💡 [지능형 형태소 서열 엔진 구조화]
+    // =========================================================================
     const univRankOrder = [
         "서울대", "연세대", "고려대", "서강대", "성균관대", "한양대", 
         "이화여대", "중앙대", "경희대", "한국외대", "서울시립대", 
@@ -3464,14 +3470,23 @@ window.__renderSusiTable = function(grades) {
         "삼육대", "한성대", "서경대", "한국교원대", "경기대", "인천대"
     ];
     
+    // 대학교명 표준 형태소 추출 함수 (예: "이화여자대학교" -> "이화", "고려대학교(세종)" -> "고려")
+    const getCoreName = (name) => {
+        return name.replace(/대학교|대학|여자/g, "").split("(")[0].trim();
+    };
+
     const getUnivRank = (rawName) => {
         const uName = String(rawName || "").trim();
-        let safeIdx = -1;
-        if (uName.includes("ERICA") || uName.includes("에리카")) safeIdx = univRankOrder.indexOf("한양대(ERICA)");
-        else if (uName.includes("외대") && uName.includes("글로벌")) safeIdx = univRankOrder.indexOf("한국외대(글로벌)");
-        else if (uName.includes("항공")) safeIdx = univRankOrder.indexOf("항공대");
-        else safeIdx = univRankOrder.findIndex(u => uName.startsWith(u) || uName === u);
-        return safeIdx !== -1 ? safeIdx : 999;
+        if (uName.includes("ERICA") || uName.includes("에리카")) return univRankOrder.indexOf("한양대(ERICA)");
+        if (uName.includes("글로벌") && uName.includes("외대")) return univRankOrder.indexOf("한국외대(글로벌)");
+        
+        // 분교 캠퍼스명은 일반 서열 정렬 매칭에서 우선 강제 배제처리
+        const isBranch = /(미래|세종|천안|글로컬|WISE|와이즈|다빈치|바이오|메디컬|원주)/i.test(uName);
+        if (isBranch) return 999;
+
+        const core = getCoreName(uName);
+        const idx = univRankOrder.findIndex(u => u.includes(core) || core.includes(u.replace("대", "")));
+        return idx !== -1 ? idx : 999;
     };
 
     const getCategoryRank = (rawUniv, rawDept, rawRegion) => {
@@ -3485,10 +3500,15 @@ window.__renderSusiTable = function(grades) {
         if (/(수의예|수의과)/.test(d)) return 13;
         if (/(약학|약대)/.test(d) && !/(신약|제약|약과학|한약)/.test(d)) return 14;
         
+        // 순수 서울 세종대학교 필터 보호
         if (u === "세종대" || u === "세종대학교") return 20; 
-        if (/(미래|세종|천안|글로컬|WISE|와이즈|다빈치|에리카|ERICA|바이오|글로벌|메디컬)/i.test(u)) return 35;
         
-        const isRanked = univRankOrder.some(rankU => u.startsWith(rankU) || u === rankU);
+        // 분교 및 지방 캠퍼스는 예외 없이 35번 하위 순위 그룹으로 강제 바인딩
+        const isBranch = /(미래|세종|천안|글로컬|WISE|와이즈|다빈치|에리카|ERICA|바이오|글로벌|메디컬|원주)/i.test(u);
+        if (isBranch) return 35;
+        
+        const core = getCoreName(u);
+        const isRanked = univRankOrder.some(rankU => rankU.includes(core));
         if (isRanked) return 20;
 
         if (r.includes("서울")) return 21; 
@@ -3498,6 +3518,7 @@ window.__renderSusiTable = function(grades) {
         return 50;
     };
 
+    // 정밀 서열화 정렬 실행
     filteredData.sort((a, b) => {
         const uA = String(a.univ_name || "").trim();
         const uB = String(b.univ_name || "").trim();
@@ -3527,7 +3548,7 @@ window.__renderSusiTable = function(grades) {
     });
 
     // =========================================================================
-    // 💡 [렌더링 분기 1] 전체보기 모드 ON -> 5단 압축 그룹핑 테이블
+    // 💡 [렌더링 분기 1] 전체보기 모드 ON -> 5단 압축 요약 테이블
     // =========================================================================
     if (window.__susiViewAllMode) {
         const univGroups = {};
@@ -3553,6 +3574,7 @@ window.__renderSusiTable = function(grades) {
                 .susi-board-real { width:100%; border-collapse:collapse; text-align:left; font-size:12px; color:#2c3e50; min-width:900px; background:#fff; }
                 .susi-board-real th { background:rgba(0,0,0,0.03); padding:10px; font-weight:bold; color:#34495e; text-align:center; border-bottom:1px solid #dee2e6; border-right:1px solid #ecf0f1; position:sticky; top:43px; z-index:9; }
                 .susi-board-real td { padding:10px 12px; border-bottom:1px solid #ecf0f1; border-right:1px solid #ecf0f1; vertical-align:middle; background:#fdfdfd; }
+                .dept-card { background:#fff; border:1px solid #e2e8f0; border-radius:6px; padding:4px 8px; font-size:12px; color:#34495e; font-weight:bold; box-shadow:0 1px 2px rgba(0,0,0,0.02); display:inline-block; }
             </style>
             <table class="susi-board-real">
                 <thead><tr>
@@ -3574,7 +3596,6 @@ window.__renderSusiTable = function(grades) {
                 const admKey = highlight(item.admission_name || item.admission_type) || "일반";
                 const reqKey = item.csat_req || "없음";
                 const dateKey = item.exam_date || "-";
-                
                 const groupKey = `${admKey}_${reqKey}_${dateKey}`;
                 
                 if (!subGroups[groupKey]) {
@@ -3586,7 +3607,7 @@ window.__renderSusiTable = function(grades) {
                         depts: []
                     };
                 }
-                subGroups[groupKey].depts.push(item.dept_name);
+                subGroups[groupKey].depts.push(item);
             });
 
             const subGroupKeys = Object.keys(subGroups);
@@ -3607,12 +3628,8 @@ window.__renderSusiTable = function(grades) {
                 `;
                 
                 const displayDepts = groupData.depts.slice(0, MAX_DEPTS);
-                displayDepts.forEach(dept => {
-                    deptsHtml += `
-                        <span style="background:#fff; border:1px solid #bdc3c7; padding:4px 8px; border-radius:4px; font-size:12px; color:#34495e; font-weight:bold; box-shadow:0 1px 2px rgba(0,0,0,0.02); display:inline-block;">
-                            ${highlight(dept)}
-                        </span>
-                    `;
+                displayDepts.forEach(item => {
+                    deptsHtml += `<span class="dept-card">${highlight(item.dept_name)}</span>`;
                 });
 
                 if (groupData.depts.length > MAX_DEPTS) {
@@ -3713,11 +3730,9 @@ window.__renderSusiTable = function(grades) {
             <div style="padding:15px 20px; background:#fbfbfc; border-bottom:1px solid #ecf0f1;">
                 <div style="display:grid; grid-template-columns: 1fr 1fr; gap:12px;">
                     <div style="background:#fff; border:1px solid #e2e8f0; padding:12px; border-radius:8px; box-shadow:0 1px 2px rgba(0,0,0,0.02);">
-                        <div style="font-size:11px; color:#95a5a6; margin-bottom:6px; font-weight:bold;">📝 전형방법</div>
                         <div style="font-size:13px; color:#2c3e50; font-weight:bold; line-height:1.4; word-break:keep-all;">${item.selection_method || '-'}</div>
                     </div>
                     <div style="background:#fff; border:1px solid #e2e8f0; padding:12px; border-radius:8px; box-shadow:0 1px 2px rgba(0,0,0,0.02);">
-                        <div style="font-size:11px; color:#95a5a6; margin-bottom:6px; font-weight:bold;">🎯 수능 최저학력기준</div>
                         <div style="font-size:13px; color:#2c3e50; font-weight:bold; line-height:1.4; word-break:keep-all;">${reqStr}</div>
                     </div>
                 </div>
@@ -3726,15 +3741,12 @@ window.__renderSusiTable = function(grades) {
 
             <div style="padding:15px 20px; background:#fdfdfd; display:grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap:12px;">
                 <div style="background:#fff; border:1px solid #e2e8f0; padding:10px 12px; border-radius:8px;">
-                    <div style="font-size:11px; color:#95a5a6; margin-bottom:6px; font-weight:bold;">📊 3개년 ${cutLabel} <span style="font-weight:normal;">(25→24→23)</span></div>
                     <div style="font-size:14px; color:#e67e22; font-weight:900;">${cut25} <span style="color:#bdc3c7; font-size:12px;">→</span> ${cut24} <span style="color:#bdc3c7; font-size:12px;">→</span> ${cut23}</div>
                 </div>
                 <div style="background:#fff; border:1px solid #e2e8f0; padding:10px 12px; border-radius:8px;">
-                    <div style="font-size:11px; color:#95a5a6; margin-bottom:6px; font-weight:bold;">🔥 3개년 경쟁률</div>
                     <div style="font-size:14px; color:#3498db; font-weight:900;">${item.comp_rate_25||'-'} <span style="color:#bdc3c7; font-size:12px;">→</span> ${item.comp_rate_24||'-'} <span style="color:#bdc3c7; font-size:12px;">→</span> ${item.comp_rate_23||'-'}</div>
                 </div>
                 <div style="background:#fff; border:1px solid #e2e8f0; padding:10px 12px; border-radius:8px;">
-                    <div style="font-size:11px; color:#95a5a6; margin-bottom:6px; font-weight:bold;">🔄 3개년 충원율</div>
                     <div style="font-size:14px; color:#27ae60; font-weight:900;">${item.turnover_2025||'-'} <span style="color:#bdc3c7; font-size:12px;">→</span> ${item.turnover_2024||'-'} <span style="color:#bdc3c7; font-size:12px;">→</span> ${item.turnover_2023||'-'}</div>
                 </div>
             </div>
