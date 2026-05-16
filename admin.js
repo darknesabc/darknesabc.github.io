@@ -3135,7 +3135,7 @@ window.__openSusiSimulation = async function() {
 };
 
 // =========================================================
-// 🎯 2. 메인 레이아웃 (필터 1줄 일렬 배치 적용)
+// 🎯 2. 메인 레이아웃 (모든 탭 1줄 일렬 배치 전역 적용)
 // =========================================================
 window.__renderSusiMainLayout = function(grades) {
     const area = document.getElementById('susi-simulation-area');
@@ -3151,84 +3151,61 @@ window.__renderSusiMainLayout = function(grades) {
         return `<button onclick="window.__changeSusiTab('${cat}')" style="background:${isActive?'#8e44ad':'#fff'}; color:${isActive?'#fff':'#7f8c8d'}; border:${isActive?'1px solid #8e44ad':'1px solid #dee2e6'}; padding:5px 14px; border-radius:20px; font-size:12px; font-weight:bold; cursor:pointer; transition:0.2s;">${cat}</button>`;
     }).join('');
 
-    let controlHtml = '';
-    
-    // 💡 [핵심 수정] 통합 검색 탭 필터를 한 줄(가로)로 일렬 배치
-    if (window.__currentSusiTab === '통합 검색') {
-        controlHtml = `
-            <div style="display:flex; align-items:center; flex-wrap:wrap; gap:12px; width:100%; background:#f4f6f7; padding:10px 15px; border-radius:8px; border:1px solid #ecf0f1;">
-                
-                <div style="display:flex; align-items:center; gap:6px;">
-                    <span style="color:#e67e22; font-size:13px; font-weight:bold;">🎯 내 내신:</span>
-                    <input type="number" id="susi-my-gpa" value="${window.__susiGpaValue}" step="0.1" style="width:55px; padding:5px; border:1px solid #e67e22; color:#e67e22; border-radius:4px; font-weight:bold; outline:none; text-align:center; font-size:12px;">
-                </div>
-                
-                <div style="display:flex; align-items:center; gap:6px;">
-                    <span style="color:#7f8c8d; font-size:12px; font-weight:bold;">내신 필터:</span>
-                    <select id="susi-grade-filter" onchange="window.__toggleSusiCustomGrade(this.value); window.__executeSusiSearch();" style="padding:5px 8px; border-radius:4px; border:1px solid #bdc3c7; font-size:12px; font-weight:bold; color:#2c3e50; outline:none; cursor:pointer;">
-                        <option value="all" ${window.__susiGradeFilter==='all'?'selected':''}>전체 보기</option>
-                        <option value="0.3" ${window.__susiGradeFilter==='0.3'?'selected':''}>적정 (±0.3)</option>
-                        <option value="0.5" ${window.__susiGradeFilter==='0.5'?'selected':''}>폭넓게 (±0.5)</option>
-                        <option value="up" ${window.__susiGradeFilter==='up'?'selected':''}>상향 지원</option>
-                        <option value="down" ${window.__susiGradeFilter==='down'?'selected':''}>안정 지원</option>
-                        <option value="custom" ${window.__susiGradeFilter==='custom'?'selected':''}>직접 지정</option>
-                    </select>
-                </div>
-                
-                <div id="susi-custom-grade-box" style="display:${window.__susiGradeFilter==='custom'?'flex':'none'}; align-items:center; gap:4px;">
-                    <input type="number" id="susi-min-gpa" value="${window.__susiCustomMin}" step="0.1" style="width:50px; padding:5px; border:1px solid #bdc3c7; border-radius:4px; font-size:12px; text-align:center; outline:none;">
-                    <span style="color:#7f8c8d; font-size:12px;">~</span>
-                    <input type="number" id="susi-max-gpa" value="${window.__susiCustomMax}" step="0.1" style="width:50px; padding:5px; border:1px solid #bdc3c7; border-radius:4px; font-size:12px; text-align:center; outline:none;">
-                </div>
-
-                <div style="width:1px; height:18px; background:#bdc3c7; margin:0 2px;"></div> <div style="display:flex; align-items:center; gap:6px;">
-                    <span style="color:#34495e; font-size:12px; font-weight:bold;">계열:</span>
-                    <select id="susi-stream-filter" onchange="window.__executeSusiSearch()" style="padding:5px 8px; border-radius:4px; border:1px solid #bdc3c7; font-size:12px; color:#2c3e50; outline:none; cursor:pointer;">
-                        <option value="전체" ${window.__susiFilterStream==='전체'?'selected':''}>전체</option>
-                        <option value="인문" ${window.__susiFilterStream==='인문'?'selected':''}>인문</option>
-                        <option value="자연" ${window.__susiFilterStream==='자연'?'selected':''}>자연</option>
-                    </select>
-                </div>
-
-                <div style="display:flex; align-items:center; gap:6px;">
-                    <span style="color:#34495e; font-size:12px; font-weight:bold;">전형:</span>
-                    <select id="susi-type-filter" onchange="window.__executeSusiSearch()" style="padding:5px 8px; border-radius:4px; border:1px solid #bdc3c7; font-size:12px; color:#2c3e50; outline:none; cursor:pointer;">
-                        <option value="전체" ${window.__susiFilterType==='전체'?'selected':''}>전체</option>
-                        <option value="교과" ${window.__susiFilterType==='교과'?'selected':''}>교과</option>
-                        <option value="종합" ${window.__susiFilterType==='종합'?'selected':''}>종합</option>
-                        <option value="논술" ${window.__susiFilterType==='논술'?'selected':''}>논술</option>
-                    </select>
-                </div>
-
-                <div style="display:flex; align-items:center; gap:6px; margin-left:auto;">
-                    <span style="color:#34495e; font-size:12px; font-weight:bold;">🔍 검색:</span>
-                    <input type="text" id="susi-search-input" value="${window.__susiFilterSearch}" placeholder="대학/학과/전형" onkeyup="if(event.key==='Enter') window.__executeSusiSearch()" style="background:#fff; border:1px solid #bdc3c7; color:#3498db; font-size:12px; outline:none; padding:5px 8px; border-radius:4px; font-weight:bold; width:130px;">
-                    <button onclick="window.__executeSusiSearch()" style="background:#3498db; color:#fff; border:none; padding:5px 12px; border-radius:4px; cursor:pointer; font-size:12px; font-weight:bold; box-shadow:0 1px 2px rgba(0,0,0,0.1);">조회</button>
-                </div>
+    // 💡 모든 탭에서 [내 내신 -> 내신 필터 -> 계열 -> 전형 -> 검색]이 한 줄로 나오도록 단일화
+    const controlHtml = `
+        <div style="display:flex; align-items:center; flex-wrap:wrap; gap:12px; width:100%; background:#f4f6f7; padding:10px 15px; border-radius:8px; border:1px solid #ecf0f1;">
+            
+            <div style="display:flex; align-items:center; gap:6px;">
+                <span style="color:#e67e22; font-size:13px; font-weight:bold;">🎯 내 내신:</span>
+                <input type="number" id="susi-my-gpa" value="${window.__susiGpaValue}" step="0.1" style="width:55px; padding:5px; border:1px solid #e67e22; color:#e67e22; border-radius:4px; font-weight:bold; outline:none; text-align:center; font-size:12px;">
             </div>
-        `;
-    } 
-    // 일반 탭일 때의 간소화된 필터 UI (기존 유지)
-    else {
-        controlHtml = `
-            <div style="display:flex; align-items:center; gap:15px; flex-wrap:wrap; width:100%; background:#f4f6f7; padding:10px 15px; border-radius:8px; border:1px solid #ecf0f1;">
-                <div style="display:flex; align-items:center; gap:6px;">
-                    <span style="color:#34495e; font-size:12px; font-weight:bold;">계열:</span>
-                    <select id="susi-stream-filter" onchange="window.__executeSusiSearch()" style="padding:5px 8px; border-radius:4px; border:1px solid #bdc3c7; font-size:12px; color:#2c3e50; outline:none; cursor:pointer;">
-                        <option value="전체" ${window.__susiFilterStream==='전체'?'selected':''}>전체 계열</option>
-                        <option value="인문" ${window.__susiFilterStream==='인문'?'selected':''}>인문 계열</option>
-                        <option value="자연" ${window.__susiFilterStream==='자연'?'selected':''}>자연 계열</option>
-                    </select>
-                </div>
-                
-                <div style="display:flex; align-items:center; gap:6px; margin-left:auto;">
-                    <span style="color:#7f8c8d; font-size:12px; font-weight:bold;">🔍 검색:</span>
-                    <input type="text" id="susi-search-input" value="${window.__susiFilterSearch}" placeholder="대학/학과/전형명" onkeyup="if(event.key==='Enter') window.__executeSusiSearch()" style="background:#fff; border:1px solid #bdc3c7; color:#3498db; font-size:12px; outline:none; padding:5px 10px; border-radius:4px; font-weight:bold; width:160px;">
-                    <button onclick="window.__executeSusiSearch()" style="background:#3498db; color:#fff; border:none; padding:5px 15px; border-radius:4px; cursor:pointer; font-size:12px; font-weight:bold;">조회</button>
-                </div>
+            
+            <div style="display:flex; align-items:center; gap:6px;">
+                <span style="color:#7f8c8d; font-size:12px; font-weight:bold;">내신 필터:</span>
+                <select id="susi-grade-filter" onchange="window.__toggleSusiCustomGrade(this.value); window.__executeSusiSearch();" style="padding:5px 8px; border-radius:4px; border:1px solid #bdc3c7; font-size:12px; font-weight:bold; color:#2c3e50; outline:none; cursor:pointer;">
+                    <option value="all" ${window.__susiGradeFilter==='all'?'selected':''}>전체 보기</option>
+                    <option value="0.3" ${window.__susiGradeFilter==='0.3'?'selected':''}>적정 (±0.3)</option>
+                    <option value="0.5" ${window.__susiGradeFilter==='0.5'?'selected':''}>폭넓게 (±0.5)</option>
+                    <option value="up" ${window.__susiGradeFilter==='up'?'selected':''}>상향 지원</option>
+                    <option value="down" ${window.__susiGradeFilter==='down'?'selected':''}>안정 지원</option>
+                    <option value="custom" ${window.__susiGradeFilter==='custom'?'selected':''}>직접 지정</option>
+                </select>
             </div>
-        `;
-    }
+            
+            <div id="susi-custom-grade-box" style="display:${window.__susiGradeFilter==='custom'?'flex':'none'}; align-items:center; gap:4px;">
+                <input type="number" id="susi-min-gpa" value="${window.__susiCustomMin}" step="0.1" style="width:50px; padding:5px; border:1px solid #bdc3c7; border-radius:4px; font-size:12px; text-align:center; outline:none;">
+                <span style="color:#7f8c8d; font-size:12px;">~</span>
+                <input type="number" id="susi-max-gpa" value="${window.__susiCustomMax}" step="0.1" style="width:50px; padding:5px; border:1px solid #bdc3c7; border-radius:4px; font-size:12px; text-align:center; outline:none;">
+            </div>
+
+            <div style="width:1px; height:18px; background:#bdc3c7; margin:0 2px;"></div>
+
+            <div style="display:flex; align-items:center; gap:6px;">
+                <span style="color:#34495e; font-size:12px; font-weight:bold;">계열:</span>
+                <select id="susi-stream-filter" onchange="window.__executeSusiSearch()" style="padding:5px 8px; border-radius:4px; border:1px solid #bdc3c7; font-size:12px; color:#2c3e50; outline:none; cursor:pointer;">
+                    <option value="전체" ${window.__susiFilterStream==='전체'?'selected':''}>전체</option>
+                    <option value="인문" ${window.__susiFilterStream==='인문'?'selected':''}>인문</option>
+                    <option value="자연" ${window.__susiFilterStream==='자연'?'selected':''}>자연</option>
+                </select>
+            </div>
+
+            <div style="display:flex; align-items:center; gap:6px;">
+                <span style="color:#34495e; font-size:12px; font-weight:bold;">전형:</span>
+                <select id="susi-type-filter" onchange="window.__executeSusiSearch()" style="padding:5px 8px; border-radius:4px; border:1px solid #bdc3c7; font-size:12px; color:#2c3e50; outline:none; cursor:pointer;">
+                    <option value="전체" ${window.__susiFilterType==='전체'?'selected':''}>전체</option>
+                    <option value="교과" ${window.__susiFilterType==='교과'?'selected':''}>교과</option>
+                    <option value="종합" ${window.__susiFilterType==='종합'?'selected':''}>종합</option>
+                    <option value="논술" ${window.__susiFilterType==='논술'?'selected':''}>논술</option>
+                </select>
+            </div>
+
+            <div style="display:flex; align-items:center; gap:6px; margin-left:auto;">
+                <span style="color:#34495e; font-size:12px; font-weight:bold;">🔍 검색:</span>
+                <input type="text" id="susi-search-input" value="${window.__susiFilterSearch}" placeholder="대학/학과/전형" onkeyup="if(event.key==='Enter') window.__executeSusiSearch()" style="background:#fff; border:1px solid #bdc3c7; color:#3498db; font-size:12px; outline:none; padding:5px 8px; border-radius:4px; font-weight:bold; width:130px;">
+                <button onclick="window.__executeSusiSearch()" style="background:#3498db; color:#fff; border:none; padding:5px 12px; border-radius:4px; cursor:pointer; font-size:12px; font-weight:bold; box-shadow:0 1px 2px rgba(0,0,0,0.1);">조회</button>
+            </div>
+        </div>
+    `;
 
     area.innerHTML = `
         <div style="background:#fff; border-radius:12px; overflow:hidden; border:1px solid #dee2e6; box-shadow:0 6px 12px rgba(0,0,0,0.04); margin-bottom:25px;">
@@ -3342,7 +3319,7 @@ window.__checkCsatRequirement = function(reqStr, grades) {
 };
 
 // =========================================================
-// 🎯 4. 수시 테이블 렌더링 (모든 탭 초기 안내 화면 및 프리미엄 카드 뷰 적용)
+// 🎯 4. 수시 테이블 렌더링 (전형 상세 박스 유지 + 내신 필터 전역 고도화)
 // =========================================================
 window.__renderSusiTable = function(grades) {
     const container = document.getElementById('susi-table-container');
@@ -3356,13 +3333,9 @@ window.__renderSusiTable = function(grades) {
 
     if (isNoSearch && isNoStream && isNoType && isNoGrade) {
         let helpTitle = "시뮬레이션할 조건을 설정해 주세요.";
-        let helpDesc = `상단의 <span style="color:#34495e;">[계열]</span> 필터를 변경하거나, 우측 <span style="color:#3498db;">[검색창]</span>에 키워드를 입력하시면 결과가 표시됩니다.`;
+        let helpDesc = `상단의 <span style="color:#e67e22;">[내신 필터]</span>, <span style="color:#34495e;">[계열/전형]</span>을 선택하거나<br>우측 <span style="color:#3498db;">[검색창]</span>에 대학명/학과명을 입력하시면 결과가 표시됩니다.`;
         
-        // 통합 검색 탭일 때는 내신 필터 가이드까지 상세히 출력
-        if (window.__currentSusiTab === '통합 검색') {
-            helpDesc = `상단의 <span style="color:#e67e22;">[내신 필터]</span>, <span style="color:#34495e;">[계열/전형]</span>을 선택하거나<br>우측 <span style="color:#3498db;">[검색창]</span>에 대학명/학과명을 입력하시면 결과가 표시됩니다.`;
-        } else {
-            // 논술 ~ 교대 탭일 때는 탭 이름을 동적으로 매핑해서 안내
+        if (window.__currentSusiTab !== '통합 검색') {
             helpTitle = `[${window.__currentSusiTab}] 명단을 조회하려면 조건을 설정해 주세요.`;
         }
 
@@ -3375,16 +3348,23 @@ window.__renderSusiTable = function(grades) {
                 </div>
             </div>
         `;
-        return; // 연산을 즉시 중단하여 화면에 리스트가 그려지는 것을 막음 (공백화 처리)
+        return; 
     }
 
-    // 1) 전체 데이터 필터 적용 (계열, 전형, 검색어)
+    // 1) 전체 데이터에서 기본 필터 적용 (카테고리 탭 분기 -> 계열 -> 전형 -> 검색어 순)
     let filteredData = window.__susiMasterData;
 
+    // 탭 카테고리 필터링 (통합 검색이 아닐 때만 카테고리 고정)
+    if (window.__currentSusiTab !== '통합 검색') {
+        filteredData = filteredData.filter(x => String(x.category || "").trim() === window.__currentSusiTab);
+    }
+
+    // 계열 필터링
     if (window.__susiFilterStream !== '전체') {
         filteredData = filteredData.filter(x => String(x.stream || "").includes(window.__susiFilterStream));
     }
 
+    // 전형 필터링
     if (window.__susiFilterType !== '전체') {
         filteredData = filteredData.filter(x => {
             const admType = String(x.admission_type || "");
@@ -3397,6 +3377,7 @@ window.__renderSusiTable = function(grades) {
         });
     }
 
+    // 검색어 필터링
     if (window.__susiFilterSearch !== "") {
         const keyword = window.__susiFilterSearch.toLowerCase();
         filteredData = filteredData.filter(x => {
@@ -3405,32 +3386,28 @@ window.__renderSusiTable = function(grades) {
         });
     }
 
-    // 2) 탭 및 내신 필터 적용
-    if (window.__currentSusiTab !== '통합 검색') {
-        filteredData = filteredData.filter(x => String(x.category || "").trim() === window.__currentSusiTab);
-    } else {
-        if (window.__susiGradeFilter !== 'all') {
-            const myGpa = window.__susiGpaValue;
-            const mode = window.__susiGradeFilter;
-            const cMin = window.__susiCustomMin;
-            const cMax = window.__susiCustomMax;
+    // 💡 [전역 확장] 내신 등급 필터 적용 (이제 모든 탭에서 공통 작동함)
+    if (window.__susiGradeFilter !== 'all') {
+        const myGpa = window.__susiGpaValue;
+        const mode = window.__susiGradeFilter;
+        const cMin = window.__susiCustomMin;
+        const cMax = window.__susiCustomMax;
 
-            filteredData = filteredData.filter(item => {
-                const parseGrade = (str) => {
-                    if (!str || str === '-') return null;
-                    const match = str.match(/[\d\.]+/); 
-                    return match ? parseFloat(match[0]) : null;
-                };
-                const g = parseGrade(item.grade_2025) || parseGrade(item.cut_2025) || parseGrade(item.grade_2024);
-                if (!g) return false; 
-                if (mode === '0.3') return g >= myGpa - 0.3 && g <= myGpa + 0.3;
-                if (mode === '0.5') return g >= myGpa - 0.5 && g <= myGpa + 0.5;
-                if (mode === 'up') return g < myGpa; 
-                if (mode === 'down') return g >= myGpa; 
-                if (mode === 'custom') return g >= cMin && g <= cMax;
-                return true;
-            });
-        }
+        filteredData = filteredData.filter(item => {
+            const parseGrade = (str) => {
+                if (!str || str === '-') return null;
+                const match = str.match(/[\d\.]+/); 
+                return match ? parseFloat(match[0]) : null;
+            };
+            const g = parseGrade(item.grade_2025) || parseGrade(item.cut_2025) || parseGrade(item.grade_2024);
+            if (!g) return false; 
+            if (mode === '0.3') return g >= myGpa - 0.3 && g <= myGpa + 0.3;
+            if (mode === '0.5') return g >= myGpa - 0.5 && g <= myGpa + 0.5;
+            if (mode === 'up') return g < myGpa; 
+            if (mode === 'down') return g >= myGpa; 
+            if (mode === 'custom') return g >= cMin && g <= cMax;
+            return true;
+        });
     }
 
     if (filteredData.length === 0) {
@@ -3445,6 +3422,7 @@ window.__renderSusiTable = function(grades) {
         return String(text).replace(regex, `<span style="background:#f1c40f; color:#000; padding:0 2px; border-radius:2px;">$1</span>`);
     };
 
+    // 정렬 (대학명 -> 학과명 가나다순)
     filteredData.sort((a, b) => {
         const uA = String(a.univ_name || ""); const uB = String(b.univ_name || "");
         if (uA !== uB) return uA.localeCompare(uB, 'ko');
