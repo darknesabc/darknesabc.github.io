@@ -3372,12 +3372,13 @@ window.__renderSusiMainLayout = function(grades) {
 };
 
 // =========================================================
-// 🎯 5. 테이블 및 카드 렌더링 엔진
+// 🎯 4. 수시 테이블 렌더링 (정렬 에러 방어 및 5단 압축 뷰)
 // =========================================================
 window.__renderSusiTable = function(grades) {
     const container = document.getElementById('susi-table-container');
     if (!container || !window.__susiMasterData) return;
 
+    // [초기 공백 화면 로직] (전체보기 모드가 아닐 때만 작동)
     if (!window.__susiViewAllMode) {
         const isNoSearch = window.__susiFilterSearch.trim() === "";
         const isNoStream = window.__susiFilterStream === "전체";
@@ -3453,6 +3454,7 @@ window.__renderSusiTable = function(grades) {
         return String(text).replace(regex, `<span style="background:#f1c40f; color:#000; padding:0 2px; border-radius:2px;">$1</span>`);
     };
 
+    // 💡 [핵심 보완] 어떤 상황에서도 에러가 나지 않는 무적 정렬 엔진
     const univRankOrder = [
         "서울대", "연세대", "고려대", "서강대", "성균관대", "한양대", 
         "이화여대", "중앙대", "경희대", "한국외대", "서울시립대", 
@@ -3462,7 +3464,8 @@ window.__renderSusiTable = function(grades) {
         "삼육대", "한성대", "서경대", "한국교원대", "경기대", "인천대"
     ];
     
-    const getUnivRank = (uName) => {
+    const getUnivRank = (rawName) => {
+        const uName = String(rawName || "").trim();
         let safeIdx = -1;
         if (uName.includes("ERICA") || uName.includes("에리카")) safeIdx = univRankOrder.indexOf("한양대(ERICA)");
         else if (uName.includes("외대") && uName.includes("글로벌")) safeIdx = univRankOrder.indexOf("한국외대(글로벌)");
@@ -3471,47 +3474,60 @@ window.__renderSusiTable = function(grades) {
         return safeIdx !== -1 ? safeIdx : 999;
     };
 
-    const getCategoryRank = (univ, dept, regionStr) => {
-        if (/(의예|의학|의과)/.test(dept) && !/(식물|의공|의생명|의료|의과학|스포츠|수의|치의|한의)/.test(dept)) return 10;
-        if (/(치의예|치의학)/.test(dept)) return 11;
-        if (/(한의예|한의학)/.test(dept)) return 12;
-        if (/(수의예|수의과)/.test(dept)) return 13;
-        if (/(약학|약대)/.test(dept) && !/(신약|제약|약과학|한약)/.test(dept)) return 14;
-        if (/(미래|세종|천안|글로컬|WISE|와이즈|다빈치|에리카|ERICA|바이오|글로벌|메디컬)/i.test(univ)) return 35;
+    const getCategoryRank = (rawUniv, rawDept, rawRegion) => {
+        const u = String(rawUniv || "").trim();
+        const d = String(rawDept || "").trim();
+        const r = String(rawRegion || "").trim();
+
+        if (/(의예|의학|의과)/.test(d) && !/(식물|의공|의생명|의료|의과학|스포츠|수의|치의|한의)/.test(d)) return 10;
+        if (/(치의예|치의학)/.test(d)) return 11;
+        if (/(한의예|한의학)/.test(d)) return 12;
+        if (/(수의예|수의과)/.test(d)) return 13;
+        if (/(약학|약대)/.test(d) && !/(신약|제약|약과학|한약)/.test(d)) return 14;
         
-        const isRanked = univRankOrder.some(u => univ.startsWith(u) || univ === u);
+        if (u === "세종대" || u === "세종대학교") return 20; 
+        if (/(미래|세종|천안|글로컬|WISE|와이즈|다빈치|에리카|ERICA|바이오|글로벌|메디컬)/i.test(u)) return 35;
+        
+        const isRanked = univRankOrder.some(rankU => u.startsWith(rankU) || u === rankU);
         if (isRanked) return 20;
 
-        const region = String(regionStr || "");
-        if (region.includes("서울")) return 21; 
-        if (region.includes("경기") || region.includes("인천")) return 30; 
-        if (/(부산대|경북대|전남대|충남대|전북대|충북대|강원대|경상국립대|제주대)/.test(univ)) return 40;
+        if (r.includes("서울")) return 21; 
+        if (r.includes("경기") || r.includes("인천")) return 30; 
+        if (/(부산대|경북대|전남대|충남대|전북대|충북대|강원대|경상국립대|제주대)/.test(u)) return 40;
+        
         return 50;
     };
 
     filteredData.sort((a, b) => {
-        const catA = getCategoryRank(a.univ_name, a.dept_name, a.region);
-        const catB = getCategoryRank(b.univ_name, b.dept_name, b.region);
+        const uA = String(a.univ_name || "").trim();
+        const uB = String(b.univ_name || "").trim();
+        const dA = String(a.dept_name || "").trim();
+        const dB = String(b.dept_name || "").trim();
+        const rA = String(a.region || "").trim();
+        const rB = String(b.region || "").trim();
+
+        const catA = getCategoryRank(uA, dA, rA);
+        const catB = getCategoryRank(uB, dB, rB);
         if (catA !== catB) return catA - catB; 
 
-        const rankA = getUnivRank(a.univ_name);
-        const rankB = getUnivRank(b.univ_name);
+        const rankA = getUnivRank(uA);
+        const rankB = getUnivRank(uB);
         if (rankA !== rankB) return rankA - rankB; 
 
-        const baseA = a.univ_name.replace(/\(.*?\)/g, '').trim();
-        const baseB = b.univ_name.replace(/\(.*?\)/g, '').trim();
+        const baseA = uA.replace(/\(.*?\)/g, '').trim();
+        const baseB = uB.replace(/\(.*?\)/g, '').trim();
         if (baseA === baseB) {
-            const isBranchA = /(에리카|ERICA|와이즈|WISE|바이오|글로벌|글로컬|미래|세종|천안|다빈치|메디컬|국제)/i.test(a.univ_name);
-            const isBranchB = /(에리카|ERICA|와이즈|WISE|바이오|글로벌|글로컬|미래|세종|천안|다빈치|메디컬|국제)/i.test(b.univ_name);
+            const isBranchA = /(에리카|ERICA|와이즈|WISE|바이오|글로벌|글로컬|미래|세종|천안|다빈치|메디컬|국제)/i.test(uA);
+            const isBranchB = /(에리카|ERICA|와이즈|WISE|바이오|글로벌|글로컬|미래|세종|천안|다빈치|메디컬|국제)/i.test(uB);
             if (!isBranchA && isBranchB) return -1;
             if (isBranchA && !isBranchB) return 1;
         }
 
-        return String(a.dept_name || "").localeCompare(String(b.dept_name || ""), 'ko');
+        return dA.localeCompare(dB, 'ko');
     });
 
     // =========================================================================
-    // 💡 [렌더링 분기 1] 전체보기 모드 ON -> 5단 압축 그룹핑 요약본
+    // 💡 [렌더링 분기 1] 전체보기 모드 ON -> 5단 압축 그룹핑 테이블
     // =========================================================================
     if (window.__susiViewAllMode) {
         const univGroups = {};
