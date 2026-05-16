@@ -3346,11 +3346,34 @@ window.__checkCsatRequirement = function(reqStr, grades) {
 };
 
 // =========================================================
-// 🎯 4. 수시 테이블 렌더링 (프리미엄 상세 카드 리스트 뷰 적용)
+// 🎯 4. 수시 테이블 렌더링 (프리미엄 상세 카드 리스트 뷰 & 초기 공백화면 적용)
 // =========================================================
 window.__renderSusiTable = function(grades) {
     const container = document.getElementById('susi-table-container');
     if (!container || !window.__susiMasterData) return;
+
+    // 💡 [핵심 추가 로직] 통합 검색 탭에서 아무런 필터나 검색어가 없을 때 "초기 안내 화면" 띄우기
+    if (window.__currentSusiTab === '통합 검색') {
+        const isNoSearch = window.__susiFilterSearch.trim() === "";
+        const isNoStream = window.__susiFilterStream === "전체";
+        const isNoType = window.__susiFilterType === "전체";
+        const isNoGrade = window.__susiGradeFilter === "all"; // 내신 필터도 미적용 상태인지 확인
+
+        // 모든 조건이 기본값(선택 안 함)일 경우
+        if (isNoSearch && isNoStream && isNoType && isNoGrade) {
+            container.innerHTML = `
+                <div style="text-align:center; padding:80px 20px; background:#fff; border:2px dashed #bdc3c7; border-radius:12px; margin:15px 0; box-shadow:0 4px 10px rgba(0,0,0,0.02);">
+                    <div style="font-size:45px; margin-bottom:15px; opacity:0.8;">🔍</div>
+                    <div style="font-size:18px; font-weight:900; color:#2c3e50; margin-bottom:10px;">시뮬레이션할 조건을 설정해 주세요.</div>
+                    <div style="font-size:13px; color:#7f8c8d; line-height:1.6; font-weight:bold;">
+                        상단의 <span style="color:#e67e22;">[내신 필터]</span>, <span style="color:#34495e;">[계열/전형]</span>을 선택하거나<br>
+                        우측 <span style="color:#3498db;">[검색창]</span>에 대학명/학과명을 입력하시면 결과가 표시됩니다.
+                    </div>
+                </div>
+            `;
+            return; // 여기서 함수를 종료하여 전체 리스트 렌더링을 막음 (공백 처리)
+        }
+    }
 
     // 1) 전체 데이터에서 기본 필터 적용 (계열, 전형, 검색어)
     let filteredData = window.__susiMasterData;
